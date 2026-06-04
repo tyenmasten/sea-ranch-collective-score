@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Collective Score — Sea Ranch Collective Score</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+/* Mobile responsive — to be handled by Cursor in a separate pass */
+
+@font-face { font-family: 'Miniature'; src: url('Fonts/Miniature-Display.otf'); }
+@font-face { font-family: 'Media77'; src: url('Fonts/Media77-Regular.otf'); }
+
+:root {
+  --bg: #e8e8e8;
+  --surface: #f0f0f0;
+  --surface2: #ffffff;
+  --border: #cccccc;
+  --border2: #b8b8b8;
+  --ink: #1a1a1a;
+  --dim: #888888;
+  --accent: #3a3a3a;
+  --active: #1a1a1a;
+  --hi: #d8d8d8;
+  --dot: #2a6049;
+  --dot-pending: #888888;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { height: 100%; }
+
+body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.app-chrome {
+  flex: 0 0 auto;
+  width: 100%;
+  z-index: 100;
+  background: var(--bg);
+}
+
+.workspace {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+header {
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  background: #d0d0d0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.h-title {
+  font-family: 'Miniature', serif;
+  font-size: 26px;
+  font-weight: normal;
+  font-style: normal;
+  color: var(--ink);
+  letter-spacing: normal;
+  line-height: 1.1;
+}
+
+.h-sub {
+  font-family: 'Miniature', serif;
+  font-size: 11px;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+  margin-top: 2px;
+}
+
+.h-user {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  background: var(--surface2);
+}
+
+nav {
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  padding: 0 24px;
+  background: var(--surface);
+}
+
+.nav-item {
+  font-family: 'Miniature', serif;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  padding: 10px 16px;
+  color: var(--dim);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  text-decoration: none;
+  display: block;
+}
+
+.nav-item.active { color: var(--ink); border-bottom-color: var(--ink); }
+.nav-item.locked { color: var(--border2); opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+
+.sidebar {
+  width: 260px;
+  flex: 0 0 260px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-panel {
+  display: none;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 12px 16px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.sidebar-panel.active { display: flex; }
+
+.sidebar-panel::-webkit-scrollbar { width: 6px; }
+.sidebar-panel::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+.section-block { flex-shrink: 0; }
+
+.slabel {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 5px;
+  margin-bottom: 8px;
+}
+
+.flabel {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 4px;
+  display: block;
+  margin-top: 8px;
+}
+
+.flabel:first-child { margin-top: 0; }
+
+.btn {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn:hover { border-color: var(--ink); }
+.btn.sel { background: var(--ink); color: #f0f0f0; border-color: var(--ink); }
+.btn.full { width: 100%; margin-top: 6px; text-align: center; }
+.btn.primary {
+  background: var(--ink);
+  color: #f0f0f0;
+  border-color: var(--ink);
+  width: 100%;
+  padding: 10px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  margin-top: 0;
+}
+.btn.primary:hover { background: #444; border-color: #444; }
+.btn.ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--dim);
+  width: 100%;
+  padding: 10px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+.btn.ghost:hover { border-color: var(--ink); color: var(--ink); }
+
+.sep {
+  height: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.note {
+  font-family: 'Media77', sans-serif;
+  font-size: 11px;
+  color: var(--dim);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.stats-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+}
+
+.stat-box {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 8px;
+  text-align: center;
+}
+
+.stat-num {
+  font-size: 18px;
+  color: var(--ink);
+  display: block;
+  font-family: 'Miniature', serif;
+}
+
+.stat-label {
+  font-size: 8px;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  display: block;
+  margin-top: 2px;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.chip {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.chip:hover { border-color: var(--ink); }
+.chip.active {
+  background: var(--ink);
+  color: #f0f0f0;
+  border-color: var(--ink);
+}
+
+.locked-section {
+  border: 1px dashed var(--border);
+  padding: 12px;
+  background: var(--surface2);
+}
+
+.lock-badge {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+  background: var(--hi);
+  padding: 2px 8px;
+  display: inline-block;
+  margin-bottom: 8px;
+}
+
+.locked-section select,
+.locked-section input[type="text"] {
+  width: 100%;
+  background: var(--hi);
+  border: 1px solid var(--border);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  padding: 5px 8px;
+  color: var(--dim);
+  margin-bottom: 6px;
+  outline: none;
+}
+
+.locked-section .btn.staff-action {
+  opacity: 1;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.locked-section .btn.staff-action + .btn.staff-action {
+  margin-top: 6px;
+}
+
+.data-row {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 4px;
+  margin-bottom: 7px;
+  align-items: baseline;
+}
+
+.data-key {
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.data-val {
+  font-size: 11px;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.data-val.desc {
+  font-family: 'Media77', sans-serif;
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.data-val.tag {
+  display: inline-block;
+  background: var(--hi);
+  padding: 2px 6px;
+  font-size: 9px;
+}
+
+.data-row--full {
+  grid-template-columns: 1fr;
+}
+
+.mark-preview-box {
+  width: 80px;
+  height: 60px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 6px 0;
+}
+
+.mark-preview-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.mark-preview-inner svg {
+  display: block;
+}
+
+.map-viewer {
+  flex: 1 1 0;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--surface2);
+}
+
+.map-area {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.leaflet-container {
+  background: #ffffff;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.map-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 1000;
+}
+
+.map-btn {
+  width: 32px;
+  height: 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  transition: background 0.15s;
+  padding: 0;
+}
+
+.map-btn:hover { background: var(--hi); }
+
+.compass {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.map-load-msg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+  z-index: 1500;
+  pointer-events: none;
+}
+
+.notation-leaflet-icon {
+  background: transparent;
+  border: none;
+}
+
+.notation-mark-svg {
+  width: 12px;
+  height: 12px;
+  line-height: 0;
+}
+
+.notation-mark-svg svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+
+.notation-mark-svg.selected {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 2px;
+}
+
+.notation-dot-placeholder {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--dot-pending);
+  border: 1px solid var(--border2);
+  box-sizing: border-box;
+}
+
+.notation-dot-placeholder.selected {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 2px;
+}
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="app-chrome">
+    <header>
+      <div>
+        <div class="h-title">Sea Ranch — Collective Score</div>
+        <div class="h-sub">AA Visiting School · The Sea Ranch, California · July 2026</div>
+      </div>
+      <div class="h-user" id="headerUser">Instructor: T. Masten</div>
+    </header>
+    <nav>
+      <a class="nav-item" href="lexicon-builder.html">Lexicon</a>
+      <a class="nav-item" href="location-input.html">Location</a>
+      <a class="nav-item active" href="collective-score.html">Score</a>
+      <a class="nav-item" href="lexicon-overview.html">Overview</a>
+    </nav>
+  </div>
+
+  <div class="workspace">
+
+    <aside class="sidebar">
+      <div class="sidebar-panel active" id="panelDefault">
+
+        <div class="section-block">
+          <div class="slabel">Score</div>
+          <div class="stats-bar">
+            <div class="stat-box"><span class="stat-num">15</span><span class="stat-label">Students</span></div>
+            <div class="stat-box"><span class="stat-num">47</span><span class="stat-label">Notations</span></div>
+            <div class="stat-box"><span class="stat-num">8</span><span class="stat-label">Days</span></div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="section-block">
+          <div class="slabel">Filter — Author</div>
+          <div class="filter-chips" id="filterAuthor" data-filter-key="author"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="slabel">Filter — Element</div>
+          <div class="filter-chips" id="filterElement" data-filter-key="element"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="slabel">Filter — Meta Data</div>
+          <div class="filter-chips" id="filterMeta" data-filter-key="meta"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="slabel">Filter — Typology</div>
+          <div class="filter-chips" id="filterTypology" data-filter-key="typology"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="slabel">Filter — Status</div>
+          <div class="filter-chips" id="filterStatus" data-filter-key="status"></div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="section-block">
+          <div class="slabel">Export</div>
+          <div class="locked-section">
+            <span class="lock-badge">Instructor Only</span>
+            <span class="flabel" style="margin-top:0;">Layer Selection</span>
+            <select id="exportLayer">
+              <option value="all">All Layers</option>
+              <option value="marks">Lexicon Marks Only</option>
+              <option value="geometry">Site Geometry Only</option>
+            </select>
+            <span class="flabel">Scale</span>
+            <input type="text" id="exportScale" value="1:500">
+            <button type="button" class="btn primary staff-action" id="btnExport" style="margin-top:8px;">Export SVG →</button>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="section-block">
+          <div class="slabel">Visibility</div>
+          <div class="locked-section">
+            <span class="lock-badge">Instructor Only</span>
+            <p class="note" style="margin-bottom:8px;">Control when students can view the collective score and lexicon overview.</p>
+            <button type="button" class="btn primary staff-action" id="btnScoreVisibility">Score — Unlocked ✓</button>
+            <button type="button" class="btn ghost staff-action" id="btnOverviewVisibility">Overview — Locked</button>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="sidebar-panel" id="panelSelected">
+        <div class="section-block">
+          <button type="button" class="btn ghost" id="btnBack">← Back</button>
+        </div>
+        <div class="section-block">
+          <div class="slabel">Selected Notation</div>
+          <div class="mark-preview-box">
+            <div class="mark-preview-inner" id="selectedMarkPreview"></div>
+          </div>
+        </div>
+        <div class="section-block" id="selectedData">
+          <div class="data-row">
+            <span class="data-key">Author</span>
+            <span class="data-val" id="selAuthor"></span>
+          </div>
+          <div class="data-row">
+            <span class="data-key">Lexicon</span>
+            <span class="data-val" id="selLexicon"></span>
+          </div>
+          <div class="data-row">
+            <span class="data-key">Location</span>
+            <span class="data-val" id="selLocation"></span>
+          </div>
+          <div class="data-row">
+            <span class="data-key">Meta Data</span>
+            <span class="data-val"><span class="data-val tag" id="selMeta"></span></span>
+          </div>
+          <div class="data-row">
+            <span class="data-key">Element</span>
+            <span class="data-val"><span class="data-val tag" id="selElement"></span></span>
+          </div>
+          <div class="data-row">
+            <span class="data-key">Typology</span>
+            <span class="data-val"><span class="data-val tag" id="selTypology"></span></span>
+          </div>
+          <div class="data-row data-row--full">
+            <span class="data-key">Description</span>
+            <span class="data-val desc" id="selDescription"></span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="map-viewer">
+      <div class="map-load-msg" id="mapLoadMsg">Loading site layers…</div>
+      <div class="map-area" id="mapArea"></div>
+
+      <div class="compass" aria-hidden="true">
+        <svg width="32" height="32" viewBox="0 0 32 32">
+          <line x1="16" y1="4" x2="16" y2="28" stroke="#aaa" stroke-width="0.5"/>
+          <line x1="4" y1="16" x2="28" y2="16" stroke="#aaa" stroke-width="0.5"/>
+          <polygon points="16,4 18,14 16,12 14,14" fill="#1a1a1a"/>
+          <polygon points="16,28 18,18 16,20 14,18" fill="#ccc"/>
+          <text x="16" y="3" text-anchor="middle" font-family="IBM Plex Mono" font-size="6" fill="#1a1a1a">N</text>
+        </svg>
+      </div>
+
+      <div class="map-controls">
+        <button type="button" class="map-btn" id="zoomIn" title="Zoom in">+</button>
+        <button type="button" class="map-btn" id="zoomOut" title="Zoom out">−</button>
+        <button type="button" class="map-btn" id="zoomFit" title="Fit to frame">⊡</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const STREETS_STYLE = { color: '#999999', weight: 1, fill: false };
+const BUILDINGS_STYLE = {
+  color: '#aaaaaa',
+  weight: 0.5,
+  fillColor: '#dddddd',
+  fillOpacity: 0.4,
+};
+const FIT_BOUNDS_PADDING = [20, 20];
+const NOTATION_MARK_SIZE = 12;
+const FILTERED_OPACITY = 0.2;
+
+const AUTHORS = [
+  'A. Halprin',
+  'L. Moore',
+  'J. Esherick',
+  'B. Solomon',
+  'H. Eckbo',
+];
+
+const FILTER_OPTIONS = {
+  author: [{ value: 'all', label: 'All' }].concat(
+    AUTHORS.map((name) => ({ value: name, label: name }))
+  ),
+  element: [
+    { value: 'all', label: 'All' },
+    { value: 'landscape', label: 'Landscape' },
+    { value: 'people', label: 'People' },
+    { value: 'architecture', label: 'Architecture' },
+  ],
+  meta: [
+    { value: 'all', label: 'All' },
+    { value: 'form', label: 'Form' },
+    { value: 'context', label: 'Context' },
+    { value: 'culture', label: 'Culture' },
+  ],
+  typology: [
+    { value: 'all', label: 'All' },
+    { value: 'single', label: 'Single Family' },
+    { value: 'multi', label: 'Multi Unit' },
+    { value: 'public', label: 'Public Facility' },
+  ],
+  status: [
+    { value: 'all', label: 'All' },
+    { value: 'lexicon-mark', label: 'Lexicon Mark' },
+    { value: 'dot-placeholder', label: 'Dot Placeholder' },
+  ],
+};
+
+const ELEMENT_LABELS = {
+  landscape: 'Landscape',
+  people: 'People',
+  architecture: 'Architecture',
+};
+
+const META_LABELS = {
+  form: 'Form',
+  context: 'Context',
+  culture: 'Culture',
+};
+
+const TYPOLOGY_LABELS = {
+  single: 'Single Family',
+  multi: 'Multi Unit',
+  public: 'Public Facility',
+};
+
+/** DEV: remove before launch */
+const DEV_TEST_MARKS = [
+  {
+    name: 'Solid black square',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#1a1a1a"/></svg>',
+  },
+  {
+    name: 'Outlined square, no fill',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="15" height="15" x="0.5" y="0.5" fill="none" stroke="#1a1a1a" stroke-width="1.5"/></svg>',
+  },
+  {
+    name: 'Solid black circle',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#1a1a1a"/></svg>',
+  },
+  {
+    name: 'Triangle',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><polygon points="8,1 15,15 1,15" fill="#1a1a1a"/></svg>',
+  },
+  {
+    name: 'Hatched square',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><defs><pattern id="hatch-dev" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="#1a1a1a" stroke-width="1"/></pattern></defs><rect width="16" height="16" fill="url(#hatch-dev)"/></svg>',
+  },
+  {
+    name: 'Horizontal line',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="0" y1="8" x2="16" y2="8" stroke="#1a1a1a" stroke-width="2"/></svg>',
+  },
+];
+
+// TODO: Firebase — replace with real observations from Firestore
+const state = {
+  notations: [
+    { id: 'n1', lat: 38.6578, lng: -123.515, author: 'A. Halprin', lexicon: 'Coastal Edge Mark', markIndex: 0, element: 'landscape', meta: 'form', typology: 'single', status: 'lexicon-mark', description: 'The bluff edge reads as a threshold.' },
+    { id: 'n2', lat: 38.6703, lng: -123.4977, author: 'L. Moore', lexicon: 'Meadow Section', markIndex: 1, element: 'architecture', meta: 'context', typology: 'multi', status: 'lexicon-mark', description: 'Roof pitch follows the ridgeline.' },
+    { id: 'n3', lat: 38.6828, lng: -123.4805, author: 'J. Esherick', lexicon: 'Timber Grain', markIndex: 2, element: 'architecture', meta: 'form', typology: 'single', status: 'lexicon-mark', description: 'Siding grain runs horizontal with the wind.' },
+    { id: 'n4', lat: 38.6953, lng: -123.4632, author: 'B. Solomon', lexicon: 'Supergraphic Field', markIndex: 3, element: 'people', meta: 'culture', typology: 'public', status: 'lexicon-mark', description: 'Colour as spatial instruction.' },
+    { id: 'n5', lat: 38.7078, lng: -123.4459, author: 'H. Eckbo', lexicon: 'Ground Plane', markIndex: 4, element: 'landscape', meta: 'context', typology: 'single', status: 'dot-placeholder', description: '' },
+    { id: 'n6', lat: 38.7203, lng: -123.4286, author: 'A. Halprin', lexicon: 'Coastal Edge Mark', markIndex: 0, element: 'landscape', meta: 'form', typology: 'single', status: 'lexicon-mark', description: 'Wind loads the grasses horizontally.' },
+    { id: 'n7', lat: 38.7328, lng: -123.4114, author: 'L. Moore', lexicon: 'Meadow Section', markIndex: 1, element: 'people', meta: 'culture', typology: 'multi', status: 'lexicon-mark', description: 'Gathering at the commons.' },
+    { id: 'n8', lat: 38.7453, lng: -123.3941, author: 'J. Esherick', lexicon: 'Timber Grain', markIndex: 2, element: 'architecture', meta: 'form', typology: 'public', status: 'dot-placeholder', description: '' },
+    { id: 'n9', lat: 38.7578, lng: -123.3768, author: 'B. Solomon', lexicon: 'Supergraphic Field', markIndex: 3, element: 'landscape', meta: 'context', typology: 'single', status: 'lexicon-mark', description: 'The meadow as canvas.' },
+    { id: 'n10', lat: 38.7703, lng: -123.3595, author: 'H. Eckbo', lexicon: 'Ground Plane', markIndex: 4, element: 'architecture', meta: 'form', typology: 'single', status: 'lexicon-mark', description: 'Steps negotiate the bluff section.' },
+    { id: 'n11', lat: 38.7828, lng: -123.3423, author: 'A. Halprin', lexicon: 'Coastal Edge Mark', markIndex: 5, element: 'people', meta: 'culture', typology: 'multi', status: 'lexicon-mark', description: 'The path as score.' },
+    { id: 'n12', lat: 38.7953, lng: -123.325, author: 'L. Moore', lexicon: 'Meadow Section', markIndex: 1, element: 'landscape', meta: 'form', typology: 'single', status: 'dot-placeholder', description: '' },
+  ],
+  selectedId: null,
+  filters: {
+    author: 'all',
+    element: 'all',
+    meta: 'all',
+    typology: 'all',
+    status: 'all',
+  },
+  visibility: {
+    scoreUnlocked: true,
+    overviewLocked: true,
+  },
+};
+
+const mapData = { ready: false };
+
+let map = null;
+let streetsLayer = null;
+let buildingsLayer = null;
+let siteLayerGroup = null;
+let notationLayer = null;
+const markerById = new Map();
+
+const els = {};
+
+const ELEMENT_IDS = {
+  panelDefault: 'panelDefault',
+  panelSelected: 'panelSelected',
+  btnBack: 'btnBack',
+  selectedMarkPreview: 'selectedMarkPreview',
+  selAuthor: 'selAuthor',
+  selLexicon: 'selLexicon',
+  selLocation: 'selLocation',
+  selMeta: 'selMeta',
+  selElement: 'selElement',
+  selTypology: 'selTypology',
+  selDescription: 'selDescription',
+  mapArea: 'mapArea',
+  mapLoadMsg: 'mapLoadMsg',
+  btnExport: 'btnExport',
+  exportLayer: 'exportLayer',
+  exportScale: 'exportScale',
+  btnScoreVisibility: 'btnScoreVisibility',
+  btnOverviewVisibility: 'btnOverviewVisibility',
+  zoomIn: 'zoomIn',
+  zoomOut: 'zoomOut',
+  zoomFit: 'zoomFit',
+};
+
+function cacheElements() {
+  Object.entries(ELEMENT_IDS).forEach(([key, id]) => {
+    els[key] = document.getElementById(id);
+  });
+}
+
+function isStatePlaneCoord(c) {
+  return Math.abs(c[0]) > 180 || Math.abs(c[1]) > 90;
+}
+
+function forEachCoord(geometry, fn) {
+  function walk(coords) {
+    if (typeof coords[0] === 'number') {
+      fn(coords);
+      return;
+    }
+    coords.forEach(walk);
+  }
+  if (geometry && geometry.coordinates) walk(geometry.coordinates);
+}
+
+function featuresNeedStatePlaneTransform(features) {
+  for (const f of features) {
+    if (!f.geometry) continue;
+    let found = false;
+    forEachCoord(f.geometry, (c) => {
+      if (isStatePlaneCoord(c)) found = true;
+    });
+    if (found) return true;
+  }
+  return false;
+}
+
+function featureCentroidLngLat(geometry) {
+  let lngSum = 0;
+  let latSum = 0;
+  let count = 0;
+  forEachCoord(geometry, (c) => {
+    if (isStatePlaneCoord(c)) return;
+    lngSum += c[0];
+    latSum += c[1];
+    count += 1;
+  });
+  if (!count) return null;
+  return { lng: lngSum / count, lat: latSum / count };
+}
+
+function fitLinearEN(samples, valueKey) {
+  let ee = 0;
+  let en = 0;
+  let e = 0;
+  let nn = 0;
+  let n = 0;
+  let one = 0;
+  let ev = 0;
+  let nv = 0;
+  let v = 0;
+
+  samples.forEach((s) => {
+    const E = s.easting;
+    const N = s.northing;
+    const V = s[valueKey];
+    ee += E * E;
+    en += E * N;
+    e += E;
+    nn += N * N;
+    n += N;
+    one += 1;
+    ev += E * V;
+    nv += N * V;
+    v += V;
+  });
+
+  const det =
+    ee * (nn * one - n * n) -
+    en * (en * one - n * e) +
+    e * (en * n - nn * e);
+  if (Math.abs(det) < 1e-12) return null;
+
+  const a =
+    (ev * (nn * one - n * n) -
+      en * (nv * one - n * v) +
+      e * (nv * n - nn * v)) /
+    det;
+  const b =
+    (ee * (nv * one - n * v) -
+      ev * (en * one - n * e) +
+      e * (en * v - nv * e)) /
+    det;
+  const c =
+    (ee * (nn * v - nv * n) -
+      en * (en * v - nv * e) +
+      ev * (en * n - nn * e)) /
+    det;
+
+  return { a, b, c };
+}
+
+function fitStatePlaneToWgs84(streetsFeatures) {
+  const samples = [];
+  streetsFeatures.forEach((f) => {
+    const easting = f.properties?.XCoord;
+    const northing = f.properties?.YCoord;
+    if (easting == null || northing == null || !f.geometry) return;
+    const centroid = featureCentroidLngLat(f.geometry);
+    if (!centroid) return;
+    samples.push({
+      easting,
+      northing,
+      lng: centroid.lng,
+      lat: centroid.lat,
+    });
+  });
+
+  if (samples.length < 3) {
+    throw new Error('Not enough street control points for projection');
+  }
+
+  const lngFit = fitLinearEN(samples, 'lng');
+  const latFit = fitLinearEN(samples, 'lat');
+  if (!lngFit || !latFit) {
+    throw new Error('Unable to fit state plane projection');
+  }
+
+  return {
+    toLngLat(easting, northing) {
+      const lng = lngFit.a * easting + lngFit.b * northing + lngFit.c;
+      const lat = latFit.a * easting + latFit.b * northing + latFit.c;
+      return [lng, lat];
+    },
+  };
+}
+
+function transformStatePlaneWithFit(features, fit) {
+  function xform(coords) {
+    if (typeof coords[0] === 'number') {
+      return fit.toLngLat(coords[0], coords[1]);
+    }
+    return coords.map(xform);
+  }
+
+  return features.map((f) => ({
+    type: 'Feature',
+    properties: f.properties,
+    geometry: {
+      type: f.geometry.type,
+      coordinates: xform(f.geometry.coordinates),
+    },
+  }));
+}
+
+function prepareSiteGeoJSON(streets, buildings) {
+  const streetsFeatures = streets.features;
+  const rawBuildingFeatures = buildings.features;
+  let buildingFeatures = rawBuildingFeatures;
+
+  if (featuresNeedStatePlaneTransform(rawBuildingFeatures)) {
+    const fit = fitStatePlaneToWgs84(streetsFeatures);
+    buildingFeatures = transformStatePlaneWithFit(rawBuildingFeatures, fit);
+  }
+
+  return {
+    streets,
+    buildings: {
+      type: 'FeatureCollection',
+      features: buildingFeatures,
+    },
+  };
+}
+
+function getMarkDefinition(index) {
+  const i =
+    index != null && index >= 0 && index < DEV_TEST_MARKS.length ? index : 0;
+  return DEV_TEST_MARKS[i] || DEV_TEST_MARKS[0];
+}
+
+function prepareMarkSvg(svg) {
+  let out = svg;
+  if (out.includes('hatch-dev')) {
+    const patternId = 'hatch-' + crypto.randomUUID().slice(0, 8);
+    out = out.replace(/id="hatch-dev"/g, `id="${patternId}"`).replace(/#hatch-dev/g, `#${patternId}`);
+  }
+  return out;
+}
+
+function buildLexiconMarkHtml(markDef, selected) {
+  const cls = 'notation-mark-svg' + (selected ? ' selected' : '');
+  const svg = prepareMarkSvg(markDef && markDef.svg ? markDef.svg : DEV_TEST_MARKS[0].svg);
+  return `<div class="${cls}">${svg}</div>`;
+}
+
+function buildDotPlaceholderHtml(selected) {
+  const cls = 'notation-dot-placeholder' + (selected ? ' selected' : '');
+  return `<div class="${cls}"></div>`;
+}
+
+function createNotationIcon(notation, selected) {
+  if (notation.status === 'dot-placeholder') {
+    return L.divIcon({
+      className: 'notation-leaflet-icon',
+      html: buildDotPlaceholderHtml(selected),
+      iconSize: [10, 10],
+      iconAnchor: [5, 5],
+    });
+  }
+
+  const markDef = getMarkDefinition(notation.markIndex);
+  return L.divIcon({
+    className: 'notation-leaflet-icon',
+    html: buildLexiconMarkHtml(markDef, selected),
+    iconSize: [NOTATION_MARK_SIZE, NOTATION_MARK_SIZE],
+    iconAnchor: [NOTATION_MARK_SIZE / 2, NOTATION_MARK_SIZE / 2],
+  });
+}
+
+function notationPassesFilters(notation) {
+  const f = state.filters;
+  if (f.author !== 'all' && notation.author !== f.author) return false;
+  if (f.element !== 'all' && notation.element !== f.element) return false;
+  if (f.meta !== 'all' && notation.meta !== f.meta) return false;
+  if (f.typology !== 'all' && notation.typology !== f.typology) return false;
+  if (f.status !== 'all' && notation.status !== f.status) return false;
+  return true;
+}
+
+function getMarkerOpacity(notation) {
+  if (notation.id === state.selectedId) return 1;
+  return notationPassesFilters(notation) ? 1 : FILTERED_OPACITY;
+}
+
+function applyFilters() {
+  state.notations.forEach((notation) => {
+    const marker = markerById.get(notation.id);
+    if (marker) marker.setOpacity(getMarkerOpacity(notation));
+  });
+}
+
+function syncNotationMarkers() {
+  if (!notationLayer) return;
+  notationLayer.clearLayers();
+  markerById.clear();
+
+  state.notations.forEach((notation) => {
+    const selected = notation.id === state.selectedId;
+    const icon = createNotationIcon(notation, selected);
+    const marker = L.marker([notation.lat, notation.lng], { icon });
+    marker.setOpacity(getMarkerOpacity(notation));
+    marker.on('click', (e) => {
+      L.DomEvent.stopPropagation(e);
+      selectNotation(notation.id);
+    });
+    marker.addTo(notationLayer);
+    markerById.set(notation.id, marker);
+  });
+}
+
+function updateMarkerIcon(id) {
+  const notation = state.notations.find((n) => n.id === id);
+  const marker = markerById.get(id);
+  if (!notation || !marker) return;
+  const selected = id === state.selectedId;
+  marker.setIcon(createNotationIcon(notation, selected));
+  marker.setOpacity(getMarkerOpacity(notation));
+}
+
+function formatLocation(lat, lng) {
+  return lat.toFixed(4) + '°N · ' + Math.abs(lng).toFixed(4) + '°W';
+}
+
+function populateSelectedPanel(notation) {
+  const markDef = getMarkDefinition(notation.markIndex);
+  if (notation.status === 'dot-placeholder') {
+    els.selectedMarkPreview.innerHTML = buildDotPlaceholderHtml(false);
+  } else {
+    els.selectedMarkPreview.innerHTML = buildLexiconMarkHtml(markDef, false);
+  }
+
+  els.selAuthor.textContent = notation.author;
+  els.selLexicon.textContent = notation.lexicon;
+  els.selLocation.textContent = formatLocation(notation.lat, notation.lng);
+  els.selMeta.textContent = META_LABELS[notation.meta] || notation.meta;
+  els.selElement.textContent = ELEMENT_LABELS[notation.element] || notation.element;
+  els.selTypology.textContent = TYPOLOGY_LABELS[notation.typology] || notation.typology;
+  els.selDescription.textContent = notation.description || '—';
+}
+
+function showPanelDefault() {
+  els.panelDefault.classList.add('active');
+  els.panelSelected.classList.remove('active');
+}
+
+function showPanelSelected() {
+  els.panelDefault.classList.remove('active');
+  els.panelSelected.classList.add('active');
+}
+
+function selectNotation(id) {
+  const prevId = state.selectedId;
+  state.selectedId = id;
+  if (prevId && prevId !== id) updateMarkerIcon(prevId);
+  updateMarkerIcon(id);
+  applyFilters();
+
+  const notation = state.notations.find((n) => n.id === id);
+  if (!notation) return;
+  populateSelectedPanel(notation);
+  showPanelSelected();
+}
+
+function deselectNotation() {
+  const prevId = state.selectedId;
+  state.selectedId = null;
+  if (prevId) updateMarkerIcon(prevId);
+  applyFilters();
+  showPanelDefault();
+}
+
+function setFilter(key, value, chipEl) {
+  state.filters[key] = value;
+  const container = chipEl.closest('.filter-chips');
+  if (container) {
+    container.querySelectorAll('.chip').forEach((c) => c.classList.remove('active'));
+    chipEl.classList.add('active');
+  }
+  applyFilters();
+}
+
+function buildFilterChips() {
+  Object.entries(FILTER_OPTIONS).forEach(([key, options]) => {
+    const container = document.querySelector(`.filter-chips[data-filter-key="${key}"]`);
+    if (!container) return;
+    container.innerHTML = '';
+    options.forEach((opt, idx) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip' + (idx === 0 ? ' active' : '');
+      chip.textContent = opt.label;
+      chip.dataset.value = opt.value;
+      chip.addEventListener('click', () => setFilter(key, opt.value, chip));
+      container.appendChild(chip);
+    });
+  });
+}
+
+function updateVisibilityButtons() {
+  if (state.visibility.scoreUnlocked) {
+    els.btnScoreVisibility.textContent = 'Score — Unlocked ✓';
+    els.btnScoreVisibility.classList.add('primary');
+    els.btnScoreVisibility.classList.remove('ghost');
+  } else {
+    els.btnScoreVisibility.textContent = 'Score — Locked';
+    els.btnScoreVisibility.classList.remove('primary');
+    els.btnScoreVisibility.classList.add('ghost');
+  }
+
+  if (state.visibility.overviewLocked) {
+    els.btnOverviewVisibility.textContent = 'Overview — Locked';
+    els.btnOverviewVisibility.classList.add('ghost');
+    els.btnOverviewVisibility.classList.remove('primary');
+  } else {
+    els.btnOverviewVisibility.textContent = 'Overview — Unlocked ✓';
+    els.btnOverviewVisibility.classList.remove('ghost');
+    els.btnOverviewVisibility.classList.add('primary');
+  }
+}
+
+function initMap() {
+  map = L.map('mapArea', {
+    zoomControl: false,
+    attributionControl: false,
+  });
+  notationLayer = L.layerGroup().addTo(map);
+  map.on('click', () => {
+    if (state.selectedId) deselectNotation();
+  });
+}
+
+function getCombinedBounds() {
+  if (!siteLayerGroup) return null;
+  const bounds = siteLayerGroup.getBounds();
+  state.notations.forEach((n) => {
+    bounds.extend([n.lat, n.lng]);
+  });
+  return bounds.isValid() ? bounds : null;
+}
+
+function fitSiteBounds() {
+  if (!map) return;
+  const bounds = getCombinedBounds();
+  if (!bounds) return;
+  map.fitBounds(bounds, { padding: FIT_BOUNDS_PADDING });
+}
+
+async function loadGeoLayers() {
+  try {
+    const [streetsRes, buildingsRes] = await Promise.all([
+      fetch('geojson/streets.geojson'),
+      fetch('geojson/buildings.geojson'),
+    ]);
+    if (!streetsRes.ok || !buildingsRes.ok) throw new Error('GeoJSON fetch failed');
+    const streets = await streetsRes.json();
+    const buildings = await buildingsRes.json();
+    const prepared = prepareSiteGeoJSON(streets, buildings);
+
+    streetsLayer = L.geoJSON(prepared.streets, { style: STREETS_STYLE });
+    buildingsLayer = L.geoJSON(prepared.buildings, { style: BUILDINGS_STYLE });
+    console.log('streetsLayer.getBounds():', streetsLayer.getBounds());
+    siteLayerGroup = L.featureGroup([streetsLayer, buildingsLayer]);
+    streetsLayer.addTo(map);
+    buildingsLayer.addTo(map);
+
+    mapData.ready = true;
+    els.mapLoadMsg.style.display = 'none';
+    map.invalidateSize();
+    syncNotationMarkers();
+    fitSiteBounds();
+  } catch (err) {
+    console.error(err);
+    els.mapLoadMsg.textContent = 'Unable to load site layers.';
+  }
+}
+
+function bindEvents() {
+  els.btnBack.addEventListener('click', deselectNotation);
+
+  els.zoomIn.addEventListener('click', () => map && map.zoomIn());
+  els.zoomOut.addEventListener('click', () => map && map.zoomOut());
+  els.zoomFit.addEventListener('click', fitSiteBounds);
+
+  els.btnExport.addEventListener('click', () => {
+    console.log('Export SVG (stub):', {
+      layer: els.exportLayer.value,
+      scale: els.exportScale.value,
+    });
+  });
+
+  els.btnScoreVisibility.addEventListener('click', () => {
+    state.visibility.scoreUnlocked = !state.visibility.scoreUnlocked;
+    updateVisibilityButtons();
+    console.log('Score visibility:', state.visibility.scoreUnlocked ? 'unlocked' : 'locked');
+  });
+
+  els.btnOverviewVisibility.addEventListener('click', () => {
+    state.visibility.overviewLocked = !state.visibility.overviewLocked;
+    updateVisibilityButtons();
+    console.log('Overview visibility:', state.visibility.overviewLocked ? 'locked' : 'unlocked');
+  });
+
+  window.addEventListener('resize', () => {
+    if (map) map.invalidateSize();
+  });
+}
+
+function init() {
+  cacheElements();
+  buildFilterChips();
+  updateVisibilityButtons();
+  initMap();
+  bindEvents();
+  loadGeoLayers();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>

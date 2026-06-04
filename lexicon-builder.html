@@ -4,11 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lexicon Builder — Sea Ranch Collective Score</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"></script>
 <style>
-@font-face { font-family: 'Miniature'; src: url('Fonts/Miniature-Display.otf'); }
-@font-face { font-family: 'Media77'; src: url('Fonts/Media77-Regular.otf'); }
+@font-face {
+  font-family: 'Miniature';
+  src: url('Fonts/Miniature-Display.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Media77';
+  src: url('Fonts/Media77-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
   --bg: #e8e8e8;
@@ -33,7 +45,7 @@ body {
   height: 100%;
   background: var(--bg);
   color: var(--ink);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Media77', sans-serif;
   font-size: 11px;
 }
 
@@ -101,7 +113,7 @@ body {
 }
 
 .panel-box__title {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Miniature', serif;
   font-size: 9px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -115,8 +127,14 @@ body {
   letter-spacing: 0.12em;
 }
 
+.col-left .panel-box__title,
+.col-left .ctl-param-label {
+  font-family: 'Media77', sans-serif;
+  font-style: italic;
+}
+
 .panel-box__subtitle {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Miniature', serif;
   font-size: 8px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -370,7 +388,7 @@ body {
 }
 
 .mobile-tab-btn {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Miniature', serif;
   font-size: 8px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -660,8 +678,10 @@ header {
 }
 
 .h-title { font-family: 'Miniature', serif; font-size: 26px; font-weight: normal; font-style: normal; color: var(--ink); letter-spacing: normal; line-height: 1.1; }
-.h-sub { font-family: 'Miniature', serif; font-size: 11px; color: var(--dim); letter-spacing: 0.1em; margin-top: 2px; }
-.h-user { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); border: 1px solid var(--border); padding: 4px 10px; font-family: 'IBM Plex Mono', monospace; background: var(--surface2); }
+.h-sub { font-family: 'Media77', sans-serif; font-size: 11px; color: var(--dim); letter-spacing: 0.1em; margin-top: 2px; }
+.h-right { display: flex; flex-direction: column; align-items: flex-end; }
+.h-app-name { font-family: 'Media77', sans-serif; font-size: 13px; color: var(--ink); letter-spacing: 0.04em; line-height: 1.2; margin-bottom: 4px; }
+.h-user { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); border: 1px solid var(--border); padding: 4px 10px; font-family: 'Miniature', serif; background: var(--surface2); }
 
 nav {
   border-bottom: 1px solid var(--border);
@@ -672,7 +692,6 @@ nav {
 
 .nav-item { font-family: 'Miniature', serif; font-size: 13px; letter-spacing: 0.1em; padding: 10px 16px; color: var(--dim); cursor: pointer; border-bottom: 2px solid transparent; text-decoration: none; display: block; }
 .nav-item.active { color: var(--ink); border-bottom-color: var(--ink); }
-.nav-item.locked { color: var(--border2); opacity: 0.45; cursor: not-allowed; pointer-events: none; }
 
 .section {
   margin-bottom: 24px;
@@ -694,7 +713,7 @@ nav {
 }
 
 .flabel {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Miniature', serif;
   font-size: 9px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -706,7 +725,7 @@ nav {
 
 input[type="text"], input[type="number"] {
   width: 100%; background: var(--surface2); border: 1px solid var(--border);
-  color: var(--ink); font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  color: var(--ink); font-family: 'Media77', sans-serif; font-size: 11px;
   padding: 5px 8px; outline: none;
 }
 input[type="text"]:focus, input[type="number"]:focus { border-color: var(--ink); }
@@ -716,9 +735,13 @@ textarea {
   color: var(--ink); font-family: 'Media77', sans-serif; font-size: 13px;
   padding: 8px 10px; outline: none; resize: vertical; min-height: 80px; line-height: 1.6;
 }
-textarea::placeholder { color: var(--dim); font-style: italic; }
+textarea::placeholder {
+  color: var(--dim);
+  font-family: 'Media77', sans-serif;
+  font-style: italic;
+}
 
-.btn { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 10px; border: 1px solid var(--border); background: var(--surface2); color: var(--ink); cursor: pointer; transition: all 0.15s; }
+.btn { font-family: 'Miniature', serif; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 10px; border: 1px solid var(--border); background: var(--surface2); color: var(--ink); cursor: pointer; transition: all 0.15s; }
 .btn:hover { border-color: var(--ink); }
 .btn.sel { background: var(--ink); color: #f0f0f0; border-color: var(--ink); }
 .btn.sm { font-size: 8px; padding: 3px 8px; }
@@ -736,10 +759,10 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
 
 .slider-row { display: grid; grid-template-columns: 56px 1fr 36px; align-items: center; gap: 6px; margin-top: 6px; }
 .slider-row .flabel { margin: 0; }
-.slider-val { font-size: 10px; text-align: right; color: var(--ink); }
+.slider-val { font-family: 'Media77', sans-serif; font-size: 10px; text-align: right; color: var(--ink); }
 
 .layer-tabs { display: flex; gap: 0; margin-bottom: 0; border-bottom: 1px solid var(--border); }
-.layer-tab { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; padding: 6px 12px; border: 1px solid var(--border); border-bottom: none; background: var(--hi); color: var(--dim); cursor: pointer; margin-right: 3px; position: relative; top: 1px; }
+.layer-tab { font-family: 'Miniature', serif; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; padding: 6px 12px; border: 1px solid var(--border); border-bottom: none; background: var(--hi); color: var(--dim); cursor: pointer; margin-right: 3px; position: relative; top: 1px; }
 .layer-tab.active { background: var(--surface); color: var(--ink); border-bottom-color: var(--surface); }
 .layer-tab.add-btn { background: transparent; border: 1px dashed var(--border); color: var(--dim); }
 .layer-tab.add-btn:hover { border-color: var(--ink); color: var(--ink); }
@@ -857,23 +880,23 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
 }
 
 .view-label {
+  font-family: 'Miniature', serif;
   font-size: 9px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--dim);
   margin-bottom: 8px;
-  font-family: 'IBM Plex Mono', monospace;
 }
 
 .meta-opts { display: flex; flex-direction: column; gap: 5px; margin-top: 2px; }
-.meta-opt { font-family: 'IBM Plex Mono', monospace; font-size: 10px; padding: 6px 10px; border: 1px solid var(--border); background: var(--surface2); color: var(--ink); cursor: pointer; text-align: left; transition: all 0.15s; letter-spacing: 0.06em; }
+.meta-opt { font-family: 'Miniature', serif; font-size: 10px; padding: 6px 10px; border: 1px solid var(--border); background: var(--surface2); color: var(--ink); cursor: pointer; text-align: left; transition: all 0.15s; letter-spacing: 0.06em; }
 .meta-opt:hover { border-color: var(--ink); }
 .meta-opt.sel { background: var(--ink); color: #f0f0f0; border-color: var(--ink); }
 
-.upload-zone { border: 1px dashed var(--border); padding: 14px 10px; text-align: center; cursor: pointer; color: var(--dim); font-size: 9px; letter-spacing: 0.1em; line-height: 2; margin-top: 4px; font-family: 'IBM Plex Mono', monospace; background: var(--surface2); }
+.upload-zone { border: 1px dashed var(--border); padding: 14px 10px; text-align: center; cursor: pointer; color: var(--dim); font-size: 9px; letter-spacing: 0.1em; line-height: 2; margin-top: 4px; font-family: 'Miniature', serif; background: var(--surface2); }
 .upload-zone:hover, .upload-zone.dragover { border-color: var(--ink); color: var(--ink); }
 .upload-zone.has-files { color: var(--ink); text-align: left; line-height: 1.8; }
-.upload-file { font-family: 'IBM Plex Mono', monospace; font-size: 9px; display: inline-block; }
+.upload-file { font-family: 'Media77', sans-serif; font-size: 9px; display: inline-block; }
 
 .note,
 .body-text {
@@ -881,8 +904,9 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
   font-size: 11px;
   color: var(--dim);
   line-height: 1.5;
+  font-style: italic;
 }
-.note { font-style: italic; margin-top: 6px; }
+.note { margin-top: 6px; }
 .sep { height: 1px; background: var(--border); margin: 28px 0; }
 
 .scale-bar { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 3px; pointer-events: none; }
@@ -890,7 +914,7 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
 .scale-bar-line::before, .scale-bar-line::after { content: ''; position: absolute; top: -3px; width: 1px; height: 7px; background: #aaa; }
 .scale-bar-line::before { left: 0; }
 .scale-bar-line::after { right: 0; }
-.scale-bar-label { font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #aaa; letter-spacing: 0.08em; }
+.scale-bar-label { font-family: 'Media77', sans-serif; font-size: 8px; color: #aaa; letter-spacing: 0.08em; }
 
 </style>
 </head>
@@ -901,17 +925,20 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
 <div class="app-chrome" id="appChrome">
   <header>
     <div>
-      <div class="h-title">Sea Ranch — Collective Score</div>
+      <div class="h-title">THE SEA RANCH AS PROTOTYPE</div>
       <div class="h-sub">AA Visiting School · The Sea Ranch, California · July 2026</div>
     </div>
-    <div class="h-user" id="headerUser">Student: A. Halprin</div>
+    <div class="h-right">
+      <div class="h-app-name">Collective Score</div>
+      <div class="h-user" id="headerUser">Student: A. Halprin</div>
+    </div>
   </header>
 
   <nav>
     <a class="nav-item active" href="lexicon-builder.html">Lexicon</a>
-    <a class="nav-item" href="#">Location</a>
-    <a class="nav-item locked">Score</a>
-    <a class="nav-item locked">Overview</a>
+    <a class="nav-item" href="location-input.html">Location</a>
+    <a class="nav-item" href="collective-score.html">Score</a>
+    <a class="nav-item" href="lexicon-overview.html">Overview</a>
   </nav>
 </div>
 
@@ -1560,7 +1587,7 @@ function layerPanelMainHTML(l, i) {
 
   return `
     <div class="layer-panel-shape">
-      <span class="flabel">Shape</span>
+      <span class="flabel ctl-param-label">Shape</span>
       <div class="btn-row" data-btn-group="shape">${shapeOpts}</div>
       <div class="ctl-section" data-ctl="apex">
         <div class="slider-row" style="margin-top:6px;">
@@ -1577,7 +1604,7 @@ function layerPanelMainHTML(l, i) {
         </div>
       </div>
       <div class="ctl-section" data-ctl="fill">
-        <span class="flabel" style="margin-top:8px;">Fill</span>
+        <span class="flabel ctl-param-label" style="margin-top:8px;">Fill</span>
         <div class="btn-row">${fillModeOpts}</div>
       </div>
       <div class="ctl-section" data-ctl="hatch">
@@ -1585,7 +1612,7 @@ function layerPanelMainHTML(l, i) {
         <div class="hatch-grid">${hatchOpts}</div>
       </div>
       <div class="ctl-section" data-ctl="outline">
-        <span class="flabel" style="margin-top:8px;">Outline</span>
+        <span class="flabel ctl-param-label" style="margin-top:8px;">Outline</span>
         <div class="btn-row">
           <button type="button" class="btn sm${l.outlineOn ? ' sel' : ''}" data-action="toggle-outline">On</button>
           <button type="button" class="btn sm${!l.outlineOn ? ' sel' : ''}" data-action="toggle-outline-off">Off</button>
@@ -1596,14 +1623,14 @@ function layerPanelMainHTML(l, i) {
         <div class="hatch-grid">${lineShapeDirOpts}</div>
       </div>
       <div class="ctl-section" data-ctl="outline-style">
-        <span class="flabel" style="margin-top:8px;">Outline Style</span>
+        <span class="flabel ctl-param-label" style="margin-top:8px;">Outline Style</span>
         <div class="btn-row" data-btn-group="lineStyle">${lineStyleOpts}</div>
       </div>
       ${i > 0 ? '<button type="button" class="btn danger full" style="margin-top:12px;" data-action="remove">Remove Layer</button>' : ''}
     </div>
     <div class="layer-panel-style" data-layer-style="${i}">
       <div class="ctl-section" data-ctl="line-modifier">
-        <span class="flabel" style="margin-top:8px;">Line Modifier</span>
+        <span class="flabel ctl-param-label" style="margin-top:8px;">Line Modifier</span>
         <div class="btn-row">
           <button type="button" class="btn sm${l.lineOn ? ' sel' : ''}" data-action="toggle-line">${l.lineOn ? 'On' : 'Off'}</button>
         </div>

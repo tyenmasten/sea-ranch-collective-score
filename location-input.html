@@ -4,14 +4,26 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Location Input — Sea Ranch Collective Score</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 /* Mobile responsive — to be handled by Cursor in a separate pass */
 
-@font-face { font-family: 'Miniature'; src: url('Fonts/Miniature-Display.otf'); }
-@font-face { font-family: 'Media77'; src: url('Fonts/Media77-Regular.otf'); }
+@font-face {
+  font-family: 'Miniature';
+  src: url('Fonts/Miniature-Display.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Media77';
+  src: url('Fonts/Media77-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
   --bg: #e8e8e8;
@@ -36,7 +48,7 @@ body {
   height: 100%;
   background: var(--bg);
   color: var(--ink);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Media77', sans-serif;
   font-size: 11px;
 }
 
@@ -83,11 +95,26 @@ header {
 }
 
 .h-sub {
-  font-family: 'Miniature', serif;
+  font-family: 'Media77', sans-serif;
   font-size: 11px;
   color: var(--dim);
   letter-spacing: 0.1em;
   margin-top: 2px;
+}
+
+.h-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.h-app-name {
+  font-family: 'Media77', sans-serif;
+  font-size: 13px;
+  color: var(--ink);
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  margin-bottom: 4px;
 }
 
 .h-user {
@@ -97,7 +124,7 @@ header {
   color: var(--dim);
   border: 1px solid var(--border);
   padding: 4px 10px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Miniature', serif;
   background: var(--surface2);
 }
 
@@ -121,8 +148,6 @@ nav {
 }
 
 .nav-item.active { color: var(--ink); border-bottom-color: var(--ink); }
-.nav-item.locked { color: var(--border2); opacity: 0.45; cursor: not-allowed; pointer-events: none; }
-
 /* Sidebar */
 .sidebar {
   width: 240px;
@@ -144,7 +169,7 @@ nav {
 .section-block { flex-shrink: 0; }
 
 .slabel {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Miniature', serif;
   font-size: 9px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -155,7 +180,7 @@ nav {
 }
 
 .flabel {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Miniature', serif;
   font-size: 9px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -172,7 +197,7 @@ input[type="text"] {
   background: var(--surface2);
   border: 1px solid var(--border);
   color: var(--ink);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Media77', sans-serif;
   font-size: 11px;
   padding: 5px 8px;
   outline: none;
@@ -192,7 +217,7 @@ input.lexicon-empty {
 }
 
 .btn {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Miniature', serif;
   font-size: 9px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -244,6 +269,8 @@ input.lexicon-empty {
 }
 
 .mode-note {
+  font-family: 'Media77', sans-serif;
+  font-style: italic;
   font-size: 9px;
   color: var(--dim);
   margin-top: 6px;
@@ -265,6 +292,7 @@ input.lexicon-empty {
 }
 
 .layer-name {
+  font-family: 'Miniature', serif;
   font-size: 9px;
   color: var(--ink);
   letter-spacing: 0.06em;
@@ -316,6 +344,7 @@ input.lexicon-empty {
 }
 
 .legend-label {
+  font-family: 'Miniature', serif;
   font-size: 9px;
   color: var(--dim);
   letter-spacing: 0.06em;
@@ -346,6 +375,7 @@ input.lexicon-empty {
 }
 
 .notation-item-name {
+  font-family: 'Miniature', serif;
   font-size: 9px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -353,6 +383,7 @@ input.lexicon-empty {
 }
 
 .notation-item-coord {
+  font-family: 'Media77', sans-serif;
   font-size: 8px;
   color: var(--dim);
   margin-top: 2px;
@@ -395,7 +426,7 @@ input.lexicon-empty {
 
 .leaflet-container {
   background: #ffffff;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Media77', sans-serif;
 }
 
 .map-controls {
@@ -413,7 +444,7 @@ input.lexicon-empty {
   height: 32px;
   background: var(--surface);
   border: 1px solid var(--border);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Media77', sans-serif;
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
@@ -433,6 +464,7 @@ input.lexicon-empty {
   display: flex;
   align-items: center;
   justify-content: center;
+  font-family: 'Miniature', serif;
   font-size: 9px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -481,6 +513,7 @@ input.lexicon-empty {
 }
 
 .confirm-key {
+  font-family: 'Miniature', serif;
   font-size: 9px;
   color: var(--dim);
   letter-spacing: 0.1em;
@@ -488,16 +521,20 @@ input.lexicon-empty {
 }
 
 .confirm-val {
+  font-family: 'Media77', sans-serif;
   font-size: 11px;
   color: var(--ink);
-  font-family: 'IBM Plex Mono', monospace;
 }
 
 .confirm-val.pending {
   color: var(--dim);
   font-style: italic;
-  font-family: 'Media77', sans-serif;
   font-size: 12px;
+}
+
+#confirmCoords {
+  font-family: 'Media77', sans-serif;
+  font-style: normal;
 }
 
 .mark-preview {
@@ -592,7 +629,7 @@ input.lexicon-empty {
 }
 
 .notation-name-label {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Miniature', serif;
   font-size: 9px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -623,7 +660,7 @@ input.lexicon-empty {
   border-radius: 0;
   background: transparent;
   border: none;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Miniature', serif;
   font-size: 8px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -646,16 +683,19 @@ input.lexicon-empty {
   <div class="app-chrome">
     <header>
       <div>
-        <div class="h-title">Sea Ranch — Collective Score</div>
+        <div class="h-title">THE SEA RANCH AS PROTOTYPE</div>
         <div class="h-sub">AA Visiting School · The Sea Ranch, California · July 2026</div>
       </div>
-      <div class="h-user" id="headerUser">Student: A. Halprin</div>
+      <div class="h-right">
+        <div class="h-app-name">Collective Score</div>
+        <div class="h-user" id="headerUser">Student: A. Halprin</div>
+      </div>
     </header>
     <nav>
       <a class="nav-item" href="lexicon-builder.html">Lexicon</a>
       <a class="nav-item active" href="location-input.html">Location</a>
-      <span class="nav-item locked">Score</span>
-      <span class="nav-item locked">Overview</span>
+      <a class="nav-item" href="collective-score.html">Score</a>
+      <a class="nav-item" href="lexicon-overview.html">Overview</a>
     </nav>
   </div>
 

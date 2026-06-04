@@ -4,14 +4,26 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Collective Score — Sea Ranch Collective Score</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 /* Mobile responsive — to be handled by Cursor in a separate pass */
 
-@font-face { font-family: 'Miniature'; src: url('Fonts/Miniature-Display.otf'); }
-@font-face { font-family: 'Media77'; src: url('Fonts/Media77-Regular.otf'); }
+@font-face {
+  font-family: 'Miniature';
+  src: url('Fonts/Miniature-Display.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Media77';
+  src: url('Fonts/Media77-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
   --bg: #e8e8e8;
@@ -36,7 +48,7 @@ body {
   height: 100%;
   background: var(--bg);
   color: var(--ink);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Media77', sans-serif;
   font-size: 11px;
 }
 
@@ -83,11 +95,26 @@ header {
 }
 
 .h-sub {
-  font-family: 'Miniature', serif;
+  font-family: 'Media77', sans-serif;
   font-size: 11px;
   color: var(--dim);
   letter-spacing: 0.1em;
   margin-top: 2px;
+}
+
+.h-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.h-app-name {
+  font-family: 'Media77', sans-serif;
+  font-size: 13px;
+  color: var(--ink);
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  margin-bottom: 4px;
 }
 
 .h-user {
@@ -97,7 +124,7 @@ header {
   color: var(--dim);
   border: 1px solid var(--border);
   padding: 4px 10px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Miniature', serif;
   background: var(--surface2);
 }
 
@@ -121,8 +148,6 @@ nav {
 }
 
 .nav-item.active { color: var(--ink); border-bottom-color: var(--ink); }
-.nav-item.locked { color: var(--border2); opacity: 0.45; cursor: not-allowed; pointer-events: none; }
-
 .sidebar {
   width: 260px;
   flex: 0 0 260px;
@@ -153,7 +178,7 @@ nav {
 .section-block { flex-shrink: 0; }
 
 .slabel {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Miniature', serif;
   font-size: 9px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -164,7 +189,7 @@ nav {
 }
 
 .flabel {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Miniature', serif;
   font-size: 9px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -177,7 +202,7 @@ nav {
 .flabel:first-child { margin-top: 0; }
 
 .btn {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Miniature', serif;
   font-size: 9px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -242,13 +267,14 @@ nav {
 }
 
 .stat-num {
+  font-family: 'Media77', sans-serif;
   font-size: 18px;
   color: var(--ink);
   display: block;
-  font-family: 'Miniature', serif;
 }
 
 .stat-label {
+  font-family: 'Miniature', serif;
   font-size: 8px;
   color: var(--dim);
   letter-spacing: 0.1em;
@@ -265,7 +291,7 @@ nav {
 }
 
 .chip {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Miniature', serif;
   font-size: 8px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -284,43 +310,25 @@ nav {
   border-color: var(--ink);
 }
 
-.locked-section {
-  border: 1px dashed var(--border);
-  padding: 12px;
-  background: var(--surface2);
-}
-
-.lock-badge {
-  font-size: 8px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--dim);
-  background: var(--hi);
-  padding: 2px 8px;
-  display: inline-block;
-  margin-bottom: 8px;
-}
-
-.locked-section select,
-.locked-section input[type="text"] {
+.section-block select,
+.section-block input[type="text"] {
   width: 100%;
-  background: var(--hi);
+  background: var(--surface2);
   border: 1px solid var(--border);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Media77', sans-serif;
   font-size: 11px;
   padding: 5px 8px;
-  color: var(--dim);
+  color: var(--ink);
   margin-bottom: 6px;
   outline: none;
 }
 
-.locked-section .btn.staff-action {
-  opacity: 1;
-  pointer-events: auto;
-  cursor: pointer;
+.section-block select:focus,
+.section-block input[type="text"]:focus {
+  border-color: var(--ink);
 }
 
-.locked-section .btn.staff-action + .btn.staff-action {
+.section-block .btn + .btn {
   margin-top: 6px;
 }
 
@@ -333,6 +341,7 @@ nav {
 }
 
 .data-key {
+  font-family: 'Miniature', serif;
   font-size: 9px;
   color: var(--dim);
   letter-spacing: 0.1em;
@@ -340,23 +349,30 @@ nav {
 }
 
 .data-val {
+  font-family: 'Media77', sans-serif;
   font-size: 11px;
   color: var(--ink);
   line-height: 1.4;
 }
 
 .data-val.desc {
-  font-family: 'Media77', sans-serif;
-  font-size: 12px;
   font-style: italic;
+  font-size: 12px;
   line-height: 1.5;
 }
 
 .data-val.tag {
+  font-family: 'Media77', sans-serif;
   display: inline-block;
   background: var(--hi);
   padding: 2px 6px;
   font-size: 9px;
+  font-style: normal;
+}
+
+#selLocation {
+  font-family: 'Media77', sans-serif;
+  font-style: normal;
 }
 
 .data-row--full {
@@ -402,7 +418,7 @@ nav {
 
 .leaflet-container {
   background: #ffffff;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Media77', sans-serif;
 }
 
 .map-controls {
@@ -420,7 +436,7 @@ nav {
   height: 32px;
   background: var(--surface);
   border: 1px solid var(--border);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Media77', sans-serif;
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
@@ -450,6 +466,7 @@ nav {
   display: flex;
   align-items: center;
   justify-content: center;
+  font-family: 'Miniature', serif;
   font-size: 9px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -501,10 +518,13 @@ nav {
   <div class="app-chrome">
     <header>
       <div>
-        <div class="h-title">Sea Ranch — Collective Score</div>
+        <div class="h-title">THE SEA RANCH AS PROTOTYPE</div>
         <div class="h-sub">AA Visiting School · The Sea Ranch, California · July 2026</div>
       </div>
-      <div class="h-user" id="headerUser">Instructor: T. Masten</div>
+      <div class="h-right">
+        <div class="h-app-name">Collective Score</div>
+        <div class="h-user" id="headerUser">Instructor: T. Masten</div>
+      </div>
     </header>
     <nav>
       <a class="nav-item" href="lexicon-builder.html">Lexicon</a>
@@ -559,30 +579,24 @@ nav {
 
         <div class="section-block">
           <div class="slabel">Export</div>
-          <div class="locked-section">
-            <span class="lock-badge">Instructor Only</span>
-            <span class="flabel" style="margin-top:0;">Layer Selection</span>
-            <select id="exportLayer">
-              <option value="all">All Layers</option>
-              <option value="marks">Lexicon Marks Only</option>
-              <option value="geometry">Site Geometry Only</option>
-            </select>
-            <span class="flabel">Scale</span>
-            <input type="text" id="exportScale" value="1:500">
-            <button type="button" class="btn primary staff-action" id="btnExport" style="margin-top:8px;">Export SVG →</button>
-          </div>
+          <span class="flabel" style="margin-top:0;">Layer Selection</span>
+          <select id="exportLayer">
+            <option value="all">All Layers</option>
+            <option value="marks">Lexicon Marks Only</option>
+            <option value="geometry">Site Geometry Only</option>
+          </select>
+          <span class="flabel">Scale</span>
+          <input type="text" id="exportScale" value="1:500">
+          <button type="button" class="btn primary" id="btnExport" style="margin-top:8px;">Export SVG →</button>
         </div>
 
         <div class="sep"></div>
 
         <div class="section-block">
           <div class="slabel">Visibility</div>
-          <div class="locked-section">
-            <span class="lock-badge">Instructor Only</span>
-            <p class="note" style="margin-bottom:8px;">Control when students can view the collective score and lexicon overview.</p>
-            <button type="button" class="btn primary staff-action" id="btnScoreVisibility">Score — Unlocked ✓</button>
-            <button type="button" class="btn ghost staff-action" id="btnOverviewVisibility">Overview — Locked</button>
-          </div>
+          <p class="note" style="margin-bottom:8px;">Control when students can view the collective score and lexicon overview.</p>
+          <button type="button" class="btn primary" id="btnScoreVisibility">Score — Unlocked ✓</button>
+          <button type="button" class="btn ghost" id="btnOverviewVisibility">Overview — Locked</button>
         </div>
 
       </div>
@@ -640,7 +654,7 @@ nav {
           <line x1="4" y1="16" x2="28" y2="16" stroke="#aaa" stroke-width="0.5"/>
           <polygon points="16,4 18,14 16,12 14,14" fill="#1a1a1a"/>
           <polygon points="16,28 18,18 16,20 14,18" fill="#ccc"/>
-          <text x="16" y="3" text-anchor="middle" font-family="IBM Plex Mono" font-size="6" fill="#1a1a1a">N</text>
+          <text x="16" y="3" text-anchor="middle" font-family="Miniature" font-size="6" fill="#1a1a1a">N</text>
         </svg>
       </div>
 

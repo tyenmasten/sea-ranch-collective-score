@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lexicon Overview</title>
+<style>
+@font-face { font-family: 'Miniature'; src: url('https://raw.githubusercontent.com/tyenmasten/sea-ranch-collective-score/main/Fonts/Miniature-Display.otf') format('opentype'); }
+@font-face { font-family: 'Media77'; src: url('https://raw.githubusercontent.com/tyenmasten/sea-ranch-collective-score/main/Fonts/Media77-Regular.otf') format('opentype'); }
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap');
+
+:root {
+  --bg: #e8e8e8; --surface: #f0f0f0; --surface2: #ffffff;
+  --border: #cccccc; --ink: #1a1a1a; --dim: #888888; --hi: #d8d8d8;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink); font-family: 'IBM Plex Mono', monospace; font-size: 11px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+header { padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.h-title { font-family: 'Miniature', serif; font-size: 22px; color: var(--ink); letter-spacing: 0.06em; }
+.h-sub { font-family: 'Miniature', serif; font-size: 11px; color: var(--dim); letter-spacing: 0.1em; margin-top: 2px; }
+.h-user { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); border: 1px solid var(--border); padding: 4px 10px; font-family: 'IBM Plex Mono', monospace; background: var(--surface2); }
+
+nav { border-bottom: 1px solid var(--border); display: flex; padding: 0 24px; background: var(--surface); flex-shrink: 0; }
+.nav-item { font-family: 'Miniature', serif; font-size: 13px; letter-spacing: 0.1em; padding: 8px 16px; color: var(--dim); cursor: pointer; border-bottom: 2px solid transparent; text-decoration: none; display: block; }
+.nav-item.active { color: var(--ink); border-bottom-color: var(--ink); }
+.nav-item.locked { opacity: 0.3; cursor: not-allowed; }
+
+.body { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+
+/* Sidebar */
+.sidebar { width: 240px; flex-shrink: 0; border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; overflow-y: auto; min-height: 0; }
+.grid-area { flex: 1; overflow-y: auto; padding: 24px; background: var(--bg); min-height: 0; }.sidebar-panel { padding: 16px; display: none; flex-direction: column; gap: 14px; }
+.sidebar-panel.active { display: flex; }
+
+.slabel { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--border); padding-bottom: 5px; margin-bottom: 8px; }
+.flabel { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); margin-bottom: 3px; display: block; margin-top: 8px; }
+
+.btn { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 10px; border: 1px solid var(--border); background: var(--surface2); color: var(--ink); cursor: pointer; transition: all 0.15s; }
+.btn:hover { border-color: var(--ink); }
+.btn.sel { background: var(--ink); color: #f0f0f0; border-color: var(--ink); }
+.btn.sm { font-size: 8px; padding: 3px 8px; }
+.btn.primary { background: var(--ink); color: #f0f0f0; border-color: var(--ink); width: 100%; padding: 9px; font-size: 10px; letter-spacing: 0.14em; margin-top: 4px; }
+.btn.primary:hover { background: #444; }
+.btn.ghost { background: transparent; color: var(--dim); border-color: var(--border); width: 100%; padding: 8px; font-size: 9px; letter-spacing: 0.1em; }
+.btn.ghost:hover { border-color: var(--ink); color: var(--ink); }
+.btn-row { display: flex; gap: 4px; flex-wrap: wrap; }
+
+.sep { height: 1px; background: var(--border); flex-shrink: 0; }
+.note { font-family: 'Media77', sans-serif; font-size: 11px; color: var(--dim); font-style: italic; line-height: 1.5; }
+
+/* Organise buttons */
+.organise-btn { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; padding: 7px 10px; border: 1px solid var(--border); background: var(--surface2); color: var(--ink); cursor: pointer; transition: all 0.15s; width: 100%; text-align: left; margin-bottom: 3px; display: flex; align-items: center; justify-content: space-between; }
+.organise-btn:hover { border-color: var(--ink); }
+.organise-btn.active { background: var(--ink); color: #f0f0f0; border-color: var(--ink); }
+.organise-btn .count { font-size: 8px; opacity: 0.6; }
+
+/* Data panel */
+.mark-preview-box { background: var(--surface2); border: 1px solid var(--border); height: 100px; display: flex; align-items: center; justify-content: center; }
+.data-row { display: grid; grid-template-columns: 80px 1fr; gap: 4px; margin-bottom: 7px; align-items: baseline; }
+.data-key { font-size: 9px; color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; }
+.data-val { font-size: 11px; color: var(--ink); line-height: 1.4; }
+.data-val.desc { font-family: 'Media77', sans-serif; font-size: 12px; font-style: italic; line-height: 1.5; }
+.data-val.tag { display: inline-block; background: var(--hi); padding: 2px 6px; font-size: 9px; }
+
+/* Locked export */
+.locked-section { border: 1px dashed var(--border); padding: 12px; background: var(--surface2); }
+.lock-badge { font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); background: var(--hi); padding: 2px 8px; display: inline-block; margin-bottom: 8px; }
+.locked-section .btn { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+.locked-section select, .locked-section input { opacity: 0.4; pointer-events: none; background: var(--hi); width: 100%; border: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; font-size: 11px; padding: 5px 8px; color: var(--dim); margin-bottom: 6px; }
+
+/* Main grid area */
+.grid-area { flex: 1; overflow-y: auto; padding: 24px; background: var(--bg); }
+
+.group-section { margin-bottom: 28px; }
+.group-label { font-family: 'Miniature', serif; font-size: 16px; color: var(--ink); letter-spacing: 0.08em; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); display: flex; align-items: baseline; gap: 12px; }
+.group-count { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; }
+
+.tile-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.tile { border: 1px solid var(--border); background: var(--surface2); cursor: pointer; transition: border-color 0.15s; display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; }
+.tile:hover { border-color: #666; }
+.tile.selected { border-color: var(--ink); border-width: 2px; }
+.tile canvas { display: block; }
+.tile-footer { padding: 4px 6px; border-top: 1px solid var(--border); background: var(--surface); }
+.tile-name { font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-sub { font-size: 7px; color: var(--dim); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Stats */
+.stats-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.stat-box { background: var(--surface2); border: 1px solid var(--border); padding: 8px; text-align: center; }
+.stat-num { font-size: 20px; color: var(--ink); display: block; font-family: 'Miniature', serif; }
+.stat-label { font-size: 8px; color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; display: block; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="h-title">Sea Ranch — Collective Score</div>
+    <div class="h-sub">AA Visiting School · The Sea Ranch, California · July 2026</div>
+  </div>
+  <div class="h-user">Instructor: T. Masten</div>
+</header>
+
+<nav>
+  <a class="nav-item">Lexicon</a>
+  <a class="nav-item">Location</a>
+  <a class="nav-item">Score</a>
+  <a class="nav-item active">Overview</a>
+</nav>
+
+<div class="body">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+
+    <!-- Default panel -->
+    <div class="sidebar-panel active" id="panelDefault">
+
+      <div>
+        <div class="slabel">Overview</div>
+        <div class="stats-bar">
+          <div class="stat-box"><span class="stat-num">15</span><span class="stat-label">Students</span></div>
+          <div class="stat-box"><span class="stat-num">43</span><span class="stat-label">Lexicons</span></div>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div>
+        <div class="slabel">Organise By</div>
+        <button class="organise-btn active" onclick="setOrganise('author',this)">Author <span class="count">15 groups</span></button>
+        <button class="organise-btn" onclick="setOrganise('meta',this)">Form / Context / Culture <span class="count">3 groups</span></button>
+        <button class="organise-btn" onclick="setOrganise('element',this)">Element <span class="count">3 groups</span></button>
+        <button class="organise-btn" onclick="setOrganise('typology',this)">Typology <span class="count">3 groups</span></button>
+        <button class="organise-btn" onclick="setOrganise('chrono',this)">Chronological <span class="count">—</span></button>
+      </div>
+
+      <div class="sep"></div>
+
+      <div>
+        <div class="slabel">Export</div>
+        <div class="locked-section">
+          <span class="lock-badge">Instructor Only</span>
+          <select><option>All Lexicons</option><option>Selected Group</option><option>Selected Tile</option></select>
+          <input type="text" value="1:500">
+          <button class="btn primary">Export SVG →</button>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div>
+        <div class="slabel">Visibility</div>
+        <div class="locked-section">
+          <span class="lock-badge">Instructor Only</span>
+          <p class="note" style="margin-bottom:8px;">Unlock for all students simultaneously.</p>
+          <button class="btn primary" style="pointer-events:all;opacity:1;cursor:pointer;" onclick="alert('Overview unlocked.')">Overview — Unlocked ✓</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Selected tile panel -->
+    <div class="sidebar-panel" id="panelSelected">
+      <div>
+        <button class="btn ghost" onclick="deselect()">← Back</button>
+      </div>
+      <div>
+        <div class="slabel">Selected Lexicon</div>
+        <div class="mark-preview-box">
+          <canvas id="previewCanvas" width="120" height="90"></canvas>
+        </div>
+      </div>
+      <div>
+        <div class="data-row"><span class="data-key">Author</span><span class="data-val" id="dAuthor">—</span></div>
+        <div class="data-row"><span class="data-key">Lexicon</span><span class="data-val" id="dLexicon">—</span></div>
+        <div class="data-row"><span class="data-key">Meta Data</span><span class="data-val" id="dMeta">—</span></div>
+        <div class="data-row"><span class="data-key">Element</span><span class="data-val" id="dElement">—</span></div>
+        <div class="data-row"><span class="data-key">Typology</span><span class="data-val" id="dTypology">—</span></div>
+        <div class="data-row" style="grid-template-columns:1fr;">
+          <span class="data-key">Description</span>
+          <span class="data-val desc" id="dDesc" style="margin-top:4px;">—</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Grid area -->
+  <div class="grid-area" id="gridArea"></div>
+
+</div>
+
+<script>
+const SHAPES = ['square','circle','triangle','half','polygon','square','circle','triangle','half','polygon','square','circle','triangle','half','polygon','square','circle','triangle','half','polygon','square','circle','triangle','half','polygon','square','circle','triangle','half','polygon','square','circle','triangle','half','polygon','square','circle','triangle','half','polygon','square','circle','triangle'];
+const COLOURS = ['#2a6049','#4a3a8a','#8a4a2a','#2a5a8a','#6a2a4a','#3a6a2a','#8a6a2a','#2a4a6a','#6a4a2a','#4a2a6a','#2a6a5a','#5a2a3a','#3a4a2a','#6a2a2a','#2a4a5a','#5a4a2a','#2a3a6a','#4a6a2a','#6a4a4a','#3a2a5a','#4a5a3a','#5a3a4a','#2a5a4a','#4a4a2a','#3a5a5a','#5a2a5a','#2a4a3a','#4a3a5a','#5a5a2a','#3a3a4a'];
+const AUTHORS = ['A. Halprin','L. Moore','J. Esherick','B. Solomon','H. Eckbo','R. Royston','D. Appleyard','K. Breckenridge','M. Treib','C. Dorner','P. Walker','S. Schindler','T. Church','G. Hargreaves','M. Schwartz'];
+const METAS = ['Form','Context','Culture'];
+const ELEMENTS = ['Landscape','People','Architecture'];
+const TYPOLOGIES = ['Single Family','Multi Unit','Public Facility'];
+const DESCS = [
+  'The bluff edge reads as threshold. Wind loads the grasses horizontally.',
+  'Cedar siding grain runs parallel to the coastal contour. Rhythm without repetition.',
+  'The meadow holds the fog differently at dawn. Dispersed light, no shadow.',
+  'Clustered volumes stepping down the ridge. Each roof a datum.',
+  'The path through the hedgerow narrows. Compression before release.',
+  'Timber post at the boundary. Neither fence nor wall.',
+  'The fire ring as centre. Occupation without enclosure.',
+  'Rough-sawn redwood darkens at the base. Material memory of moisture.',
+  'The common land reads as a held breath between dwellings.',
+  'Horizon line bisects the window. Framing as argument.',
+];
+
+const LEXICONS = [];
+AUTHORS.forEach((author, ai) => {
+  const count = 2 + Math.floor(Math.random()*3);
+  for (let j=0;j<count;j++) {
+    const idx = LEXICONS.length;
+    LEXICONS.push({
+      id: idx,
+      author,
+      name: ['Coastal Edge','Meadow Field','Ridge Line','Threshold Mark','Boundary Form','Shelter Type','Contour Read','Surface Grain'][Math.floor(Math.random()*8)] + ' ' + (j+1),
+      meta: METAS[Math.floor(Math.random()*3)],
+      element: ELEMENTS[Math.floor(Math.random()*3)],
+      typology: TYPOLOGIES[Math.floor(Math.random()*3)],
+      desc: DESCS[Math.floor(Math.random()*DESCS.length)],
+      shape: SHAPES[idx % SHAPES.length],
+      colour: COLOURS[idx % COLOURS.length],
+      shape2: Math.random()>0.5 ? SHAPES[(idx+3) % SHAPES.length] : null,
+      filled: Math.random()>0.5,
+      lines: Math.random()>0.5,
+    });
+  }
+});
+
+let organiseBy = 'author';
+let selectedId = null;
+let tileSize = 80;
+
+function getGroups() {
+  const groups = {};
+  const order = [];
+  LEXICONS.forEach(l => {
+    let key;
+    if (organiseBy==='author') key = l.author;
+    else if (organiseBy==='meta') key = l.meta;
+    else if (organiseBy==='element') key = l.element;
+    else if (organiseBy==='typology') key = l.typology;
+    else key = 'All Lexicons';
+    if (!groups[key]) { groups[key] = []; order.push(key); }
+    groups[key].push(l);
+  });
+  return { groups, order };
+}
+
+function setOrganise(by, btn) {
+  organiseBy = by;
+  document.querySelectorAll('.organise-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderGrid();
+}
+
+function calcTileSize() {
+  const area = document.getElementById('gridArea');
+  const areaW = area.clientWidth - 48;
+  const { groups, order } = getGroups();
+  const maxGroupSize = Math.max(...order.map(k => groups[k].length));
+  const tilesPerRow = Math.ceil(Math.sqrt(maxGroupSize));
+  const size = Math.max(52, Math.min(100, Math.floor((areaW / tilesPerRow) - 8)));
+  return size;
+}
+
+function renderGrid() {
+  const area = document.getElementById('gridArea');
+  area.innerHTML = '';
+  tileSize = calcTileSize();
+  const { groups, order } = getGroups();
+
+  order.forEach(key => {
+    const section = document.createElement('div');
+    section.className = 'group-section';
+
+    const label = document.createElement('div');
+    label.className = 'group-label';
+    label.innerHTML = `${key} <span class="group-count">${groups[key].length} lexicon${groups[key].length!==1?'s':''}</span>`;
+    section.appendChild(label);
+
+    const grid = document.createElement('div');
+    grid.className = 'tile-grid';
+
+    groups[key].forEach(l => {
+      const tile = document.createElement('div');
+      tile.className = 'tile' + (l.id===selectedId?' selected':'');
+      tile.style.width = tileSize+'px';
+      tile.onclick = () => selectTile(l.id);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = tileSize;
+      canvas.height = tileSize;
+      drawTile(canvas, l);
+      tile.appendChild(canvas);
+
+      const footer = document.createElement('div');
+      footer.className = 'tile-footer';
+      footer.innerHTML = `<div class="tile-name">${l.name}</div><div class="tile-sub">${organiseBy==='author'?l.meta+' · '+l.element:l.author}</div>`;
+      tile.appendChild(footer);
+
+      grid.appendChild(tile);
+    });
+
+    section.appendChild(grid);
+    area.appendChild(section);
+  });
+}
+
+function drawTile(canvas, l) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const pad = W * 0.15;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H);
+
+  const cx = W/2, cy = (H-18)/2 + pad*0.3;
+  const s = (Math.min(W,H) - pad*2) * 0.42;
+
+  drawMark(ctx, cx, cy, s, l.shape, l.colour, l.filled, l.lines);
+  if (l.shape2) drawMark(ctx, cx + s*0.4, cy - s*0.3, s*0.6, l.shape2, l.colour+'88', false, false);
+}
+
+function drawMark(ctx, cx, cy, s, shape, col, filled, lines) {
+  ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.setLineDash([]);
+  ctx.fillStyle = col + (filled ? '22' : '00');
+
+  ctx.beginPath();
+  if (shape==='square') { ctx.rect(cx-s,cy-s,s*2,s*2); }
+  else if (shape==='circle') { ctx.arc(cx,cy,s,0,Math.PI*2); }
+  else if (shape==='triangle') { ctx.moveTo(cx,cy-s);ctx.lineTo(cx+s,cy+s);ctx.lineTo(cx-s,cy+s);ctx.closePath(); }
+  else if (shape==='half') { ctx.ellipse(cx,cy,s,s,0,Math.PI,0);ctx.closePath(); }
+  else if (shape==='polygon') { for(let i=0;i<5;i++){const a=(i/5)*Math.PI*2-Math.PI/2;i===0?ctx.moveTo(cx+s*Math.cos(a),cy+s*Math.sin(a)):ctx.lineTo(cx+s*Math.cos(a),cy+s*Math.sin(a));}ctx.closePath(); }
+  if (filled) ctx.fill();
+  ctx.stroke();
+
+  if (lines) {
+    ctx.save(); ctx.beginPath();
+    if (shape==='square') ctx.rect(cx-s,cy-s,s*2,s*2);
+    else if (shape==='circle') ctx.arc(cx,cy,s,0,Math.PI*2);
+    else if (shape==='triangle') {ctx.moveTo(cx,cy-s);ctx.lineTo(cx+s,cy+s);ctx.lineTo(cx-s,cy+s);ctx.closePath();}
+    else if (shape==='half') {ctx.ellipse(cx,cy,s,s,0,Math.PI,0);ctx.closePath();}
+    else if (shape==='polygon') {for(let i=0;i<5;i++){const a=(i/5)*Math.PI*2-Math.PI/2;i===0?ctx.moveTo(cx+s*Math.cos(a),cy+s*Math.sin(a)):ctx.lineTo(cx+s*Math.cos(a),cy+s*Math.sin(a));}ctx.closePath();}
+    ctx.clip();
+    ctx.setLineDash([]);
+    for (let n=0;n<6;n++) { const y=cy-s+n*(s*2/5); ctx.beginPath(); ctx.moveTo(cx-s*2,y); ctx.lineTo(cx+s*2,y); ctx.strokeStyle=col+'55'; ctx.lineWidth=0.6; ctx.stroke(); }
+    ctx.restore();
+    ctx.strokeStyle=col; ctx.lineWidth=1.2; ctx.setLineDash([]);
+    ctx.beginPath();
+    if (shape==='square') ctx.rect(cx-s,cy-s,s*2,s*2);
+    else if (shape==='circle') ctx.arc(cx,cy,s,0,Math.PI*2);
+    else if (shape==='triangle') {ctx.moveTo(cx,cy-s);ctx.lineTo(cx+s,cy+s);ctx.lineTo(cx-s,cy+s);ctx.closePath();}
+    else if (shape==='half') {ctx.ellipse(cx,cy,s,s,0,Math.PI,0);ctx.closePath();}
+    else if (shape==='polygon') {for(let i=0;i<5;i++){const a=(i/5)*Math.PI*2-Math.PI/2;i===0?ctx.moveTo(cx+s*Math.cos(a),cy+s*Math.sin(a)):ctx.lineTo(cx+s*Math.cos(a),cy+s*Math.sin(a));}ctx.closePath();}
+    ctx.stroke();
+  }
+}
+
+function selectTile(id) {
+  if (selectedId === id) { deselect(); return; }
+  selectedId = id;
+  const l = LEXICONS.find(x => x.id===id);
+  document.getElementById('dAuthor').textContent = l.author;
+  document.getElementById('dLexicon').textContent = l.name;
+  document.getElementById('dMeta').innerHTML = `<span class="data-val tag">${l.meta}</span>`;
+  document.getElementById('dElement').innerHTML = `<span class="data-val tag">${l.element}</span>`;
+  document.getElementById('dTypology').innerHTML = `<span class="data-val tag">${l.typology}</span>`;
+  document.getElementById('dDesc').textContent = l.desc;
+  const pc = document.getElementById('previewCanvas');
+  drawMark(pc.getContext('2d'), 60, 44, 32, l.shape, l.colour, l.filled, l.lines);
+  if (l.shape2) drawMark(pc.getContext('2d'), 76, 30, 20, l.shape2, l.colour+'88', false, false);
+  document.getElementById('panelDefault').classList.remove('active');
+  document.getElementById('panelSelected').classList.add('active');
+  renderGrid();
+}
+
+function deselect() {
+  selectedId = null;
+  document.getElementById('panelSelected').classList.remove('active');
+  document.getElementById('panelDefault').classList.add('active');
+  const pc = document.getElementById('previewCanvas');
+  pc.getContext('2d').clearRect(0,0,pc.width,pc.height);
+  renderGrid();
+}
+
+window.addEventListener('resize', () => { tileSize = calcTileSize(); renderGrid(); });
+renderGrid();
+</script>
+</body>
+</html>

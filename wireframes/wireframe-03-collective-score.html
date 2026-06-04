@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Collective Score Viewer</title>
+<style>
+@font-face { font-family: 'Miniature'; src: url('https://raw.githubusercontent.com/tyenmasten/sea-ranch-collective-score/main/Fonts/Miniature-Display.otf') format('opentype'); }
+@font-face { font-family: 'Media77'; src: url('https://raw.githubusercontent.com/tyenmasten/sea-ranch-collective-score/main/Fonts/Media77-Regular.otf') format('opentype'); }
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap');
+
+:root {
+  --bg: #e8e8e8; --surface: #f0f0f0; --surface2: #ffffff;
+  --border: #cccccc; --ink: #1a1a1a; --dim: #888888; --hi: #d8d8d8;
+  --locked: #c8c8c8; --mark: #2a6049; --dot: #888;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink); font-family: 'IBM Plex Mono', monospace; font-size: 11px; min-height: 100vh; display: flex; flex-direction: column; }
+
+header { padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.h-title { font-family: 'Miniature', serif; font-size: 22px; color: var(--ink); letter-spacing: 0.06em; }
+.h-sub { font-family: 'Miniature', serif; font-size: 11px; color: var(--dim); letter-spacing: 0.1em; margin-top: 2px; }
+.h-user { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); border: 1px solid var(--border); padding: 4px 10px; font-family: 'IBM Plex Mono', monospace; background: var(--surface2); }
+
+nav { border-bottom: 1px solid var(--border); display: flex; padding: 0 24px; background: var(--surface); flex-shrink: 0; }
+.nav-item { font-family: 'Miniature', serif; font-size: 13px; letter-spacing: 0.1em; padding: 8px 16px; color: var(--dim); cursor: pointer; border-bottom: 2px solid transparent; text-decoration: none; display: block; }
+.nav-item.active { color: var(--ink); border-bottom-color: var(--ink); }
+.nav-item.locked { opacity: 0.3; cursor: not-allowed; }
+
+.body { display: flex; flex: 1; overflow: hidden; }
+
+/* Sidebar */
+.sidebar { width: 260px; flex-shrink: 0; border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; overflow-y: auto; }
+.sidebar-panel { padding: 16px; display: none; flex-direction: column; gap: 14px; flex: 1; }
+.sidebar-panel.active { display: flex; }
+
+.slabel { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--border); padding-bottom: 5px; margin-bottom: 8px; }
+.flabel { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); margin-bottom: 3px; display: block; margin-top: 8px; }
+
+.btn { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 10px; border: 1px solid var(--border); background: var(--surface2); color: var(--ink); cursor: pointer; transition: all 0.15s; }
+.btn:hover { border-color: var(--ink); }
+.btn.sel { background: var(--ink); color: #f0f0f0; border-color: var(--ink); }
+.btn.sm { font-size: 8px; padding: 3px 8px; }
+.btn.full { width: 100%; text-align: center; padding: 8px; margin-top: 4px; }
+.btn.primary { background: var(--ink); color: #f0f0f0; border-color: var(--ink); width: 100%; padding: 9px; font-size: 10px; letter-spacing: 0.14em; }
+.btn.ghost { background: transparent; color: var(--dim); border-color: var(--border); width: 100%; padding: 8px; font-size: 10px; letter-spacing: 0.12em; }
+.btn.ghost:hover { border-color: var(--ink); color: var(--ink); }
+.btn-row { display: flex; gap: 4px; flex-wrap: wrap; }
+
+.sep { height: 1px; background: var(--border); flex-shrink: 0; }
+
+/* Filter chips */
+.filter-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.chip { font-family: 'IBM Plex Mono', monospace; font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--ink); cursor: pointer; transition: all 0.15s; border-radius: 0; }
+.chip:hover { border-color: var(--ink); }
+.chip.active { background: var(--ink); color: #f0f0f0; border-color: var(--ink); }
+.chip.faded { opacity: 0.4; }
+
+/* Selected notation data */
+.data-row { display: grid; grid-template-columns: 88px 1fr; gap: 4px; margin-bottom: 7px; align-items: baseline; }
+.data-key { font-size: 9px; color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; }
+.data-val { font-size: 11px; color: var(--ink); line-height: 1.4; }
+.data-val.desc { font-family: 'Media77', sans-serif; font-size: 12px; font-style: italic; color: var(--ink); line-height: 1.5; }
+.data-val.tag { display: inline-block; background: var(--hi); padding: 2px 6px; font-size: 9px; }
+
+/* Mark preview in data panel */
+.mark-preview-box { background: var(--surface2); border: 1px solid var(--border); height: 72px; display: flex; align-items: center; justify-content: center; margin: 6px 0; }
+
+/* Locked export section */
+.locked-section { border: 1px dashed var(--border); padding: 12px; background: var(--surface2); position: relative; }
+.lock-badge { font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); background: var(--hi); padding: 2px 8px; display: inline-block; margin-bottom: 8px; }
+.locked-section .btn { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+.locked-section input, .locked-section select { opacity: 0.4; pointer-events: none; background: var(--hi); width: 100%; border: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; font-size: 11px; padding: 5px 8px; color: var(--dim); }
+
+/* Stats bar */
+.stats-bar { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.stat-box { background: var(--surface2); border: 1px solid var(--border); padding: 8px; text-align: center; }
+.stat-num { font-size: 18px; color: var(--ink); display: block; font-family: 'Miniature', serif; }
+.stat-label { font-size: 8px; color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; display: block; margin-top: 2px; }
+
+/* Map */
+.map-area { flex: 1; background: var(--surface2); position: relative; overflow: hidden; }
+.map-viewport { width: 100%; height: 100%; overflow: auto; }
+canvas#scoreCanvas { display: block; cursor: pointer; }
+
+.map-controls { position: absolute; bottom: 16px; left: 16px; display: flex; flex-direction: column; gap: 4px; z-index: 10; }
+.map-btn { width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--ink); }
+.map-btn:hover { background: var(--hi); }
+
+.compass { position: absolute; top: 16px; right: 16px; width: 32px; height: 32px; z-index: 10; }
+.map-scale { position: absolute; bottom: 16px; right: 16px; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; z-index: 10; }
+.scale-line { height: 1px; background: var(--dim); position: relative; }
+.scale-line::before, .scale-line::after { content:''; position:absolute; top:-3px; width:1px; height:7px; background:var(--dim); }
+.scale-line::before { left:0; } .scale-line::after { right:0; }
+.scale-text { font-size: 8px; color: var(--dim); letter-spacing: 0.08em; }
+
+.note { font-family: 'Media77', sans-serif; font-size: 11px; color: var(--dim); font-style: italic; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="h-title">Sea Ranch — Collective Score</div>
+    <div class="h-sub">AA Visiting School · The Sea Ranch, California · July 2026</div>
+  </div>
+  <div class="h-user">Instructor: T. Masten</div>
+</header>
+
+<nav>
+  <a class="nav-item">Lexicon</a>
+  <a class="nav-item">Location</a>
+  <a class="nav-item active">Score</a>
+  <a class="nav-item">Overview</a>
+</nav>
+
+<div class="body">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+
+    <!-- Default panel -->
+    <div class="sidebar-panel active" id="panelDefault">
+
+      <div>
+        <div class="slabel">Score</div>
+        <div class="stats-bar">
+          <div class="stat-box"><span class="stat-num">15</span><span class="stat-label">Students</span></div>
+          <div class="stat-box"><span class="stat-num">47</span><span class="stat-label">Notations</span></div>
+          <div class="stat-box"><span class="stat-num">8</span><span class="stat-label">Days</span></div>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div>
+        <div class="slabel">Filter — Author</div>
+        <div class="filter-chips" id="filterAuthor">
+          <div class="chip active" onclick="toggleFilter(this,'author','all')">All</div>
+          <div class="chip" onclick="toggleFilter(this,'author','AH')">A. Halprin</div>
+          <div class="chip" onclick="toggleFilter(this,'author','LM')">L. Moore</div>
+          <div class="chip" onclick="toggleFilter(this,'author','JE')">J. Esherick</div>
+          <div class="chip" onclick="toggleFilter(this,'author','BS')">B. Solomon</div>
+          <div class="chip" onclick="toggleFilter(this,'author','HE')">H. Eckbo</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="slabel">Filter — Element</div>
+        <div class="filter-chips" id="filterElement">
+          <div class="chip active" onclick="toggleFilter(this,'element','all')">All</div>
+          <div class="chip" onclick="toggleFilter(this,'element','landscape')">Landscape</div>
+          <div class="chip" onclick="toggleFilter(this,'element','people')">People</div>
+          <div class="chip" onclick="toggleFilter(this,'element','architecture')">Architecture</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="slabel">Filter — Meta Data</div>
+        <div class="filter-chips" id="filterMeta">
+          <div class="chip active" onclick="toggleFilter(this,'meta','all')">All</div>
+          <div class="chip" onclick="toggleFilter(this,'meta','form')">Form</div>
+          <div class="chip" onclick="toggleFilter(this,'meta','context')">Context</div>
+          <div class="chip" onclick="toggleFilter(this,'meta','culture')">Culture</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="slabel">Filter — Typology</div>
+        <div class="filter-chips" id="filterTypology">
+          <div class="chip active" onclick="toggleFilter(this,'typology','all')">All</div>
+          <div class="chip" onclick="toggleFilter(this,'typology','single')">Single Family</div>
+          <div class="chip" onclick="toggleFilter(this,'typology','multi')">Multi Unit</div>
+          <div class="chip" onclick="toggleFilter(this,'typology','public')">Public Facility</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="slabel">Filter — Status</div>
+        <div class="filter-chips" id="filterStatus">
+          <div class="chip active" onclick="toggleFilter(this,'status','all')">All</div>
+          <div class="chip" onclick="toggleFilter(this,'status','mark')">Lexicon Mark</div>
+          <div class="chip" onclick="toggleFilter(this,'status','dot')">Dot Placeholder</div>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- Export — instructor locked -->
+      <div>
+        <div class="slabel">Export</div>
+        <div class="locked-section">
+          <span class="lock-badge">Instructor Only</span>
+          <span class="flabel" style="margin-top:0;">Layer Selection</span>
+          <select><option>All Layers</option><option>Lexicon Marks Only</option><option>Site Geometry Only</option></select>
+          <span class="flabel">Scale</span>
+          <input type="text" value="1:500">
+          <button class="btn primary" style="margin-top:8px;">Export SVG →</button>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- Unlock — instructor only -->
+      <div>
+        <div class="slabel">Visibility</div>
+        <div class="locked-section">
+          <span class="lock-badge">Instructor Only</span>
+          <p class="note" style="margin-bottom:8px;">Control when students can view the collective score and lexicon overview.</p>
+          <button class="btn primary" style="pointer-events:all;opacity:1;cursor:pointer;" onclick="alert('Score unlocked for all students.')">Score — Unlocked ✓</button>
+          <button class="btn ghost" style="pointer-events:all;opacity:1;cursor:pointer;margin-top:6px;" onclick="alert('Overview unlocked for all students.')">Overview — Lock</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Selected notation panel -->
+    <div class="sidebar-panel" id="panelSelected">
+      <div>
+        <button class="btn ghost" onclick="deselectMark()" style="width:100%;margin-bottom:4px;">← Back to Filters</button>
+      </div>
+
+      <div>
+        <div class="slabel">Selected Notation</div>
+        <div class="mark-preview-box">
+          <canvas id="markPreviewCanvas" width="100" height="60"></canvas>
+        </div>
+      </div>
+
+      <div>
+        <div class="data-row"><span class="data-key">Author</span><span class="data-val">A. Halprin</span></div>
+        <div class="data-row"><span class="data-key">Lexicon</span><span class="data-val">Coastal Edge Mark</span></div>
+        <div class="data-row"><span class="data-key">Location</span><span class="data-val">38.5234°N<br>123.4521°W</span></div>
+        <div class="data-row"><span class="data-key">Meta Data</span><span class="data-val"><span class="data-val tag">Form</span></span></div>
+        <div class="data-row"><span class="data-key">Element</span><span class="data-val"><span class="data-val tag">Landscape</span></span></div>
+        <div class="data-row"><span class="data-key">Typology</span><span class="data-val"><span class="data-val tag">Single Family</span></span></div>
+        <div class="data-row" style="grid-template-columns:1fr;"><span class="data-key">Description</span><span class="data-val desc" style="margin-top:4px;">The bluff edge reads as a threshold — not a boundary. Wind loads the grasses horizontally. The timber siding grain runs with it.</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Map -->
+  <div class="map-area" id="mapArea">
+    <div class="map-viewport">
+      <canvas id="scoreCanvas"></canvas>
+    </div>
+
+    <div class="compass">
+      <svg width="32" height="32" viewBox="0 0 32 32">
+        <line x1="16" y1="4" x2="16" y2="28" stroke="#aaa" stroke-width="0.5"/>
+        <line x1="4" y1="16" x2="28" y2="16" stroke="#aaa" stroke-width="0.5"/>
+        <polygon points="16,4 18,14 16,12 14,14" fill="#1a1a1a"/>
+        <polygon points="16,28 18,18 16,20 14,18" fill="#ccc"/>
+        <text x="16" y="3" text-anchor="middle" font-family="IBM Plex Mono" font-size="6" fill="#1a1a1a">N</text>
+      </svg>
+    </div>
+
+    <div class="map-controls">
+      <button class="map-btn" onclick="zoom(1.25)">+</button>
+      <button class="map-btn" onclick="zoom(0.8)">−</button>
+      <button class="map-btn" onclick="resetView()" style="font-size:10px;">⊡</button>
+    </div>
+
+    <div class="map-scale">
+      <div class="scale-line" style="width:60px;"></div>
+      <div class="scale-text">1 mile</div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+const MAP_W = 160, MAP_H = 800;
+let scale = 1;
+let selectedIdx = null;
+let filters = { author:'all', element:'all', meta:'all', typology:'all', status:'all' };
+
+const NOTATIONS = [
+  { x:0.45, y:0.18, lexicon:true,  author:'AH', element:'landscape',    meta:'form',    typology:'single',  label:'A. Halprin' },
+  { x:0.52, y:0.31, lexicon:false, author:'LM', element:'architecture', meta:'context', typology:'multi',   label:'L. Moore' },
+  { x:0.38, y:0.42, lexicon:true,  author:'JE', element:'architecture', meta:'form',    typology:'single',  label:'J. Esherick' },
+  { x:0.61, y:0.28, lexicon:true,  author:'BS', element:'people',       meta:'culture', typology:'public',  label:'B. Solomon' },
+  { x:0.44, y:0.55, lexicon:false, author:'HE', element:'landscape',    meta:'context', typology:'single',  label:'H. Eckbo' },
+  { x:0.55, y:0.48, lexicon:true,  author:'AH', element:'landscape',    meta:'form',    typology:'single',  label:'A. Halprin' },
+  { x:0.42, y:0.67, lexicon:true,  author:'LM', element:'people',       meta:'culture', typology:'multi',   label:'L. Moore' },
+  { x:0.58, y:0.72, lexicon:false, author:'JE', element:'architecture', meta:'form',    typology:'public',  label:'J. Esherick' },
+  { x:0.35, y:0.81, lexicon:true,  author:'BS', element:'landscape',    meta:'context', typology:'single',  label:'B. Solomon' },
+  { x:0.65, y:0.88, lexicon:true,  author:'HE', element:'architecture', meta:'form',    typology:'single',  label:'H. Eckbo' },
+  { x:0.48, y:0.22, lexicon:true,  author:'AH', element:'people',       meta:'culture', typology:'multi',   label:'A. Halprin' },
+  { x:0.53, y:0.63, lexicon:false, author:'LM', element:'landscape',    meta:'form',    typology:'single',  label:'L. Moore' },
+];
+
+const SHAPES = ['square','circle','triangle','square','circle','triangle','square','circle','triangle','square','circle','triangle'];
+const COLOURS = ['#2a6049','#4a3a8a','#8a4a2a','#2a5a8a','#6a2a4a','#3a6a2a','#8a6a2a','#2a4a6a','#6a4a2a','#4a2a6a','#2a6a5a','#5a2a3a'];
+
+function isVisible(n) {
+  if (filters.author !== 'all' && n.author !== filters.author) return false;
+  if (filters.element !== 'all' && n.element !== filters.element) return false;
+  if (filters.meta !== 'all' && n.meta !== filters.meta) return false;
+  if (filters.typology !== 'all' && n.typology !== filters.typology) return false;
+  if (filters.status !== 'all') { if (filters.status==='mark' && !n.lexicon) return false; if (filters.status==='dot' && n.lexicon) return false; }
+  return true;
+}
+
+function toggleFilter(chip, type, val) {
+  filters[type] = val;
+  chip.closest('.filter-chips').querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+  renderScore();
+}
+
+function initCanvas() {
+  const area = document.getElementById('mapArea');
+  const areaH = area.clientHeight;
+  const areaW = area.clientWidth;
+  const canvas = document.getElementById('scoreCanvas');
+  const fitScale = Math.min(areaW / MAP_W, areaH / MAP_H) * 0.88;
+  scale = fitScale;
+  canvas.width = Math.round(MAP_W * scale);
+  canvas.height = Math.round(MAP_H * scale);
+  canvas.style.margin = '20px auto';
+  canvas.style.display = 'block';
+  renderScore();
+}
+
+function renderScore() {
+  const canvas = document.getElementById('scoreCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#f8f8f6'; ctx.fillRect(0,0,W,H);
+
+  // Site outline
+  ctx.strokeStyle = '#555'; ctx.lineWidth = 1; ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(W*0.15, 0);
+  ctx.bezierCurveTo(W*0.05,H*0.15,W*0.12,H*0.3,W*0.08,H*0.45);
+  ctx.bezierCurveTo(W*0.04,H*0.6,W*0.1,H*0.75,W*0.12,H*0.9);
+  ctx.lineTo(W*0.12,H); ctx.lineTo(W*0.88,H); ctx.lineTo(W*0.88,H*0.9);
+  ctx.bezierCurveTo(W*0.85,H*0.75,W*0.9,H*0.6,W*0.88,H*0.45);
+  ctx.bezierCurveTo(W*0.86,H*0.3,W*0.88,H*0.15,W*0.85,0);
+  ctx.closePath();
+  ctx.fillStyle = '#efefed'; ctx.fill(); ctx.stroke();
+
+  // Topo
+  ctx.strokeStyle = '#d8d8d4'; ctx.lineWidth = 0.4;
+  for (let i=1;i<12;i++) {
+    const y=(i/12)*H;
+    ctx.beginPath();
+    ctx.moveTo(W*0.15,y);
+    ctx.bezierCurveTo(W*0.3+(Math.sin(i*1.3)*W*0.08),y+(Math.cos(i)*8),W*0.6+(Math.sin(i*0.9)*W*0.06),y+(Math.sin(i*1.1)*6),W*0.85,y);
+    ctx.stroke();
+  }
+
+  // Road
+  ctx.strokeStyle = '#bbb'; ctx.lineWidth = 1.2; ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(W*0.5,0);
+  ctx.bezierCurveTo(W*0.45,H*0.25,W*0.55,H*0.5,W*0.48,H*0.75);
+  ctx.lineTo(W*0.5,H); ctx.stroke();
+
+  // Parcels
+  ctx.strokeStyle = '#ddd'; ctx.lineWidth = 0.3; ctx.setLineDash([2,3]);
+  for (let i=0;i<8;i++) { const y=(i/8)*H; ctx.beginPath(); ctx.moveTo(W*0.15,y); ctx.lineTo(W*0.85,y); ctx.stroke(); }
+  ctx.setLineDash([]);
+
+  // Ocean label
+  ctx.save(); ctx.translate(W*0.04,H*0.5); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle='#aac4d8'; ctx.font='8px IBM Plex Mono'; ctx.textAlign='center';
+  ctx.fillText('PACIFIC OCEAN',0,0); ctx.restore();
+
+  // Notations
+  NOTATIONS.forEach((n, i) => {
+    const nx = n.x*W, ny = n.y*H;
+    const vis = isVisible(n);
+    const isSelected = selectedIdx === i;
+    const alpha = vis ? 1 : 0.12;
+    const col = COLOURS[i % COLOURS.length];
+    const shape = SHAPES[i % SHAPES.length];
+
+    ctx.globalAlpha = alpha;
+
+    if (n.lexicon) {
+      drawLexiconMark(ctx, nx, ny, col, shape, isSelected);
+    } else {
+      ctx.beginPath(); ctx.arc(nx, ny, 5, 0, Math.PI*2);
+      ctx.fillStyle = isSelected ? '#333' : '#888'; ctx.fill();
+      ctx.strokeStyle = isSelected ? '#000' : '#666'; ctx.lineWidth = isSelected ? 1.5 : 0.8; ctx.stroke();
+    }
+
+    if (isSelected) {
+      ctx.globalAlpha = 1;
+      ctx.beginPath(); ctx.arc(nx, ny, 14, 0, Math.PI*2);
+      ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.setLineDash([3,2]); ctx.stroke(); ctx.setLineDash([]);
+    }
+
+    ctx.globalAlpha = 1;
+    if (vis || isSelected) {
+      ctx.fillStyle = '#444'; ctx.font = '7px IBM Plex Mono'; ctx.textAlign = 'left';
+      ctx.globalAlpha = alpha;
+      ctx.fillText(n.label.split(' ')[0][0]+'.'+n.label.split(' ')[1][0], nx+9, ny+3);
+      ctx.globalAlpha = 1;
+    }
+  });
+}
+
+function drawLexiconMark(ctx, cx, cy, col, shape, selected) {
+  const s = 9;
+  ctx.strokeStyle = col; ctx.lineWidth = selected ? 1.5 : 1;
+  ctx.fillStyle = col + '18';
+  ctx.beginPath();
+  if (shape==='square') { ctx.rect(cx-s,cy-s,s*2,s*2); }
+  else if (shape==='circle') { ctx.arc(cx,cy,s,0,Math.PI*2); }
+  else { ctx.moveTo(cx,cy-s); ctx.lineTo(cx+s,cy+s); ctx.lineTo(cx-s,cy+s); ctx.closePath(); }
+  ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx,cy,2.5,0,Math.PI*2);
+  ctx.fillStyle = col; ctx.fill();
+}
+
+document.getElementById('scoreCanvas').addEventListener('click', (e) => {
+  const canvas = document.getElementById('scoreCanvas');
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const W = canvas.width, H = canvas.height;
+  let hit = null;
+  NOTATIONS.forEach((n,i) => {
+    const nx=n.x*W, ny=n.y*H;
+    if (Math.sqrt((mx-nx)**2+(my-ny)**2) < 14) hit = i;
+  });
+  if (hit !== null) { selectedIdx = hit; showSelectedPanel(); }
+  else { selectedIdx = null; deselectMark(); }
+  renderScore();
+});
+
+function showSelectedPanel() {
+  document.getElementById('panelDefault').classList.remove('active');
+  document.getElementById('panelSelected').classList.add('active');
+  drawMarkPreview();
+}
+
+function deselectMark() {
+  selectedIdx = null;
+  document.getElementById('panelSelected').classList.remove('active');
+  document.getElementById('panelDefault').classList.add('active');
+  renderScore();
+}
+
+function drawMarkPreview() {
+  const canvas = document.getElementById('markPreviewCanvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,100,60);
+  ctx.fillStyle='#f8f8f6'; ctx.fillRect(0,0,100,60);
+  if (selectedIdx !== null) {
+    const n = NOTATIONS[selectedIdx];
+    const col = COLOURS[selectedIdx % COLOURS.length];
+    const shape = SHAPES[selectedIdx % SHAPES.length];
+    drawLexiconMark(ctx, 50, 30, col, shape, false);
+  }
+}
+
+function zoom(f) {
+  const canvas = document.getElementById('scoreCanvas');
+  scale *= f;
+  canvas.width = Math.round(MAP_W*scale);
+  canvas.height = Math.round(MAP_H*scale);
+  renderScore();
+}
+
+function resetView() { initCanvas(); }
+
+window.addEventListener('resize', initCanvas);
+initCanvas();
+</script>
+</body>
+</html>

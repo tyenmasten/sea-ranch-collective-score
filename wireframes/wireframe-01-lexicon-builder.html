@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lexicon Builder</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap');
+
+@font-face {
+  font-family: 'Miniature';
+  src: url('../Fonts/Miniature-Display.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Media77';
+  src: url('../Fonts/Media77-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg: #e8e8e8;
+  --surface: #f0f0f0;
+  --surface2: #ffffff;
+  --border: #cccccc;
+  --border2: #b8b8b8;
+  --ink: #1a1a1a;
+  --dim: #888888;
+  --accent: #3a3a3a;
+  --active: #1a1a1a;
+  --hi: #d8d8d8;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink); font-family: 'IBM Plex Mono', monospace; font-size: 11px; min-height: 100vh; }
+
+header { padding: 14px 24px; border-bottom: 1px solid var(--border); background: #d0d0d0; display: flex; align-items: center; justify-content: space-between; }
+.h-title { font-family: 'Miniature', serif; font-size: 26px; font-weight: normal; font-style: normal; color: var(--ink); letter-spacing: normal; line-height: 1.1; }
+.h-sub { font-family: 'Miniature', serif; font-size: 11px; color: var(--dim); letter-spacing: 0.1em; margin-top: 2px; }
+.h-user { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); border: 1px solid var(--border); padding: 4px 10px; font-family: 'IBM Plex Mono', monospace; background: var(--surface2); }
+
+nav { border-bottom: 1px solid var(--border); display: flex; padding: 0 24px; background: var(--surface); }
+.nav-item { font-family: 'Miniature', serif; font-size: 13px; letter-spacing: 0.1em; padding: 8px 16px; color: var(--dim); cursor: pointer; border-bottom: 2px solid transparent; text-decoration: none; display: block; }
+.nav-item.active { color: var(--ink); border-bottom-color: var(--ink); }
+.nav-item.locked { opacity: 0.3; cursor: not-allowed; }
+
+.main { display: grid; grid-template-columns: 260px 1fr 280px; min-height: calc(100vh - 85px); }
+
+.col { border-right: 1px solid var(--border); overflow-y: auto; background: var(--surface); }
+.col:last-child { border-right: none; }
+.col-pad { padding: 16px; }
+
+.slabel { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--border); padding-bottom: 5px; margin-bottom: 10px; }
+
+.flabel { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); margin-bottom: 3px; display: block; margin-top: 8px; }
+
+input[type="text"], input[type="number"] {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border);
+  color: var(--ink); font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  padding: 5px 8px; outline: none;
+}
+input[type="text"]:focus, input[type="number"]:focus { border-color: var(--ink); }
+
+textarea {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border);
+  color: var(--ink); font-family: 'Media77', sans-serif; font-size: 13px;
+  padding: 8px 10px; outline: none; resize: vertical; min-height: 80px; line-height: 1.6;
+}
+textarea::placeholder { color: var(--dim); font-style: italic; }
+
+.btn { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 10px; border: 1px solid var(--border); background: var(--surface2); color: var(--ink); cursor: pointer; transition: all 0.15s; }
+.btn:hover { border-color: var(--ink); }
+.btn.sel { background: var(--ink); color: #f0f0f0; border-color: var(--ink); }
+.btn.sm { font-size: 8px; padding: 3px 8px; }
+.btn.full { width: 100%; margin-top: 6px; text-align: center; }
+.btn.primary { background: var(--ink); color: #f0f0f0; border-color: var(--ink); width: 100%; padding: 10px; font-size: 10px; letter-spacing: 0.14em; margin-top: 8px; }
+.btn.primary:hover { background: #444; border-color: #444; }
+.btn.danger { color: #a03030; border-color: #ccaaaa; background: transparent; }
+.btn.danger:hover { background: #a03030; color: #f0f0f0; border-color: #a03030; }
+
+.btn-row { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.btn-group { display: flex; }
+.btn-group .btn:not(:last-child) { border-right: none; }
+
+input[type="range"] { width: 100%; accent-color: var(--ink); border: none; padding: 0; background: none; }
+
+.slider-row { display: grid; grid-template-columns: 56px 1fr 36px; align-items: center; gap: 6px; margin-top: 6px; }
+.slider-row .flabel { margin: 0; }
+.slider-val { font-size: 10px; text-align: right; color: var(--ink); }
+
+.layer-tabs { display: flex; gap: 0; margin-bottom: 0; border-bottom: 1px solid var(--border); }
+.layer-tab { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; padding: 6px 12px; border: 1px solid var(--border); border-bottom: none; background: var(--hi); color: var(--dim); cursor: pointer; margin-right: 3px; position: relative; top: 1px; }
+.layer-tab.active { background: var(--surface); color: var(--ink); border-bottom-color: var(--surface); }
+.layer-tab.add-btn { background: transparent; border: 1px dashed var(--border); color: var(--dim); }
+.layer-tab.add-btn:hover { border-color: var(--ink); color: var(--ink); }
+
+.layer-panel { display: none; padding-top: 12px; }
+.layer-panel.active { display: block; }
+
+.colour-row { display: grid; grid-template-columns: 1fr 56px; gap: 8px; align-items: end; margin-top: 6px; }
+.colour-swatch { width: 48px; height: 48px; border-radius: 50%; cursor: pointer; border: 1px solid var(--border); }
+
+.snap-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-top: 4px; }
+
+.viewer-wrap { display: flex; flex-direction: column; height: 100%; background: var(--surface); }
+.viewer-header { padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.viewer-canvas { flex: 1; background: var(--surface2); display: flex; align-items: center; justify-content: center; min-height: 360px; position: relative; }
+canvas#mc { display: block; }
+.viewer-footer { padding: 10px 16px; border-top: 1px solid var(--border); flex-shrink: 0; background: var(--surface); }
+.view-label { font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); margin-bottom: 5px; font-family: 'IBM Plex Mono', monospace; }
+
+.meta-opts { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
+.meta-opt { font-family: 'Media77', sans-serif; font-size: 12px; padding: 6px 10px; border: 1px solid var(--border); background: var(--surface2); color: var(--ink); cursor: pointer; text-align: left; transition: all 0.15s; }
+.meta-opt:hover { border-color: var(--ink); }
+.meta-opt.sel { background: var(--ink); color: #f0f0f0; border-color: var(--ink); }
+
+.upload-zone { border: 1px dashed var(--border); padding: 14px 10px; text-align: center; cursor: pointer; color: var(--dim); font-size: 9px; letter-spacing: 0.1em; line-height: 2; margin-top: 4px; font-family: 'IBM Plex Mono', monospace; background: var(--surface2); }
+.upload-zone:hover { border-color: var(--ink); color: var(--ink); }
+
+.note { font-family: 'Media77', sans-serif; font-size: 11px; color: var(--dim); font-style: italic; line-height: 1.5; margin-top: 4px; }
+.sep { height: 1px; background: var(--border); margin: 14px 0; }
+
+.scale-bar { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.scale-bar-line { height: 1px; background: #aaa; position: relative; }
+.scale-bar-line::before, .scale-bar-line::after { content: ''; position: absolute; top: -3px; width: 1px; height: 7px; background: #aaa; }
+.scale-bar-line::before { left: 0; }
+.scale-bar-line::after { right: 0; }
+.scale-bar-label { font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #aaa; letter-spacing: 0.08em; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="h-title">Sea Ranch — Collective Score</div>
+    <div class="h-sub">AA Visiting School · The Sea Ranch, California · July 2026</div>
+  </div>
+  <div class="h-user">Student: A. Halprin</div>
+</header>
+
+<nav>
+  <a class="nav-item active">Lexicon</a>
+  <a class="nav-item">Location</a>
+  <a class="nav-item locked">Score</a>
+  <a class="nav-item locked">Overview</a>
+</nav>
+
+<div class="main">
+
+  <!-- LEFT — Parameters -->
+  <div class="col col-pad" id="leftCol">
+
+    <div style="margin-bottom:16px;">
+      <div class="slabel">Identity</div>
+      <span class="flabel">Author</span>
+      <input type="text" value="A. Halprin" readonly>
+      <span class="flabel">Lexicon Name</span>
+      <input type="text" placeholder="Name your mark…" oninput="renderMark()">
+    </div>
+
+    <div class="slabel">Notation Layers</div>
+    <div class="layer-tabs" id="layerTabs">
+      <div class="layer-tab active" onclick="switchLayer(0)">Layer 1</div>
+      <div class="layer-tab add-btn" id="addLayerBtn" onclick="addLayer()">+ Add</div>
+    </div>
+
+    <div id="layerPanels"></div>
+
+    <div style="margin-top:16px;">
+      <div class="slabel">Mark Scale</div>
+      <p class="note" style="margin-bottom:8px;">Set real-world dimensions. Mark renders at correct scale on the collective score.</p>
+      <div class="btn-group" style="margin-bottom:8px;">
+        <button class="btn sm sel" onclick="toggleUnit(this)">Imperial</button>
+        <button class="btn sm" onclick="toggleUnit(this)">Metric</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
+        <div><span class="flabel">Length</span><input type="number" placeholder="ft" oninput="renderMark()"></div>
+        <div><span class="flabel">Width</span><input type="number" placeholder="ft" oninput="renderMark()"></div>
+        <div><span class="flabel">Height</span><input type="number" placeholder="ft" oninput="renderMark()"></div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;">
+      <div class="slabel">Layer Composition</div>
+      <span class="flabel">Stack Axis</span>
+      <div class="btn-row">
+        <button class="btn sm sel" id="axisV" onclick="setAxis('vertical',this)">Vertical</button>
+        <button class="btn sm" id="axisH" onclick="setAxis('horizontal',this)">Horizontal</button>
+        <button class="btn sm" id="axisD" onclick="setAxis('diagonal',this)">Diagonal 45°</button>
+      </div>
+      <span class="flabel" style="margin-top:8px;">Snap</span>
+      <div class="snap-grid">
+        <button class="btn sm sel" onclick="setSnap('centre',this)">Centre</button>
+        <button class="btn sm" onclick="setSnap('half',this)">½ Side</button>
+        <button class="btn sm" onclick="setSnap('full',this)">Full Side</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CENTRE — Drawing Viewer -->
+  <div class="col">
+    <div class="viewer-wrap">
+      <div class="viewer-header">
+        <span class="slabel" style="margin:0;border:none;padding:0;">Drawing Viewer</span>
+        <span style="font-size:9px;color:var(--dim);">Plan view · live preview · real-world scale</span>
+      </div>
+      <div class="viewer-canvas">
+        <canvas id="mc" width="420" height="380"></canvas>
+        <div class="scale-bar" id="scaleBar">
+          <div class="scale-bar-line" id="scaleBarLine" style="width:80px;"></div>
+          <div class="scale-bar-label" id="scaleBarLabel">10 ft</div>
+        </div>
+      </div>
+      <div class="viewer-footer">
+        <div class="view-label">View</div>
+        <div class="btn-row">
+          <button class="btn sel">Plan</button>
+          <button class="btn" style="opacity:0.3;cursor:not-allowed;">Front</button>
+          <button class="btn" style="opacity:0.3;cursor:not-allowed;">Side</button>
+          <button class="btn" style="opacity:0.3;cursor:not-allowed;">Axo</button>
+        </div>
+        <p class="note" style="margin-top:6px;">Front · Side · Axo views deferred to next iteration.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT — Metadata -->
+  <div class="col col-pad">
+
+    <div class="slabel">Meta Data</div>
+    <div class="meta-opts">
+      <button class="meta-opt sel" onclick="this.classList.toggle('sel')">Form</button>
+      <button class="meta-opt" onclick="this.classList.toggle('sel')">Context</button>
+      <button class="meta-opt" onclick="this.classList.toggle('sel')">Culture</button>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="slabel">Element</div>
+    <div class="meta-opts">
+      <button class="meta-opt" onclick="this.classList.toggle('sel')">Landscape</button>
+      <button class="meta-opt sel" onclick="this.classList.toggle('sel')">People</button>
+      <button class="meta-opt" onclick="this.classList.toggle('sel')">Architecture</button>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="slabel">Typology</div>
+    <div class="meta-opts">
+      <button class="meta-opt sel" onclick="this.classList.toggle('sel')">Single Family</button>
+      <button class="meta-opt" onclick="this.classList.toggle('sel')">Multi Unit</button>
+      <button class="meta-opt" onclick="this.classList.toggle('sel')">Public Facility</button>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="slabel">Description</div>
+    <textarea placeholder="Describe the observed condition, material quality, or spatial character…"></textarea>
+
+    <div class="sep"></div>
+
+    <div class="slabel">Information Upload</div>
+    <div class="upload-zone">
+      Image · Video · Drawing · Scan<br>
+      <span style="font-size:8px;">Drop files or tap to browse</span>
+    </div>
+
+    <button class="btn primary" onclick="alert('Lexicon entry saved. Storage integration pending.')">Save Lexicon Entry →</button>
+
+  </div>
+</div>
+
+<script>
+const SHAPES = ['Square','Triangle','Circle','Half Circle','Polygon'];
+const FILLS = ['Line','Filled','Patterned'];
+const LINES = ['Solid','Dash S','Dash L','Dotted'];
+const LINE_DIRS = ['Horizontal','Vertical','Diagonal','Cross'];
+
+let activeLayer = 0;
+let stackAxis = 'vertical';
+let snapMode = 'centre';
+let layers = [defaultLayer()];
+
+function defaultLayer() {
+  return { shape:'Square', sides:5, fill:'Line', lineStyle:'Solid', lineOn:false, lineDir:'Horizontal', density:5, thickness:1, colour:'#1a1a1a', width:80, height:80 };
+}
+
+function addLayer() {
+  if (layers.length >= 3) return;
+  layers.push(defaultLayer());
+  activeLayer = layers.length - 1;
+  buildLayerTabs();
+  buildLayerPanels();
+  renderMark();
+}
+
+function switchLayer(idx) {
+  activeLayer = idx;
+  buildLayerTabs();
+  document.querySelectorAll('.layer-panel').forEach((p,i) => p.classList.toggle('active', i===idx));
+}
+
+function removeLayer(idx) {
+  if (layers.length === 1) return;
+  layers.splice(idx, 1);
+  activeLayer = Math.min(activeLayer, layers.length-1);
+  buildLayerTabs();
+  buildLayerPanels();
+  renderMark();
+}
+
+function buildLayerTabs() {
+  const tabs = document.getElementById('layerTabs');
+  const addBtn = document.getElementById('addLayerBtn');
+  Array.from(tabs.querySelectorAll('.layer-tab:not(.add-btn)')).forEach(t => t.remove());
+  layers.forEach((l,i) => {
+    const t = document.createElement('div');
+    t.className = 'layer-tab' + (i===activeLayer?' active':'');
+    t.textContent = 'Layer '+(i+1);
+    t.onclick = () => switchLayer(i);
+    tabs.insertBefore(t, addBtn);
+  });
+  addBtn.style.display = layers.length >= 3 ? 'none' : 'block';
+}
+
+function buildLayerPanels() {
+  const container = document.getElementById('layerPanels');
+  container.innerHTML = '';
+  layers.forEach((l,i) => {
+    const panel = document.createElement('div');
+    panel.className = 'layer-panel' + (i===activeLayer?' active':'');
+    panel.id = 'lp'+i;
+    panel.innerHTML = layerHTML(l,i);
+    container.appendChild(panel);
+  });
+}
+
+function layerHTML(l,i) {
+  const shapeOpts = SHAPES.map(s =>
+    `<button class="btn sm${l.shape===s?' sel':''}" onclick="setLayerProp(${i},'shape','${s}')">${s}</button>`
+  ).join('');
+  const sidesHTML = l.shape==='Polygon' ? `
+    <div class="slider-row" style="margin-top:6px;">
+      <span class="flabel">Sides</span>
+      <input type="range" min="3" max="8" step="1" value="${l.sides}" oninput="setLayerProp(${i},'sides',parseInt(this.value));document.getElementById('sv${i}').textContent=this.value;">
+      <span class="slider-val" id="sv${i}">${l.sides}</span>
+    </div>` : '';
+  const fillOpts = FILLS.map(f =>
+    `<button class="btn sm${l.fill===f?' sel':''}" onclick="setLayerProp(${i},'fill','${f}')">${f}</button>`
+  ).join('');
+  const lineStyleOpts = LINES.map(s =>
+    `<button class="btn sm${l.lineStyle===s?' sel':''}" onclick="setLayerProp(${i},'lineStyle','${s}')">${s}</button>`
+  ).join('');
+  const lineDirOpts = LINE_DIRS.map(d =>
+    `<button class="btn sm${l.lineDir===d?' sel':''}" onclick="setLayerProp(${i},'lineDir','${d}')">${d}</button>`
+  ).join('');
+
+  return `
+    <div style="padding-bottom:4px;">
+      <span class="flabel">Shape</span>
+      <div class="btn-row" id="shapeBtns${i}">${shapeOpts}</div>
+      ${sidesHTML}
+      <span class="flabel" style="margin-top:8px;">Style</span>
+      <div class="btn-row" id="fillBtns${i}">${fillOpts}</div>
+      <span class="flabel" style="margin-top:8px;">Line Style</span>
+      <div class="btn-row" id="lsBtns${i}">${lineStyleOpts}</div>
+      <span class="flabel" style="margin-top:8px;">Line Modifier</span>
+      <div class="btn-row">
+        <button class="btn sm${l.lineOn?' sel':''}" id="lineToggle${i}" onclick="toggleLineOn(${i})">${l.lineOn?'On':'Off'}</button>
+      </div>
+      <div id="lineOpts${i}" style="display:${l.lineOn?'block':'none'};margin-top:4px;">
+        <div class="btn-row" id="ldBtns${i}">${lineDirOpts}</div>
+        <div class="slider-row">
+          <span class="flabel">Density</span>
+          <input type="range" min="1" max="12" value="${l.density}" oninput="setLayerProp(${i},'density',parseInt(this.value));document.getElementById('dv${i}').textContent=this.value;">
+          <span class="slider-val" id="dv${i}">${l.density}</span>
+        </div>
+      </div>
+      <span class="flabel" style="margin-top:8px;">Thickness</span>
+      <div class="slider-row">
+        <span class="flabel">pt</span>
+        <input type="range" min="0.25" max="3" step="0.25" value="${l.thickness}" oninput="setLayerProp(${i},'thickness',parseFloat(this.value));document.getElementById('tv${i}').textContent=parseFloat(this.value).toFixed(2);">
+        <span class="slider-val" id="tv${i}">${l.thickness.toFixed(2)}</span>
+      </div>
+      <span class="flabel" style="margin-top:8px;">Mark Size</span>
+      <div class="slider-row">
+        <span class="flabel">Width</span>
+        <input type="range" min="20" max="160" value="${l.width}" oninput="setLayerProp(${i},'width',parseInt(this.value));document.getElementById('wv${i}').textContent=this.value;">
+        <span class="slider-val" id="wv${i}">${l.width}</span>
+      </div>
+      <div class="slider-row">
+        <span class="flabel">Height</span>
+        <input type="range" min="20" max="160" value="${l.height}" oninput="setLayerProp(${i},'height',parseInt(this.value));document.getElementById('hv${i}').textContent=this.value;">
+        <span class="slider-val" id="hv${i}">${l.height}</span>
+      </div>
+      <span class="flabel" style="margin-top:8px;">Colour</span>
+      <div class="colour-row">
+        <input type="text" value="${l.colour}" id="hex${i}" oninput="setLayerProp(${i},'colour',this.value);document.getElementById('cp${i}').value=this.value;document.getElementById('sw${i}').style.background=this.value;">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+          <div class="colour-swatch" id="sw${i}" style="background:${l.colour};" onclick="document.getElementById('cp${i}').click()"></div>
+          <input type="color" id="cp${i}" value="${l.colour}" style="display:none;" oninput="setLayerProp(${i},'colour',this.value);document.getElementById('hex${i}').value=this.value;document.getElementById('sw${i}').style.background=this.value;">
+        </div>
+      </div>
+      ${i>0?`<button class="btn danger full" style="margin-top:12px;" onclick="removeLayer(${i})">Remove Layer</button>`:''}
+    </div>
+  `;
+}
+
+function setLayerProp(i, prop, val) {
+  layers[i][prop] = val;
+  if (prop === 'shape') { buildLayerPanels(); }
+  else {
+    const selClass = prop === 'fill' ? `fillBtns${i}` : prop === 'lineStyle' ? `lsBtns${i}` : prop === 'lineDir' ? `ldBtns${i}` : prop === 'shape' ? `shapeBtns${i}` : null;
+    if (selClass) {
+      document.getElementById(selClass)?.querySelectorAll('.btn').forEach(b => b.classList.toggle('sel', b.textContent.trim()===val || b.textContent.trim()===val.toString()));
+    }
+  }
+  renderMark();
+}
+
+function toggleLineOn(i) {
+  layers[i].lineOn = !layers[i].lineOn;
+  const btn = document.getElementById('lineToggle'+i);
+  if (btn) { btn.textContent = layers[i].lineOn?'On':'Off'; btn.classList.toggle('sel', layers[i].lineOn); }
+  const opts = document.getElementById('lineOpts'+i);
+  if (opts) opts.style.display = layers[i].lineOn ? 'block' : 'none';
+  renderMark();
+}
+
+function setAxis(axis, btn) {
+  stackAxis = axis;
+  ['axisV','axisH','axisD'].forEach(id => document.getElementById(id)?.classList.remove('sel'));
+  btn.classList.add('sel');
+  renderMark();
+}
+
+function setSnap(snap, btn) {
+  snapMode = snap;
+  btn.closest('.snap-grid').querySelectorAll('.btn').forEach(b => b.classList.remove('sel'));
+  btn.classList.add('sel');
+  renderMark();
+}
+
+function toggleUnit(btn) {
+  btn.closest('.btn-group').querySelectorAll('.btn').forEach(b => b.classList.remove('sel'));
+  btn.classList.add('sel');
+}
+
+function getOffset(idx, total) {
+  if (total === 1) return {x:0,y:0};
+  const l = layers[idx];
+  const prev = idx>0 ? layers[idx-1] : l;
+  let step = snapMode==='centre' ? 0 : snapMode==='half' ? (prev.width+l.width)/4 : (prev.width+l.width)/2;
+  const spread = (total-1)/2;
+  const pos = idx - spread;
+  if (stackAxis==='vertical') return {x:0, y:pos*step};
+  if (stackAxis==='horizontal') return {x:pos*step, y:0};
+  return {x:pos*step*0.707, y:pos*step*0.707};
+}
+
+function drawShape(ctx, cx, cy, l) {
+  const hw=l.width/2, hh=l.height/2, col=l.colour||'#1a1a1a';
+  ctx.strokeStyle=col; ctx.lineWidth=l.thickness;
+  if (l.lineStyle==='Solid') ctx.setLineDash([]);
+  else if (l.lineStyle==='Dash S') ctx.setLineDash([4,3]);
+  else if (l.lineStyle==='Dash L') ctx.setLineDash([10,4]);
+  else if (l.lineStyle==='Dotted') ctx.setLineDash([1.5,4]);
+
+  const buildPath = () => {
+    ctx.beginPath();
+    if (l.shape==='Square') ctx.rect(cx-hw,cy-hh,l.width,l.height);
+    else if (l.shape==='Triangle'){ctx.moveTo(cx,cy-hh);ctx.lineTo(cx+hw,cy+hh);ctx.lineTo(cx-hw,cy+hh);ctx.closePath();}
+    else if (l.shape==='Circle') ctx.ellipse(cx,cy,hw,hh,0,0,Math.PI*2);
+    else if (l.shape==='Half Circle'){ctx.ellipse(cx,cy,hw,hh,0,Math.PI,0);ctx.closePath();}
+    else if (l.shape==='Polygon'){const s=l.sides||5;for(let n=0;n<s;n++){const a=(n/s)*Math.PI*2-Math.PI/2;n===0?ctx.moveTo(cx+hw*Math.cos(a),cy+hh*Math.sin(a)):ctx.lineTo(cx+hw*Math.cos(a),cy+hh*Math.sin(a));}ctx.closePath();}
+  };
+
+  buildPath();
+  if (l.fill==='Filled'){ctx.fillStyle=col+'22';ctx.fill();}
+  else if (l.fill==='Patterned'){
+    ctx.save();buildPath();ctx.clip();ctx.setLineDash([]);
+    for(let n=-Math.max(l.width,l.height);n<Math.max(l.width,l.height)*2;n+=8){
+      ctx.beginPath();ctx.moveTo(cx-l.width+n,cy-l.height);ctx.lineTo(cx-l.width+n+l.height,cy+l.height);
+      ctx.strokeStyle=col+'55';ctx.lineWidth=0.7;ctx.stroke();
+    }
+    ctx.restore();
+    ctx.strokeStyle=col;ctx.lineWidth=l.thickness;
+    if (l.lineStyle==='Solid') ctx.setLineDash([]);
+    else if (l.lineStyle==='Dash S') ctx.setLineDash([4,3]);
+    else if (l.lineStyle==='Dash L') ctx.setLineDash([10,4]);
+    else if (l.lineStyle==='Dotted') ctx.setLineDash([1.5,4]);
+  }
+  buildPath();ctx.stroke();
+
+  if (l.lineOn){
+    ctx.save();buildPath();ctx.clip();ctx.setLineDash([]);
+    const cnt=l.density+2;ctx.lineWidth=0.6;
+    for(let n=0;n<=cnt;n++){
+      const t=n/cnt;ctx.beginPath();ctx.strokeStyle=col;
+      if(l.lineDir==='Horizontal'){const y=cy-hh+t*l.height;ctx.moveTo(cx-l.width,y);ctx.lineTo(cx+l.width,y);}
+      else if(l.lineDir==='Vertical'){const x=cx-hw+t*l.width;ctx.moveTo(x,cy-l.height);ctx.lineTo(x,cy+l.height);}
+      else if(l.lineDir==='Diagonal'){const x=cx-l.width+t*l.width*2;ctx.moveTo(x-l.height,cy-l.height);ctx.lineTo(x+l.height,cy+l.height);}
+      else{const y=cy-hh+t*l.height;ctx.moveTo(cx-l.width,y);ctx.lineTo(cx+l.width,y);const x=cx-hw+t*l.width;ctx.moveTo(x,cy-l.height);ctx.lineTo(x,cy+l.height);}
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  ctx.setLineDash([]);
+}
+
+function renderMark() {
+  const canvas=document.getElementById('mc');
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#ffffff';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#e8e8e8';ctx.lineWidth=0.5;ctx.setLineDash([3,4]);
+  ctx.beginPath();ctx.moveTo(W/2,0);ctx.lineTo(W/2,H);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,H/2);ctx.lineTo(W,H/2);ctx.stroke();
+  ctx.setLineDash([]);
+  layers.forEach((l,i)=>{const o=getOffset(i,layers.length);drawShape(ctx,W/2+o.x,H/2+o.y,l);});
+  updateScaleBar();
+}
+
+function updateScaleBar() {
+  const maxW = Math.max(...layers.map(l=>l.width));
+  const bar = document.getElementById('scaleBarLine');
+  const lbl = document.getElementById('scaleBarLabel');
+  if (bar && lbl) { bar.style.width = maxW+'px'; lbl.textContent = maxW+' px · set real-world scale above'; }
+}
+
+buildLayerTabs();
+buildLayerPanels();
+renderMark();
+</script>
+</body>
+</html>

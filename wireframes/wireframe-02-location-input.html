@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Location Input</title>
+<style>
+@font-face {
+  font-family: 'Miniature';
+  src: url('https://raw.githubusercontent.com/tyenmasten/sea-ranch-collective-score/main/Fonts/Miniature-Display.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Media77';
+  src: url('https://raw.githubusercontent.com/tyenmasten/sea-ranch-collective-score/main/Fonts/Media77-Regular.otf') format('opentype');
+}
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap');
+
+:root {
+  --bg: #e8e8e8;
+  --surface: #f0f0f0;
+  --surface2: #ffffff;
+  --border: #cccccc;
+  --ink: #1a1a1a;
+  --dim: #888888;
+  --hi: #d8d8d8;
+  --dot: #2a6049;
+  --dot-pending: #888;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink); font-family: 'IBM Plex Mono', monospace; font-size: 11px; min-height: 100vh; display: flex; flex-direction: column; }
+
+header { padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.h-title { font-family: 'Miniature', serif; font-size: 22px; color: var(--ink); letter-spacing: 0.06em; }
+.h-sub { font-family: 'Miniature', serif; font-size: 11px; color: var(--dim); letter-spacing: 0.1em; margin-top: 2px; }
+.h-user { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); border: 1px solid var(--border); padding: 4px 10px; font-family: 'IBM Plex Mono', monospace; background: var(--surface2); }
+
+nav { border-bottom: 1px solid var(--border); display: flex; padding: 0 24px; background: var(--surface); flex-shrink: 0; }
+.nav-item { font-family: 'Miniature', serif; font-size: 13px; letter-spacing: 0.1em; padding: 8px 16px; color: var(--dim); cursor: pointer; border-bottom: 2px solid transparent; text-decoration: none; display: block; }
+.nav-item.active { color: var(--ink); border-bottom-color: var(--ink); }
+.nav-item.locked { opacity: 0.3; cursor: not-allowed; }
+
+.body { display: flex; flex: 1; overflow: hidden; }
+
+/* Sidebar */
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.slabel { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--border); padding-bottom: 5px; margin-bottom: 8px; }
+.flabel { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); margin-bottom: 3px; display: block; margin-top: 8px; }
+
+input[type="text"] {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border);
+  color: var(--ink); font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  padding: 5px 8px; outline: none;
+}
+input[type="text"]:focus { border-color: var(--ink); }
+input[type="text"][readonly] { color: var(--dim); background: var(--hi); }
+
+.btn { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 10px; border: 1px solid var(--border); background: var(--surface2); color: var(--ink); cursor: pointer; transition: all 0.15s; }
+.btn:hover { border-color: var(--ink); }
+.btn.sel { background: var(--ink); color: #f0f0f0; border-color: var(--ink); }
+.btn.full { width: 100%; text-align: center; padding: 8px; }
+.btn.primary { background: var(--ink); color: #f0f0f0; border-color: var(--ink); width: 100%; padding: 9px; font-size: 10px; letter-spacing: 0.14em; }
+.btn.primary:hover { background: #444; }
+.btn.ghost { background: transparent; border-color: var(--border); color: var(--dim); width: 100%; padding: 9px; font-size: 10px; letter-spacing: 0.14em; }
+.btn.ghost:hover { border-color: var(--ink); color: var(--ink); }
+.btn-group { display: flex; }
+.btn-group .btn:not(:last-child) { border-right: none; }
+
+.note { font-family: 'Media77', sans-serif; font-size: 11px; color: var(--dim); font-style: italic; line-height: 1.5; }
+
+/* Legend */
+.legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.legend-mark { width: 10px; height: 10px; border: 1.5px solid var(--dot); flex-shrink: 0; }
+.legend-label { font-size: 9px; color: var(--dim); letter-spacing: 0.06em; }
+
+/* Layer toggles */
+.layer-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+.layer-name { font-size: 9px; color: var(--ink); letter-spacing: 0.06em; }
+.toggle { width: 28px; height: 14px; border-radius: 7px; background: var(--hi); border: 1px solid var(--border); cursor: pointer; position: relative; transition: background 0.2s; }
+.toggle.on { background: var(--ink); border-color: var(--ink); }
+.toggle::after { content: ''; position: absolute; width: 10px; height: 10px; border-radius: 50%; background: white; top: 1px; left: 1px; transition: left 0.2s; }
+.toggle.on::after { left: 15px; }
+
+.sep { height: 1px; background: var(--border); }
+
+/* Map area */
+.map-area {
+  flex: 1;
+  background: var(--surface2);
+  position: relative;
+  overflow: hidden;
+  cursor: crosshair;
+}
+
+.map-viewport {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  position: relative;
+}
+
+canvas#mapCanvas {
+  display: block;
+  cursor: crosshair;
+}
+
+/* Map controls */
+.map-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 10;
+}
+
+.map-btn {
+  width: 32px;
+  height: 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  transition: background 0.15s;
+}
+.map-btn:hover { background: var(--hi); }
+
+.map-scale {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  z-index: 10;
+}
+.scale-line { height: 1px; background: var(--dim); position: relative; }
+.scale-line::before, .scale-line::after { content:''; position:absolute; top:-3px; width:1px; height:7px; background:var(--dim); }
+.scale-line::before { left:0; }
+.scale-line::after { right:0; }
+.scale-text { font-size: 8px; color: var(--dim); letter-spacing: 0.08em; }
+
+.compass {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Overlay confirmation panel */
+.overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.25);
+  z-index: 20;
+  align-items: center;
+  justify-content: center;
+}
+.overlay.active { display: flex; }
+
+.confirm-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  width: 280px;
+  padding: 20px;
+  position: relative;
+}
+
+.confirm-title {
+  font-family: 'Miniature', serif;
+  font-size: 16px;
+  color: var(--ink);
+  letter-spacing: 0.08em;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.confirm-row {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 4px;
+  margin-bottom: 6px;
+  align-items: baseline;
+}
+.confirm-key { font-size: 9px; color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; }
+.confirm-val { font-size: 11px; color: var(--ink); font-family: 'IBM Plex Mono', monospace; }
+.confirm-val.pending { color: var(--dim); font-style: italic; font-family: 'Media77', sans-serif; font-size: 12px; }
+
+.confirm-mark-preview {
+  margin: 12px 0;
+  padding: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 80px;
+}
+
+.confirm-btns { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+
+/* Placed notations list */
+.notation-list { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
+.notation-item { border: 1px solid var(--border); padding: 6px 8px; background: var(--surface2); cursor: pointer; transition: border-color 0.15s; }
+.notation-item:hover { border-color: var(--ink); }
+.notation-item-name { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink); }
+.notation-item-coord { font-size: 8px; color: var(--dim); margin-top: 1px; }
+.notation-item-status { font-size: 8px; color: var(--dot); margin-top: 1px; font-family: 'Media77', sans-serif; font-style: italic; }
+.notation-item-status.pending { color: var(--dim); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="h-title">Sea Ranch — Collective Score</div>
+    <div class="h-sub">AA Visiting School · The Sea Ranch, California · July 2026</div>
+  </div>
+  <div class="h-user">Student: A. Halprin</div>
+</header>
+
+<nav>
+  <a class="nav-item">Lexicon</a>
+  <a class="nav-item active">Location</a>
+  <a class="nav-item locked">Score</a>
+  <a class="nav-item locked">Overview</a>
+</nav>
+
+<div class="body">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+
+    <div>
+      <div class="slabel">Identity</div>
+      <span class="flabel">Author</span>
+      <input type="text" value="A. Halprin" readonly>
+      <span class="flabel">Lexicon</span>
+      <input type="text" value="Coastal Edge Mark" readonly>
+    </div>
+
+    <div class="sep"></div>
+
+    <div>
+      <div class="slabel">Add Notation</div>
+      <p class="note" style="margin-bottom:10px;">Tap the map to place a notation, or use GPS to place at your current position.</p>
+      <div class="btn-group" style="margin-bottom:8px;">
+        <button class="btn sel" id="pickerBtn" onclick="setMode('picker',this)" style="flex:1;">Picker</button>
+        <button class="btn" id="gpsBtn" onclick="setMode('gps',this)" style="flex:1;">GPS</button>
+      </div>
+      <p class="note" id="modeNote">Tap anywhere on the map to place a notation.</p>
+    </div>
+
+    <div class="sep"></div>
+
+    <div>
+      <div class="slabel">Site Layers</div>
+      <div class="layer-row">
+        <span class="layer-name">Topography</span>
+        <div class="toggle on" onclick="this.classList.toggle('on');renderMap()"></div>
+      </div>
+      <div class="layer-row">
+        <span class="layer-name">Parcels</span>
+        <div class="toggle on" onclick="this.classList.toggle('on');renderMap()"></div>
+      </div>
+      <div class="layer-row">
+        <span class="layer-name">Coastal Zone</span>
+        <div class="toggle" onclick="this.classList.toggle('on');renderMap()"></div>
+      </div>
+      <div class="layer-row">
+        <span class="layer-name">Roads</span>
+        <div class="toggle on" onclick="this.classList.toggle('on');renderMap()"></div>
+      </div>
+      <p class="note" style="margin-top:6px;">Shapefiles loaded from hosted reference layers.</p>
+    </div>
+
+    <div class="sep"></div>
+
+    <div>
+      <div class="slabel">Legend</div>
+      <div class="legend-item">
+        <div class="legend-mark" style="border-radius:50%;background:var(--dot);border:none;"></div>
+        <span class="legend-label">Lexicon mark placed</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:var(--dot-pending);"></div>
+        <span class="legend-label">Dot placeholder</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#4a90d9;"></div>
+        <span class="legend-label">GPS position</span>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <div>
+      <div class="slabel">My Notations (<span id="notationCount">2</span>)</div>
+      <div class="notation-list" id="notationList">
+        <div class="notation-item">
+          <div class="notation-item-name">A. Halprin — 1</div>
+          <div class="notation-item-coord">38.5234°N · 123.4521°W</div>
+          <div class="notation-item-status">Lexicon mark placed</div>
+        </div>
+        <div class="notation-item">
+          <div class="notation-item-name">A. Halprin — 2</div>
+          <div class="notation-item-coord">38.5198°N · 123.4488°W</div>
+          <div class="notation-item-status pending">Dot placeholder — lexicon pending</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Map area -->
+  <div class="map-area" id="mapArea">
+    <div class="map-viewport" id="mapViewport">
+      <canvas id="mapCanvas"></canvas>
+    </div>
+
+    <!-- Compass -->
+    <div class="compass">
+      <svg width="32" height="32" viewBox="0 0 32 32">
+        <line x1="16" y1="4" x2="16" y2="28" stroke="#aaa" stroke-width="0.5"/>
+        <line x1="4" y1="16" x2="28" y2="16" stroke="#aaa" stroke-width="0.5"/>
+        <polygon points="16,4 18,14 16,12 14,14" fill="#1a1a1a"/>
+        <polygon points="16,28 18,18 16,20 14,18" fill="#ccc"/>
+        <text x="16" y="3" text-anchor="middle" font-family="IBM Plex Mono" font-size="6" fill="#1a1a1a">N</text>
+      </svg>
+    </div>
+
+    <!-- Map controls -->
+    <div class="map-controls">
+      <button class="map-btn" onclick="zoom(1.25)" title="Zoom in">+</button>
+      <button class="map-btn" onclick="zoom(0.8)" title="Zoom out">−</button>
+      <button class="map-btn" onclick="resetView()" title="Fit to frame" style="font-size:10px;">⊡</button>
+    </div>
+
+    <!-- Scale bar -->
+    <div class="map-scale">
+      <div class="scale-line" id="scaleBarLine" style="width:60px;"></div>
+      <div class="scale-text" id="scaleBarText">1 mile</div>
+    </div>
+
+    <!-- Confirmation overlay -->
+    <div class="overlay" id="confirmOverlay">
+      <div class="confirm-panel">
+        <div class="confirm-title">Confirm Notation</div>
+
+        <div class="confirm-row">
+          <span class="confirm-key">Author</span>
+          <span class="confirm-val">A. Halprin</span>
+        </div>
+        <div class="confirm-row">
+          <span class="confirm-key">Lexicon</span>
+          <span class="confirm-val" id="confirmLexicon">Coastal Edge Mark</span>
+        </div>
+        <div class="confirm-row">
+          <span class="confirm-key">Location</span>
+          <span class="confirm-val" id="confirmCoords">38.5211°N · 123.4502°W</span>
+        </div>
+        <div class="confirm-row">
+          <span class="confirm-key">Method</span>
+          <span class="confirm-val" id="confirmMethod">Map picker</span>
+        </div>
+
+        <div class="confirm-mark-preview" id="confirmPreview">
+          <canvas id="previewCanvas" width="120" height="60"></canvas>
+        </div>
+
+        <div class="confirm-btns">
+          <button class="btn primary" onclick="confirmPlacement()">Confirm Placement →</button>
+          <button class="btn ghost" onclick="cancelPlacement()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+let scale = 1;
+let mode = 'picker';
+let pendingX = 0, pendingY = 0;
+let notations = [
+  { x: 0.45, y: 0.28, lexicon: true, label: 'A. Halprin — 1' },
+  { x: 0.52, y: 0.61, lexicon: false, label: 'A. Halprin — 2' }
+];
+let hasLexicon = true;
+
+const MAP_W = 160;
+const MAP_H = 800;
+
+function getCanvas() { return document.getElementById('mapCanvas'); }
+
+function initCanvas() {
+  const area = document.getElementById('mapArea');
+  const areaH = area.clientHeight;
+  const areaW = area.clientWidth;
+  const canvas = getCanvas();
+
+  const fitScale = Math.min(areaW / MAP_W, areaH / MAP_H) * 0.88;
+  scale = fitScale;
+
+  canvas.width = Math.round(MAP_W * scale);
+  canvas.height = Math.round(MAP_H * scale);
+  canvas.style.margin = '20px auto';
+  canvas.style.display = 'block';
+
+  renderMap();
+}
+
+function renderMap() {
+  const canvas = getCanvas();
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  // Background
+  ctx.fillStyle = '#f8f8f6';
+  ctx.fillRect(0,0,W,H);
+
+  // Site boundary
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([]);
+
+  // Slightly irregular coastal outline — west edge (ocean side)
+  ctx.beginPath();
+  ctx.moveTo(W*0.15, 0);
+  ctx.bezierCurveTo(W*0.05, H*0.15, W*0.12, H*0.3, W*0.08, H*0.45);
+  ctx.bezierCurveTo(W*0.04, H*0.6, W*0.1, H*0.75, W*0.12, H*0.9);
+  ctx.lineTo(W*0.12, H);
+  ctx.lineTo(W*0.88, H);
+  ctx.lineTo(W*0.88, H*0.9);
+  ctx.bezierCurveTo(W*0.85, H*0.75, W*0.9, H*0.6, W*0.88, H*0.45);
+  ctx.bezierCurveTo(W*0.86, H*0.3, W*0.88, H*0.15, W*0.85, 0);
+  ctx.closePath();
+  ctx.fillStyle = '#efefed';
+  ctx.fill();
+  ctx.stroke();
+
+  // Topo contour lines
+  ctx.strokeStyle = '#d0d0cc';
+  ctx.lineWidth = 0.4;
+  for (let i = 1; i < 12; i++) {
+    const y = (i/12)*H;
+    ctx.beginPath();
+    ctx.moveTo(W*0.15, y);
+    ctx.bezierCurveTo(W*0.3+(Math.sin(i*1.3)*W*0.08), y+(Math.cos(i)*8), W*0.6+(Math.sin(i*0.9)*W*0.06), y+(Math.sin(i*1.1)*6), W*0.85, y);
+    ctx.stroke();
+  }
+
+  // Road — Highway 1 approx
+  ctx.strokeStyle = '#bbb';
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(W*0.5, 0);
+  ctx.bezierCurveTo(W*0.45, H*0.25, W*0.55, H*0.5, W*0.48, H*0.75);
+  ctx.lineTo(W*0.5, H);
+  ctx.stroke();
+
+  // Parcel grid — faint
+  ctx.strokeStyle = '#ddd';
+  ctx.lineWidth = 0.3;
+  ctx.setLineDash([2,3]);
+  for (let i = 0; i < 8; i++) {
+    const y = (i/8)*H;
+    ctx.beginPath(); ctx.moveTo(W*0.15,y); ctx.lineTo(W*0.85,y); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Ocean label
+  ctx.fillStyle = '#aac4d8';
+  ctx.font = '8px IBM Plex Mono';
+  ctx.textAlign = 'center';
+  ctx.save();
+  ctx.translate(W*0.04, H*0.5);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillText('PACIFIC OCEAN', 0, 0);
+  ctx.restore();
+
+  // Site label
+  ctx.fillStyle = '#999';
+  ctx.font = '7px IBM Plex Mono';
+  ctx.textAlign = 'center';
+  ctx.fillText('THE SEA RANCH', W/2, H*0.5);
+  ctx.fillText('SONOMA COUNTY · CA', W/2, H*0.5+10);
+
+  // North/South labels
+  ctx.fillStyle = '#aaa';
+  ctx.font = '7px IBM Plex Mono';
+  ctx.textAlign = 'center';
+  ctx.fillText('GUALALA →', W/2, H-6);
+
+  // Placed notations
+  notations.forEach((n,i) => {
+    const nx = n.x * W, ny = n.y * H;
+    if (n.lexicon) {
+      ctx.strokeStyle = '#2a6049';
+      ctx.lineWidth = 1.2;
+      ctx.fillStyle = 'rgba(42,96,73,0.12)';
+      ctx.beginPath();
+      ctx.rect(nx-7, ny-7, 14, 14);
+      ctx.fill(); ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(nx, ny, 4, 0, Math.PI*2);
+      ctx.fillStyle = '#2a6049';
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.arc(nx, ny, 5, 0, Math.PI*2);
+      ctx.fillStyle = '#888';
+      ctx.fill();
+      ctx.strokeStyle = '#666';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#444';
+    ctx.font = '7px IBM Plex Mono';
+    ctx.textAlign = 'left';
+    ctx.fillText('AH-'+(i+1), nx+8, ny+3);
+  });
+}
+
+function setMode(m, btn) {
+  mode = m;
+  document.getElementById('pickerBtn').classList.toggle('sel', m==='picker');
+  document.getElementById('gpsBtn').classList.toggle('sel', m==='gps');
+  const note = document.getElementById('modeNote');
+  if (m === 'gps') {
+    note.textContent = 'GPS will place a notation at your current position.';
+    simulateGPS();
+  } else {
+    note.textContent = 'Tap anywhere on the map to place a notation.';
+  }
+}
+
+function simulateGPS() {
+  const canvas = getCanvas();
+  const W = canvas.width, H = canvas.height;
+  pendingX = W*0.48; pendingY = H*0.4;
+  document.getElementById('confirmMethod').textContent = 'GPS auto-place';
+  document.getElementById('confirmCoords').textContent = '38.5219°N · 123.4509°W';
+  showOverlay();
+}
+
+getCanvas().addEventListener('click', (e) => {
+  if (mode !== 'picker') return;
+  const rect = e.target.getBoundingClientRect();
+  pendingX = e.clientX - rect.left;
+  pendingY = e.clientY - rect.top;
+  const W = e.target.width, H = e.target.height;
+  const lat = (38.56 - (pendingY/H)*0.12).toFixed(4);
+  const lon = (123.43 + (pendingX/W)*0.04).toFixed(4);
+  document.getElementById('confirmCoords').textContent = lat+'°N · '+lon+'°W';
+  document.getElementById('confirmMethod').textContent = 'Map picker';
+  showOverlay();
+});
+
+function showOverlay() {
+  document.getElementById('confirmOverlay').classList.add('active');
+  drawPreview();
+}
+
+function drawPreview() {
+  const canvas = document.getElementById('previewCanvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,120,60);
+  ctx.fillStyle = '#f8f8f6'; ctx.fillRect(0,0,120,60);
+  if (hasLexicon) {
+    ctx.strokeStyle = '#2a6049'; ctx.lineWidth = 1.2;
+    ctx.fillStyle = 'rgba(42,96,73,0.1)';
+    ctx.beginPath(); ctx.rect(45,15,30,30); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(60,30,5,0,Math.PI*2);
+    ctx.fillStyle = '#2a6049'; ctx.fill();
+    ctx.fillStyle = '#2a6049'; ctx.font = '7px IBM Plex Mono'; ctx.textAlign = 'center';
+    ctx.fillText('Lexicon mark', 60, 54);
+  } else {
+    ctx.beginPath(); ctx.arc(60,30,8,0,Math.PI*2);
+    ctx.fillStyle = '#888'; ctx.fill();
+    ctx.fillStyle = '#888'; ctx.font = '7px IBM Plex Mono'; ctx.textAlign = 'center';
+    ctx.fillText('Dot placeholder', 60, 54);
+  }
+}
+
+function confirmPlacement() {
+  const canvas = getCanvas();
+  const W = canvas.width, H = canvas.height;
+  notations.push({ x: pendingX/W, y: pendingY/H, lexicon: hasLexicon, label: 'A. Halprin — '+(notations.length+1) });
+  document.getElementById('notationCount').textContent = notations.length;
+  document.getElementById('confirmOverlay').classList.remove('active');
+  renderMap();
+  updateNotationList();
+}
+
+function cancelPlacement() {
+  document.getElementById('confirmOverlay').classList.remove('active');
+}
+
+function updateNotationList() {
+  const list = document.getElementById('notationList');
+  list.innerHTML = notations.map((n,i) => `
+    <div class="notation-item">
+      <div class="notation-item-name">${n.label}</div>
+      <div class="notation-item-coord">${(38.56-(n.y*0.12)).toFixed(4)}°N · ${(123.43+(n.x*0.04)).toFixed(4)}°W</div>
+      <div class="notation-item-status${n.lexicon?'':' pending'}">${n.lexicon?'Lexicon mark placed':'Dot placeholder — lexicon pending'}</div>
+    </div>
+  `).join('');
+}
+
+function zoom(factor) {
+  const canvas = getCanvas();
+  scale *= factor;
+  canvas.width = Math.round(MAP_W * scale);
+  canvas.height = Math.round(MAP_H * scale);
+  renderMap();
+}
+
+function resetView() { initCanvas(); }
+
+window.addEventListener('resize', initCanvas);
+initCanvas();
+</script>
+</body>
+</html>

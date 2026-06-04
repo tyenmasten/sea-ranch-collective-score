@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lexicon Overview — Sea Ranch Collective Score</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap">
+<style>
+/* Mobile responsive — to be handled by Cursor in a separate pass */
+
+@font-face { font-family: 'Miniature'; src: url('Fonts/Miniature-Display.otf'); }
+@font-face { font-family: 'Media77'; src: url('Fonts/Media77-Regular.otf'); }
+
+:root {
+  --bg: #e8e8e8;
+  --surface: #f0f0f0;
+  --surface2: #ffffff;
+  --border: #cccccc;
+  --border2: #b8b8b8;
+  --ink: #1a1a1a;
+  --dim: #888888;
+  --accent: #3a3a3a;
+  --active: #1a1a1a;
+  --hi: #d8d8d8;
+  --dot: #2a6049;
+  --dot-pending: #888888;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { height: 100%; }
+
+body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.app-chrome {
+  flex: 0 0 auto;
+  width: 100%;
+  z-index: 100;
+  background: var(--bg);
+}
+
+.workspace {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+header {
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  background: #d0d0d0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.h-title {
+  font-family: 'Miniature', serif;
+  font-size: 26px;
+  font-weight: normal;
+  font-style: normal;
+  color: var(--ink);
+  letter-spacing: normal;
+  line-height: 1.1;
+}
+
+.h-sub {
+  font-family: 'Miniature', serif;
+  font-size: 11px;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+  margin-top: 2px;
+}
+
+.h-user {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  background: var(--surface2);
+}
+
+nav {
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  padding: 0 24px;
+  background: var(--surface);
+}
+
+.nav-item {
+  font-family: 'Miniature', serif;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  padding: 10px 16px;
+  color: var(--dim);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  text-decoration: none;
+  display: block;
+}
+
+.nav-item.active { color: var(--ink); border-bottom-color: var(--ink); }
+
+.sidebar {
+  width: 240px;
+  flex: 0 0 240px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-panel {
+  display: none;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 12px 16px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.sidebar-panel.active { display: flex; }
+
+.sidebar-panel::-webkit-scrollbar { width: 6px; }
+.sidebar-panel::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+.section-block { flex-shrink: 0; }
+
+.slabel {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 5px;
+  margin-bottom: 8px;
+}
+
+.flabel {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 4px;
+  display: block;
+  margin-top: 8px;
+}
+
+.flabel:first-child { margin-top: 0; }
+
+.btn {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn:hover { border-color: var(--ink); }
+.btn.primary {
+  background: var(--ink);
+  color: #f0f0f0;
+  border-color: var(--ink);
+  width: 100%;
+  padding: 10px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  margin-top: 0;
+}
+.btn.primary:hover { background: #444; border-color: #444; }
+.btn.ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--dim);
+  width: 100%;
+  padding: 10px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+.btn.ghost:hover { border-color: var(--ink); color: var(--ink); }
+
+.sep {
+  height: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.note {
+  font-family: 'Media77', sans-serif;
+  font-size: 11px;
+  color: var(--dim);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.stats-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.stat-box {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 8px;
+  text-align: center;
+}
+
+.stat-num {
+  font-size: 20px;
+  color: var(--ink);
+  display: block;
+  font-family: 'Miniature', serif;
+}
+
+.stat-label {
+  font-size: 8px;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  display: block;
+  margin-top: 2px;
+}
+
+.organise-btn {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.15s;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.organise-btn:hover { border-color: var(--ink); }
+
+.organise-btn.active {
+  background: var(--ink);
+  color: #f0f0f0;
+  border-color: var(--ink);
+}
+
+.organise-btn .count {
+  font-size: 8px;
+  opacity: 0.65;
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+
+.organise-btn.active .count {
+  opacity: 0.75;
+}
+
+.locked-section {
+  border: 1px dashed var(--border);
+  padding: 12px;
+  background: var(--surface2);
+}
+
+.lock-badge {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+  background: var(--hi);
+  padding: 2px 8px;
+  display: inline-block;
+  margin-bottom: 8px;
+}
+
+.locked-section select,
+.locked-section input[type="text"] {
+  width: 100%;
+  background: var(--hi);
+  border: 1px solid var(--border);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  padding: 5px 8px;
+  color: var(--dim);
+  margin-bottom: 6px;
+  outline: none;
+}
+
+.locked-section .btn.staff-action {
+  opacity: 1;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.data-row {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 4px;
+  margin-bottom: 7px;
+  align-items: baseline;
+}
+
+.data-key {
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.data-val {
+  font-size: 11px;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.data-val.desc {
+  font-family: 'Media77', sans-serif;
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.data-val.tag {
+  display: inline-block;
+  background: var(--hi);
+  padding: 2px 6px;
+  font-size: 9px;
+}
+
+.data-row--full {
+  grid-template-columns: 1fr;
+}
+
+.mark-preview-box {
+  width: 120px;
+  height: 90px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 6px 0;
+}
+
+.mark-preview-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  padding: 8px;
+}
+
+.mark-preview-inner svg {
+  display: block;
+  max-width: 104px;
+  max-height: 74px;
+  width: auto;
+  height: auto;
+}
+
+.grid-area {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 24px;
+  background: var(--bg);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+
+.grid-area::-webkit-scrollbar { width: 6px; }
+.grid-area::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+.group-section {
+  margin-bottom: 28px;
+}
+
+.group-label {
+  font-family: 'Miniature', serif;
+  font-size: 16px;
+  color: var(--ink);
+  letter-spacing: 0.08em;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.group-count {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.tile-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tile {
+  width: 80px;
+  height: 100px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  appearance: none;
+}
+
+.tile:hover { border-color: #666; }
+
+.tile.selected {
+  border: 2px solid var(--ink);
+}
+
+.tile-canvas {
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  flex-shrink: 0;
+}
+
+.tile-canvas svg {
+  width: 56px;
+  height: 56px;
+  display: block;
+}
+
+.tile-footer {
+  height: 20px;
+  padding: 2px 6px 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.tile-name {
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.1;
+}
+
+.tile-sub {
+  font-size: 7px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.1;
+}
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="app-chrome">
+    <header>
+      <div>
+        <div class="h-title">Sea Ranch — Collective Score</div>
+        <div class="h-sub">AA Visiting School · The Sea Ranch, California · July 2026</div>
+      </div>
+      <div class="h-user" id="headerUser">Instructor: T. Masten</div>
+    </header>
+    <nav>
+      <a class="nav-item" href="lexicon-builder.html">Lexicon</a>
+      <a class="nav-item" href="location-input.html">Location</a>
+      <a class="nav-item" href="collective-score.html">Score</a>
+      <a class="nav-item active" href="lexicon-overview.html">Overview</a>
+    </nav>
+  </div>
+
+  <div class="workspace">
+
+    <aside class="sidebar">
+      <div class="sidebar-panel active" id="panelDefault">
+
+        <div class="section-block">
+          <div class="slabel">Overview</div>
+          <div class="stats-bar">
+            <div class="stat-box"><span class="stat-num">15</span><span class="stat-label">Students</span></div>
+            <div class="stat-box"><span class="stat-num">43</span><span class="stat-label">Lexicons</span></div>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="section-block">
+          <div class="slabel">Organise By</div>
+          <div id="organiseButtons"></div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="section-block">
+          <div class="slabel">Export</div>
+          <div class="locked-section">
+            <span class="lock-badge">Instructor Only</span>
+            <span class="flabel" style="margin-top:0;">Layer Selection</span>
+            <select id="exportScope">
+              <option value="all">All Lexicons</option>
+              <option value="group">Selected Group</option>
+              <option value="tile">Selected Tile</option>
+            </select>
+            <span class="flabel">Scale</span>
+            <input type="text" id="exportScale" value="1:500">
+            <button type="button" class="btn primary staff-action" id="btnExport" style="margin-top:8px;">Export SVG →</button>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="section-block">
+          <div class="slabel">Visibility</div>
+          <div class="locked-section">
+            <span class="lock-badge">Instructor Only</span>
+            <p class="note" style="margin-bottom:8px;">Unlock for all students simultaneously.</p>
+            <button type="button" class="btn primary staff-action" id="btnOverviewVisibility">Overview — Unlocked ✓</button>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="sidebar-panel" id="panelSelected">
+        <div class="section-block">
+          <button type="button" class="btn ghost" id="btnBack">← Back</button>
+        </div>
+        <div class="section-block">
+          <div class="slabel">Selected Lexicon</div>
+          <div class="mark-preview-box">
+            <div class="mark-preview-inner" id="selectedMarkPreview"></div>
+          </div>
+        </div>
+        <div class="section-block">
+          <div class="data-row">
+            <span class="data-key">Author</span>
+            <span class="data-val" id="selAuthor"></span>
+          </div>
+          <div class="data-row">
+            <span class="data-key">Lexicon</span>
+            <span class="data-val" id="selLexicon"></span>
+          </div>
+          <div class="data-row">
+            <span class="data-key">Meta Data</span>
+            <span class="data-val"><span class="data-val tag" id="selMeta"></span></span>
+          </div>
+          <div class="data-row">
+            <span class="data-key">Element</span>
+            <span class="data-val"><span class="data-val tag" id="selElement"></span></span>
+          </div>
+          <div class="data-row">
+            <span class="data-key">Typology</span>
+            <span class="data-val"><span class="data-val tag" id="selTypology"></span></span>
+          </div>
+          <div class="data-row data-row--full">
+            <span class="data-key">Description</span>
+            <span class="data-val desc" id="selDescription"></span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="grid-area" id="gridArea"></div>
+
+  </div>
+</div>
+
+<script>
+const META_LABELS = {
+  form: 'Form',
+  context: 'Context',
+  culture: 'Culture',
+};
+
+const ELEMENT_LABELS = {
+  landscape: 'Landscape',
+  people: 'People',
+  architecture: 'Architecture',
+};
+
+const TYPOLOGY_LABELS = {
+  single: 'Single Family',
+  multi: 'Multi Unit',
+  public: 'Public Facility',
+};
+
+const META_ORDER = ['form', 'context', 'culture'];
+const ELEMENT_ORDER = ['landscape', 'people', 'architecture'];
+const TYPOLOGY_ORDER = ['single', 'multi', 'public'];
+
+const ORGANISE_OPTIONS = [
+  { key: 'author', label: 'Author', count: '15 groups' },
+  { key: 'meta', label: 'Form / Context / Culture', count: '3 groups' },
+  { key: 'element', label: 'Element', count: '3 groups' },
+  { key: 'typology', label: 'Typology', count: '3 groups' },
+  { key: 'chrono', label: 'Chronological', count: '—' },
+];
+
+const TILE_MARK_SIZE = 56;
+const PREVIEW_MARK_SIZE = 88;
+
+/** DEV: remove before launch */
+const DEV_TEST_MARKS = [
+  {
+    name: 'Solid black square',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#1a1a1a"/></svg>',
+  },
+  {
+    name: 'Outlined square, no fill',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="15" height="15" x="0.5" y="0.5" fill="none" stroke="#1a1a1a" stroke-width="1.5"/></svg>',
+  },
+  {
+    name: 'Solid black circle',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#1a1a1a"/></svg>',
+  },
+  {
+    name: 'Triangle',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><polygon points="8,1 15,15 1,15" fill="#1a1a1a"/></svg>',
+  },
+  {
+    name: 'Hatched square',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><defs><pattern id="hatch-dev" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="#1a1a1a" stroke-width="1"/></pattern></defs><rect width="16" height="16" fill="url(#hatch-dev)"/></svg>',
+  },
+  {
+    name: 'Horizontal line',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="0" y1="8" x2="16" y2="8" stroke="#1a1a1a" stroke-width="2"/></svg>',
+  },
+];
+
+// TODO: Firebase — replace with real lexicon entries from Firestore
+const LEXICONS = [
+  { id: 'l1', author: 'A. Halprin', lexicon: 'Coastal Edge Mark', markIndex: 0, colour: '#1a1a1a', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-19T09:00:00Z', description: 'The bluff edge reads as a threshold.' },
+  { id: 'l2', author: 'A. Halprin', lexicon: 'Wind Trace', markIndex: 5, colour: '#1a1a1a', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-19T11:00:00Z', description: 'Horizontal load in the grass.' },
+  { id: 'l3', author: 'L. Moore', lexicon: 'Meadow Section', markIndex: 1, colour: '#1a1a1a', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-19T10:00:00Z', description: 'Roof pitch follows the ridgeline.' },
+  { id: 'l4', author: 'L. Moore', lexicon: 'Commons Edge', markIndex: 2, colour: '#1a1a1a', meta: 'culture', element: 'people', typology: 'multi', savedAt: '2026-07-20T09:00:00Z', description: 'The shared threshold.' },
+  { id: 'l5', author: 'J. Esherick', lexicon: 'Timber Grain', markIndex: 3, colour: '#1a1a1a', meta: 'form', element: 'architecture', typology: 'single', savedAt: '2026-07-19T14:00:00Z', description: 'Siding grain runs horizontal.' },
+  { id: 'l6', author: 'J. Esherick', lexicon: 'Bluff Profile', markIndex: 4, colour: '#1a1a1a', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-20T10:00:00Z', description: 'Section through the coastal terrace.' },
+  { id: 'l7', author: 'B. Solomon', lexicon: 'Supergraphic Field', markIndex: 0, colour: '#1a1a1a', meta: 'culture', element: 'people', typology: 'public', savedAt: '2026-07-19T15:00:00Z', description: 'Colour as spatial instruction.' },
+  { id: 'l8', author: 'B. Solomon', lexicon: 'Surface Pattern', markIndex: 1, colour: '#1a1a1a', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-20T11:00:00Z', description: 'The meadow as canvas.' },
+  { id: 'l9', author: 'H. Eckbo', lexicon: 'Ground Plane', markIndex: 2, colour: '#1a1a1a', meta: 'context', element: 'landscape', typology: 'single', savedAt: '2026-07-19T16:00:00Z', description: 'Steps negotiate the bluff.' },
+  { id: 'l10', author: 'H. Eckbo', lexicon: 'Path Score', markIndex: 5, colour: '#1a1a1a', meta: 'context', element: 'people', typology: 'public', savedAt: '2026-07-20T14:00:00Z', description: 'The path as notation.' },
+  { id: 'l11', author: 'R. Royston', lexicon: 'Canopy Edge', markIndex: 3, colour: '#1a1a1a', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-21T09:00:00Z', description: 'Where the cypress meets the sky.' },
+  { id: 'l12', author: 'D. Appleyard', lexicon: 'View Corridor', markIndex: 4, colour: '#1a1a1a', meta: 'context', element: 'landscape', typology: 'public', savedAt: '2026-07-21T10:00:00Z', description: 'The framed Pacific.' },
+  { id: 'l13', author: 'K. Breckenridge', lexicon: 'Material Joint', markIndex: 0, colour: '#1a1a1a', meta: 'form', element: 'architecture', typology: 'single', savedAt: '2026-07-21T11:00:00Z', description: 'Board and batten at the corner.' },
+  { id: 'l14', author: 'M. Treib', lexicon: 'Sequence', markIndex: 1, colour: '#1a1a1a', meta: 'context', element: 'people', typology: 'public', savedAt: '2026-07-22T09:00:00Z', description: 'Entry as procession.' },
+  { id: 'l15', author: 'C. Dorner', lexicon: 'Fog Line', markIndex: 2, colour: '#1a1a1a', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-22T10:00:00Z', description: 'The marine layer as datum.' },
+];
+
+const state = {
+  organiseBy: 'author',
+  selectedId: null,
+  visibility: {
+    overviewUnlocked: true,
+  },
+};
+
+const els = {};
+
+const ELEMENT_IDS = {
+  panelDefault: 'panelDefault',
+  panelSelected: 'panelSelected',
+  btnBack: 'btnBack',
+  selectedMarkPreview: 'selectedMarkPreview',
+  selAuthor: 'selAuthor',
+  selLexicon: 'selLexicon',
+  selMeta: 'selMeta',
+  selElement: 'selElement',
+  selTypology: 'selTypology',
+  selDescription: 'selDescription',
+  gridArea: 'gridArea',
+  organiseButtons: 'organiseButtons',
+  btnExport: 'btnExport',
+  exportScope: 'exportScope',
+  exportScale: 'exportScale',
+  btnOverviewVisibility: 'btnOverviewVisibility',
+};
+
+function cacheElements() {
+  Object.entries(ELEMENT_IDS).forEach(([key, id]) => {
+    els[key] = document.getElementById(id);
+  });
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function getMarkDefinition(index) {
+  const i = index != null && index >= 0 && index < DEV_TEST_MARKS.length ? index : 0;
+  return DEV_TEST_MARKS[i] || DEV_TEST_MARKS[0];
+}
+
+function buildMarkSvg(lexicon, sizePx) {
+  const markDef = getMarkDefinition(lexicon.markIndex);
+  const colour = lexicon.colour || '#1a1a1a';
+  let svg = markDef.svg.replace(/#1a1a1a/gi, colour);
+  if (svg.includes('hatch-dev')) {
+    const patternId = 'hatch-' + lexicon.id + '-' + sizePx;
+    svg = svg
+      .replace(/id="hatch-dev"/g, `id="${patternId}"`)
+      .replace(/#hatch-dev/g, `#${patternId}`);
+  }
+  return svg
+    .replace(/width="16"/, `width="${sizePx}"`)
+    .replace(/height="16"/, `height="${sizePx}"`);
+}
+
+function sortLexicons(items) {
+  return items.slice().sort((a, b) => a.lexicon.localeCompare(b.lexicon));
+}
+
+function getGroups() {
+  const groups = {};
+  const order = [];
+
+  if (state.organiseBy === 'author') {
+    const authors = [...new Set(LEXICONS.map((l) => l.author))].sort((a, b) => a.localeCompare(b));
+    authors.forEach((author) => {
+      groups[author] = sortLexicons(LEXICONS.filter((l) => l.author === author));
+      order.push(author);
+    });
+    return { groups, order };
+  }
+
+  if (state.organiseBy === 'meta') {
+    META_ORDER.forEach((key) => {
+      const label = META_LABELS[key];
+      const items = sortLexicons(LEXICONS.filter((l) => l.meta === key));
+      if (items.length) {
+        groups[label] = items;
+        order.push(label);
+      }
+    });
+    return { groups, order };
+  }
+
+  if (state.organiseBy === 'element') {
+    ELEMENT_ORDER.forEach((key) => {
+      const label = ELEMENT_LABELS[key];
+      const items = sortLexicons(LEXICONS.filter((l) => l.element === key));
+      if (items.length) {
+        groups[label] = items;
+        order.push(label);
+      }
+    });
+    return { groups, order };
+  }
+
+  if (state.organiseBy === 'typology') {
+    TYPOLOGY_ORDER.forEach((key) => {
+      const label = TYPOLOGY_LABELS[key];
+      const items = sortLexicons(LEXICONS.filter((l) => l.typology === key));
+      if (items.length) {
+        groups[label] = items;
+        order.push(label);
+      }
+    });
+    return { groups, order };
+  }
+
+  const sorted = LEXICONS.slice().sort((a, b) => new Date(a.savedAt) - new Date(b.savedAt));
+  groups['All Lexicons'] = sorted;
+  order.push('All Lexicons');
+  return { groups, order };
+}
+
+function groupCountLabel(count) {
+  return count + ' lexicon' + (count !== 1 ? 's' : '');
+}
+
+function renderGrid() {
+  const { groups, order } = getGroups();
+  els.gridArea.innerHTML = '';
+
+  order.forEach((key) => {
+    const items = groups[key];
+    const section = document.createElement('section');
+    section.className = 'group-section';
+
+    const label = document.createElement('div');
+    label.className = 'group-label';
+    const title = document.createElement('span');
+    title.textContent = key;
+    const count = document.createElement('span');
+    count.className = 'group-count';
+    count.textContent = groupCountLabel(items.length);
+    label.appendChild(title);
+    label.appendChild(count);
+    section.appendChild(label);
+
+    const grid = document.createElement('div');
+    grid.className = 'tile-grid';
+
+    items.forEach((lex) => {
+      const tile = document.createElement('button');
+      tile.type = 'button';
+      tile.className = 'tile' + (lex.id === state.selectedId ? ' selected' : '');
+      tile.setAttribute('aria-label', lex.lexicon + ' — ' + lex.author);
+
+      const canvas = document.createElement('div');
+      canvas.className = 'tile-canvas';
+      canvas.innerHTML = buildMarkSvg(lex, TILE_MARK_SIZE);
+
+      const footer = document.createElement('div');
+      footer.className = 'tile-footer';
+      footer.innerHTML =
+        '<div class="tile-name">' +
+        escapeHtml(lex.lexicon) +
+        '</div><div class="tile-sub">' +
+        escapeHtml(lex.author) +
+        '</div>';
+
+      tile.appendChild(canvas);
+      tile.appendChild(footer);
+      tile.addEventListener('click', () => selectLexicon(lex.id));
+      grid.appendChild(tile);
+    });
+
+    section.appendChild(grid);
+    els.gridArea.appendChild(section);
+  });
+}
+
+function populateSelectedPanel(lex) {
+  els.selectedMarkPreview.innerHTML = buildMarkSvg(lex, PREVIEW_MARK_SIZE);
+  els.selAuthor.textContent = lex.author;
+  els.selLexicon.textContent = lex.lexicon;
+  els.selMeta.textContent = META_LABELS[lex.meta] || lex.meta;
+  els.selElement.textContent = ELEMENT_LABELS[lex.element] || lex.element;
+  els.selTypology.textContent = TYPOLOGY_LABELS[lex.typology] || lex.typology;
+  els.selDescription.textContent = lex.description || '—';
+}
+
+function showPanelDefault() {
+  els.panelDefault.classList.add('active');
+  els.panelSelected.classList.remove('active');
+}
+
+function showPanelSelected() {
+  els.panelDefault.classList.remove('active');
+  els.panelSelected.classList.add('active');
+}
+
+function selectLexicon(id) {
+  state.selectedId = id;
+  const lex = LEXICONS.find((l) => l.id === id);
+  if (!lex) return;
+  populateSelectedPanel(lex);
+  showPanelSelected();
+  renderGrid();
+}
+
+function deselectLexicon() {
+  state.selectedId = null;
+  showPanelDefault();
+  renderGrid();
+}
+
+function setOrganise(key) {
+  state.organiseBy = key;
+  els.organiseButtons.querySelectorAll('.organise-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.organise === key);
+  });
+  renderGrid();
+}
+
+function buildOrganiseButtons() {
+  els.organiseButtons.innerHTML = '';
+  ORGANISE_OPTIONS.forEach((opt) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'organise-btn' + (opt.key === state.organiseBy ? ' active' : '');
+    btn.dataset.organise = opt.key;
+    btn.innerHTML =
+      '<span>' + escapeHtml(opt.label) + '</span><span class="count">' + escapeHtml(opt.count) + '</span>';
+    btn.addEventListener('click', () => setOrganise(opt.key));
+    els.organiseButtons.appendChild(btn);
+  });
+}
+
+function updateVisibilityButton() {
+  if (state.visibility.overviewUnlocked) {
+    els.btnOverviewVisibility.textContent = 'Overview — Unlocked ✓';
+    els.btnOverviewVisibility.classList.add('primary');
+    els.btnOverviewVisibility.classList.remove('ghost');
+  } else {
+    els.btnOverviewVisibility.textContent = 'Overview — Locked';
+    els.btnOverviewVisibility.classList.remove('primary');
+    els.btnOverviewVisibility.classList.add('ghost');
+  }
+}
+
+function bindEvents() {
+  els.btnBack.addEventListener('click', deselectLexicon);
+
+  els.btnExport.addEventListener('click', () => {
+    console.log('Export SVG (stub):', {
+      scope: els.exportScope.value,
+      scale: els.exportScale.value,
+      selectedId: state.selectedId,
+      organiseBy: state.organiseBy,
+    });
+  });
+
+  els.btnOverviewVisibility.addEventListener('click', () => {
+    state.visibility.overviewUnlocked = !state.visibility.overviewUnlocked;
+    updateVisibilityButton();
+    console.log('Overview visibility:', state.visibility.overviewUnlocked ? 'unlocked' : 'locked');
+  });
+}
+
+function init() {
+  cacheElements();
+  buildOrganiseButtons();
+  updateVisibilityButton();
+  bindEvents();
+  renderGrid();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>

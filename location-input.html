@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Location Input — Sea Ranch Collective Score</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+/* Mobile responsive — to be handled by Cursor in a separate pass */
+
+@font-face { font-family: 'Miniature'; src: url('Fonts/Miniature-Display.otf'); }
+@font-face { font-family: 'Media77'; src: url('Fonts/Media77-Regular.otf'); }
+
+:root {
+  --bg: #e8e8e8;
+  --surface: #f0f0f0;
+  --surface2: #ffffff;
+  --border: #cccccc;
+  --border2: #b8b8b8;
+  --ink: #1a1a1a;
+  --dim: #888888;
+  --accent: #3a3a3a;
+  --active: #1a1a1a;
+  --hi: #d8d8d8;
+  --dot: #2a6049;
+  --dot-pending: #888888;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { height: 100%; }
+
+body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.app-chrome {
+  flex: 0 0 auto;
+  width: 100%;
+  z-index: 100;
+  background: var(--bg);
+}
+
+.workspace {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+header {
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  background: #d0d0d0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.h-title {
+  font-family: 'Miniature', serif;
+  font-size: 26px;
+  font-weight: normal;
+  font-style: normal;
+  color: var(--ink);
+  letter-spacing: normal;
+  line-height: 1.1;
+}
+
+.h-sub {
+  font-family: 'Miniature', serif;
+  font-size: 11px;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+  margin-top: 2px;
+}
+
+.h-user {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  background: var(--surface2);
+}
+
+nav {
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  padding: 0 24px;
+  background: var(--surface);
+}
+
+.nav-item {
+  font-family: 'Miniature', serif;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  padding: 10px 16px;
+  color: var(--dim);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  text-decoration: none;
+  display: block;
+}
+
+.nav-item.active { color: var(--ink); border-bottom-color: var(--ink); }
+.nav-item.locked { color: var(--border2); opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+
+/* Sidebar */
+.sidebar {
+  width: 240px;
+  flex: 0 0 240px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 12px 16px;
+  gap: 12px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+
+.sidebar::-webkit-scrollbar { width: 6px; }
+.sidebar::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+.section-block { flex-shrink: 0; }
+
+.slabel {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 5px;
+  margin-bottom: 8px;
+}
+
+.flabel {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 4px;
+  display: block;
+  margin-top: 8px;
+}
+
+.flabel:first-child { margin-top: 0; }
+
+input[type="text"] {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  padding: 5px 8px;
+  outline: none;
+}
+
+input[type="text"]:focus { border-color: var(--ink); }
+
+input[type="text"][readonly] {
+  color: var(--dim);
+  background: var(--hi);
+}
+
+input.lexicon-empty {
+  font-family: 'Media77', sans-serif;
+  font-style: italic;
+  color: var(--dim);
+}
+
+.btn {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn:hover { border-color: var(--ink); }
+.btn.sel { background: var(--ink); color: #f0f0f0; border-color: var(--ink); }
+.btn.full { width: 100%; margin-top: 6px; text-align: center; }
+.btn.primary {
+  background: var(--ink);
+  color: #f0f0f0;
+  border-color: var(--ink);
+  width: 100%;
+  padding: 10px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  margin-top: 0;
+}
+.btn.primary:hover { background: #444; border-color: #444; }
+.btn.ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--dim);
+  width: 100%;
+  padding: 10px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+.btn.ghost:hover { border-color: var(--ink); color: var(--ink); }
+.btn.danger { color: #a03030; border-color: #ccaaaa; background: transparent; }
+.btn.danger:hover { background: #a03030; color: #f0f0f0; border-color: #a03030; }
+
+.btn-group { display: flex; }
+.btn-group .btn { flex: 1; }
+.btn-group .btn:not(:last-child) { border-right: none; }
+
+.note {
+  font-family: 'Media77', sans-serif;
+  font-size: 11px;
+  color: var(--dim);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.mode-note {
+  font-size: 9px;
+  color: var(--dim);
+  margin-top: 6px;
+  letter-spacing: 0.04em;
+}
+
+.gps-error {
+  display: none;
+  margin-top: 6px;
+}
+
+.gps-error.visible { display: block; }
+
+.layer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.layer-name {
+  font-size: 9px;
+  color: var(--ink);
+  letter-spacing: 0.06em;
+}
+
+.layer-toggle {
+  width: 28px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--hi);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s, border-color 0.2s;
+  flex-shrink: 0;
+}
+
+.layer-toggle.on {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.layer-toggle::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ffffff;
+  top: 1px;
+  left: 1px;
+  transition: left 0.2s;
+}
+
+.layer-toggle.on::after { left: 15px; }
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-label {
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: 0.06em;
+}
+
+.notation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.notation-item {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  background: var(--surface2);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.notation-item:hover { border-color: var(--ink); }
+
+.notation-item.selected {
+  border-color: var(--ink);
+  background: var(--hi);
+}
+
+.notation-item-name {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.notation-item-coord {
+  font-size: 8px;
+  color: var(--dim);
+  margin-top: 2px;
+}
+
+.notation-item-status {
+  font-size: 8px;
+  margin-top: 2px;
+  font-family: 'Media77', sans-serif;
+  font-style: italic;
+  color: var(--dot);
+}
+
+.notation-item-status.pending { color: var(--dim); }
+
+.sep {
+  height: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+/* Map */
+.map-viewer {
+  flex: 1 1 0;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--surface2);
+}
+
+.map-area {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.map-viewer.mode-picker .leaflet-container { cursor: crosshair; }
+.map-viewer.mode-gps .leaflet-container { cursor: default; }
+
+.leaflet-container {
+  background: #ffffff;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.map-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 1000;
+}
+
+.map-btn {
+  width: 32px;
+  height: 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  transition: background 0.15s;
+  padding: 0;
+}
+
+.map-btn:hover { background: var(--hi); }
+
+.map-load-msg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+  z-index: 1500;
+  pointer-events: none;
+}
+
+/* Confirmation overlay */
+.overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+}
+
+.overlay.open { display: flex; }
+
+.confirm-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  width: 280px;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+.confirm-title {
+  font-family: 'Miniature', serif;
+  font-size: 16px;
+  color: var(--ink);
+  letter-spacing: 0.06em;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.confirm-row {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 4px 8px;
+  margin-bottom: 6px;
+  align-items: baseline;
+}
+
+.confirm-key {
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.confirm-val {
+  font-size: 11px;
+  color: var(--ink);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.confirm-val.pending {
+  color: var(--dim);
+  font-style: italic;
+  font-family: 'Media77', sans-serif;
+  font-size: 12px;
+}
+
+.mark-preview {
+  width: 80px;
+  height: 80px;
+  margin: 12px auto;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mark-preview-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.notation-leaflet-icon {
+  background: transparent;
+  border: none;
+}
+
+.notation-mark-square {
+  width: 16px;
+  height: 16px;
+  background: #1a1a1a;
+  border: 1px solid #1a1a1a;
+  box-sizing: border-box;
+}
+
+.notation-mark-square.selected {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 2px;
+}
+
+.notation-mark-svg {
+  width: 16px;
+  height: 16px;
+  line-height: 0;
+}
+
+.notation-mark-svg svg {
+  display: block;
+}
+
+.notation-mark-svg.selected {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 2px;
+}
+
+.mark-selector-block {
+  margin-top: 12px;
+}
+
+.mark-selector-block .flabel {
+  margin-top: 0;
+}
+
+.mark-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.mark-selector-tile {
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  box-sizing: border-box;
+}
+
+.mark-selector-tile.sel {
+  border-color: var(--ink);
+}
+
+.mark-selector-tile svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.notation-name-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #1a1a1a;
+  white-space: nowrap;
+  line-height: 1;
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 1px 3px;
+  border: 1px solid var(--border);
+}
+
+.notation-name-label.selected {
+  border-color: #1a1a1a;
+}
+
+.legend-swatch--mark {
+  width: 10px;
+  height: 10px;
+  border-radius: 0;
+  background: #1a1a1a;
+  border: 1px solid #1a1a1a;
+}
+
+.legend-swatch--name {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #1a1a1a;
+  padding: 0;
+}
+
+.confirm-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+}
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <div class="app-chrome">
+    <header>
+      <div>
+        <div class="h-title">Sea Ranch — Collective Score</div>
+        <div class="h-sub">AA Visiting School · The Sea Ranch, California · July 2026</div>
+      </div>
+      <div class="h-user" id="headerUser">Student: A. Halprin</div>
+    </header>
+    <nav>
+      <a class="nav-item" href="lexicon-builder.html">Lexicon</a>
+      <a class="nav-item active" href="location-input.html">Location</a>
+      <span class="nav-item locked">Score</span>
+      <span class="nav-item locked">Overview</span>
+    </nav>
+  </div>
+
+  <div class="workspace">
+
+    <aside class="sidebar">
+      <div class="section-block">
+        <div class="slabel">Identity</div>
+        <span class="flabel">Author</span>
+        <input type="text" id="authorField" value="A. Halprin" readonly>
+        <span class="flabel">Lexicon</span>
+        <input type="text" id="lexiconField" readonly>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="section-block">
+        <div class="slabel">Add Notation</div>
+        <p class="note" style="margin-bottom:8px;">Tap the map to place a notation, or use GPS.</p>
+        <div class="btn-group">
+          <button type="button" class="btn sel" id="btnPicker" data-mode="picker">Picker</button>
+          <button type="button" class="btn" id="btnGps" data-mode="gps">GPS</button>
+        </div>
+        <p class="mode-note" id="modeNote">Tap anywhere on the map.</p>
+        <p class="note gps-error" id="gpsError">GPS unavailable. Switch to Picker.</p>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="section-block">
+        <div class="slabel">Site Layers</div>
+        <div class="layer-row">
+          <span class="layer-name">Streets</span>
+          <button type="button" class="layer-toggle on" id="toggleStreets" aria-pressed="true" aria-label="Toggle streets"></button>
+        </div>
+        <div class="layer-row">
+          <span class="layer-name">Buildings</span>
+          <button type="button" class="layer-toggle on" id="toggleBuildings" aria-pressed="true" aria-label="Toggle buildings"></button>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="section-block">
+        <div class="slabel">Legend</div>
+        <div class="legend-item">
+          <span class="legend-swatch legend-swatch--mark" aria-hidden="true"></span>
+          <span class="legend-label">Lexicon mark</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch legend-swatch--name" aria-hidden="true">Name</span>
+          <span class="legend-label">Name label</span>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="section-block">
+        <div class="slabel">Placed Notations</div>
+        <div class="notation-list" id="notationList"></div>
+      </div>
+    </aside>
+
+    <div class="map-viewer mode-picker" id="mapViewer">
+      <div class="map-load-msg" id="mapLoadMsg">Loading site layers…</div>
+      <div class="map-area" id="mapArea"></div>
+
+      <div class="map-controls">
+        <button type="button" class="map-btn" id="zoomIn" title="Zoom in">+</button>
+        <button type="button" class="map-btn" id="zoomOut" title="Zoom out">−</button>
+        <button type="button" class="map-btn" id="zoomFit" title="Fit to frame">⊡</button>
+      </div>
+
+      <div class="overlay" id="confirmOverlay" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+        <div class="confirm-panel">
+          <div class="confirm-title" id="confirmTitle">Place Notation</div>
+          <div class="confirm-row">
+            <span class="confirm-key">Author</span>
+            <span class="confirm-val" id="confirmAuthor"></span>
+          </div>
+          <div class="confirm-row">
+            <span class="confirm-key">Lexicon</span>
+            <span class="confirm-val" id="confirmLexicon"></span>
+          </div>
+          <div class="confirm-row">
+            <span class="confirm-key">Coordinates</span>
+            <span class="confirm-val" id="confirmCoords"></span>
+          </div>
+          <div class="confirm-row">
+            <span class="confirm-key">Method</span>
+            <span class="confirm-val" id="confirmMethod"></span>
+          </div>
+          <!-- DEV: remove before launch -->
+          <div class="mark-selector-block" id="markSelectorBlock">
+            <span class="flabel">Select Mark</span>
+            <div class="mark-selector" id="markSelector"></div>
+          </div>
+          <div class="mark-preview" id="markPreview">
+            <div class="mark-preview-inner"></div>
+          </div>
+          <div class="confirm-btns">
+            <button type="button" class="btn primary" id="confirmBtn">Confirm</button>
+            <button type="button" class="btn ghost" id="cancelBtn">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const STREETS_STYLE = { color: '#999999', weight: 1, fill: false };
+const BUILDINGS_STYLE = {
+  color: '#aaaaaa',
+  weight: 0.5,
+  fillColor: '#dddddd',
+  fillOpacity: 0.4,
+};
+const FIT_BOUNDS_PADDING = [20, 20];
+const NOTATION_MARK_SIZE = 16;
+
+/** DEV: remove before launch */
+const DEV_TEST_MARKS = [
+  {
+    name: 'Solid black square',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#1a1a1a"/></svg>',
+  },
+  {
+    name: 'Outlined square, no fill',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="15" height="15" x="0.5" y="0.5" fill="none" stroke="#1a1a1a" stroke-width="1.5"/></svg>',
+  },
+  {
+    name: 'Solid black circle',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#1a1a1a"/></svg>',
+  },
+  {
+    name: 'Triangle',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><polygon points="8,1 15,15 1,15" fill="#1a1a1a"/></svg>',
+  },
+  {
+    name: 'Hatched square',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><defs><pattern id="hatch-dev" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="#1a1a1a" stroke-width="1"/></pattern></defs><rect width="16" height="16" fill="url(#hatch-dev)"/></svg>',
+  },
+  {
+    name: 'Horizontal line',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="0" y1="8" x2="16" y2="8" stroke="#1a1a1a" stroke-width="2"/></svg>',
+  },
+];
+
+const state = {
+  author: 'A. Halprin',
+  lexiconName: 'Coastal Edge Mark',
+  lexiconComplete: true,
+  selectedMarkIndex: 0,
+  mode: 'picker',
+  layers: {
+    streets: true,
+    buildings: true,
+  },
+  observations: [],
+  selectedObservation: null,
+};
+
+const mapData = {
+  ready: false,
+};
+
+let map = null;
+let streetsLayer = null;
+let buildingsLayer = null;
+let observationsLayer = null;
+let siteLayerGroup = null;
+let pendingPlacement = null;
+
+const els = {};
+
+const ELEMENT_IDS = {
+  mapViewer: 'mapViewer',
+  mapArea: 'mapArea',
+  mapLoadMsg: 'mapLoadMsg',
+  notationList: 'notationList',
+  lexiconField: 'lexiconField',
+  markSelectorBlock: 'markSelectorBlock',
+  markSelector: 'markSelector',
+  modeNote: 'modeNote',
+  gpsError: 'gpsError',
+  btnPicker: 'btnPicker',
+  btnGps: 'btnGps',
+  toggleStreets: 'toggleStreets',
+  toggleBuildings: 'toggleBuildings',
+  confirmOverlay: 'confirmOverlay',
+  confirmAuthor: 'confirmAuthor',
+  confirmLexicon: 'confirmLexicon',
+  confirmCoords: 'confirmCoords',
+  confirmMethod: 'confirmMethod',
+  markPreview: 'markPreview',
+  confirmBtn: 'confirmBtn',
+  cancelBtn: 'cancelBtn',
+  zoomIn: 'zoomIn',
+  zoomOut: 'zoomOut',
+  zoomFit: 'zoomFit',
+};
+
+function cacheElements() {
+  Object.entries(ELEMENT_IDS).forEach(([key, id]) => {
+    els[key] = document.getElementById(id);
+  });
+}
+
+function domReady() {
+  return document.readyState !== 'loading';
+}
+
+function isStatePlaneCoord(c) {
+  return Math.abs(c[0]) > 180 || Math.abs(c[1]) > 90;
+}
+
+function forEachCoord(geometry, fn) {
+  function walk(coords) {
+    if (typeof coords[0] === 'number') {
+      fn(coords);
+      return;
+    }
+    coords.forEach(walk);
+  }
+  if (geometry && geometry.coordinates) walk(geometry.coordinates);
+}
+
+function featuresNeedStatePlaneTransform(features) {
+  for (const f of features) {
+    if (!f.geometry) continue;
+    let found = false;
+    forEachCoord(f.geometry, (c) => {
+      if (isStatePlaneCoord(c)) found = true;
+    });
+    if (found) return true;
+  }
+  return false;
+}
+
+function featureCentroidLngLat(geometry) {
+  let lngSum = 0;
+  let latSum = 0;
+  let count = 0;
+  forEachCoord(geometry, (c) => {
+    if (isStatePlaneCoord(c)) return;
+    lngSum += c[0];
+    latSum += c[1];
+    count += 1;
+  });
+  if (!count) return null;
+  return { lng: lngSum / count, lat: latSum / count };
+}
+
+function fitLinearEN(samples, valueKey) {
+  let ee = 0;
+  let en = 0;
+  let e = 0;
+  let nn = 0;
+  let n = 0;
+  let one = 0;
+  let ev = 0;
+  let nv = 0;
+  let v = 0;
+
+  samples.forEach((s) => {
+    const E = s.easting;
+    const N = s.northing;
+    const V = s[valueKey];
+    ee += E * E;
+    en += E * N;
+    e += E;
+    nn += N * N;
+    n += N;
+    one += 1;
+    ev += E * V;
+    nv += N * V;
+    v += V;
+  });
+
+  const det =
+    ee * (nn * one - n * n) -
+    en * (en * one - n * e) +
+    e * (en * n - nn * e);
+  if (Math.abs(det) < 1e-12) return null;
+
+  const a =
+    (ev * (nn * one - n * n) -
+      en * (nv * one - n * v) +
+      e * (nv * n - nn * v)) /
+    det;
+  const b =
+    (ee * (nv * one - n * v) -
+      ev * (en * one - n * e) +
+      e * (en * v - nv * e)) /
+    det;
+  const c =
+    (ee * (nn * v - nv * n) -
+      en * (en * v - nv * e) +
+      ev * (en * n - nn * e)) /
+    det;
+
+  return { a, b, c };
+}
+
+function fitStatePlaneToWgs84(streetsFeatures) {
+  const samples = [];
+  streetsFeatures.forEach((f) => {
+    const easting = f.properties?.XCoord;
+    const northing = f.properties?.YCoord;
+    if (easting == null || northing == null || !f.geometry) return;
+    const centroid = featureCentroidLngLat(f.geometry);
+    if (!centroid) return;
+    samples.push({
+      easting,
+      northing,
+      lng: centroid.lng,
+      lat: centroid.lat,
+    });
+  });
+
+  if (samples.length < 3) {
+    throw new Error('Not enough street control points for projection');
+  }
+
+  const lngFit = fitLinearEN(samples, 'lng');
+  const latFit = fitLinearEN(samples, 'lat');
+  if (!lngFit || !latFit) {
+    throw new Error('Unable to fit state plane projection');
+  }
+
+  return {
+    toLngLat(easting, northing) {
+      const lng = lngFit.a * easting + lngFit.b * northing + lngFit.c;
+      const lat = latFit.a * easting + latFit.b * northing + latFit.c;
+      return [lng, lat];
+    },
+  };
+}
+
+function transformStatePlaneWithFit(features, fit) {
+  function xform(coords) {
+    if (typeof coords[0] === 'number') {
+      return fit.toLngLat(coords[0], coords[1]);
+    }
+    return coords.map(xform);
+  }
+
+  return features.map((f) => ({
+    type: 'Feature',
+    properties: f.properties,
+    geometry: {
+      type: f.geometry.type,
+      coordinates: xform(f.geometry.coordinates),
+    },
+  }));
+}
+
+function prepareSiteGeoJSON(streets, buildings) {
+  const streetsFeatures = streets.features;
+  const rawBuildingFeatures = buildings.features;
+  let buildingFeatures = rawBuildingFeatures;
+
+  if (featuresNeedStatePlaneTransform(rawBuildingFeatures)) {
+    const fit = fitStatePlaneToWgs84(streetsFeatures);
+    buildingFeatures = transformStatePlaneWithFit(rawBuildingFeatures, fit);
+  }
+
+  return {
+    streets,
+    buildings: {
+      type: 'FeatureCollection',
+      features: buildingFeatures,
+    },
+  };
+}
+
+function initMap() {
+  map = L.map('mapArea', {
+    zoomControl: false,
+    attributionControl: false,
+  });
+  observationsLayer = L.layerGroup().addTo(map);
+  map.on('click', onMapClick);
+}
+
+function onMapClick(e) {
+  if (!mapData.ready || state.mode !== 'picker') return;
+  openConfirmOverlay(e.latlng.lng, e.latlng.lat, 'picker');
+}
+
+function fitSiteBounds() {
+  if (!map || !siteLayerGroup) return;
+  const bounds = siteLayerGroup.getBounds();
+  if (!bounds.isValid()) return;
+  map.fitBounds(bounds, { padding: FIT_BOUNDS_PADDING });
+}
+
+function applyLayerVisibility() {
+  if (!map || !streetsLayer || !buildingsLayer) return;
+  if (state.layers.streets) {
+    if (!map.hasLayer(streetsLayer)) streetsLayer.addTo(map);
+  } else if (map.hasLayer(streetsLayer)) {
+    map.removeLayer(streetsLayer);
+  }
+  if (state.layers.buildings) {
+    if (!map.hasLayer(buildingsLayer)) buildingsLayer.addTo(map);
+  } else if (map.hasLayer(buildingsLayer)) {
+    map.removeLayer(buildingsLayer);
+  }
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function getMarkDefinition(index) {
+  const i =
+    index != null && index >= 0 && index < DEV_TEST_MARKS.length
+      ? index
+      : state.selectedMarkIndex;
+  return DEV_TEST_MARKS[i] || DEV_TEST_MARKS[0];
+}
+
+function prepareMarkSvg(svg) {
+  let out = svg;
+  if (out.includes('hatch-dev')) {
+    const patternId = 'hatch-' + crypto.randomUUID().slice(0, 8);
+    out = out.replace(/id="hatch-dev"/g, `id="${patternId}"`).replace(/#hatch-dev/g, `#${patternId}`);
+  }
+  return out;
+}
+
+function buildLexiconMarkHtml(markDef, selected) {
+  const cls = 'notation-mark-svg' + (selected ? ' selected' : '');
+  const svg = prepareMarkSvg(markDef && markDef.svg ? markDef.svg : DEV_TEST_MARKS[0].svg);
+  return `<div class="${cls}">${svg}</div>`;
+}
+
+function buildNameLabelHtml(name, selected) {
+  const cls = 'notation-name-label' + (selected ? ' selected' : '');
+  return `<span class="${cls}">${escapeHtml(name)}</span>`;
+}
+
+function estimateNameLabelSize(name) {
+  const text = String(name || 'Author');
+  return [Math.max(32, Math.ceil(text.length * 5.5) + 10), 14];
+}
+
+function createNotationDivIcon(lexiconComplete, authorName, selected, markIndex) {
+  if (lexiconComplete) {
+    const markDef = getMarkDefinition(markIndex);
+    return L.divIcon({
+      className: 'notation-leaflet-icon',
+      html: buildLexiconMarkHtml(markDef, selected),
+      iconSize: [NOTATION_MARK_SIZE, NOTATION_MARK_SIZE],
+      iconAnchor: [NOTATION_MARK_SIZE / 2, NOTATION_MARK_SIZE / 2],
+    });
+  }
+
+  const iconSize = estimateNameLabelSize(authorName);
+  return L.divIcon({
+    className: 'notation-leaflet-icon',
+    html: buildNameLabelHtml(authorName, selected),
+    iconSize,
+    iconAnchor: [iconSize[0] / 2, iconSize[1] / 2],
+  });
+}
+
+function updateMarkPreview(lexiconComplete, authorName) {
+  const inner = els.markPreview.querySelector('.mark-preview-inner');
+  if (!inner) return;
+  if (lexiconComplete) {
+    inner.innerHTML = buildLexiconMarkHtml(getMarkDefinition(state.selectedMarkIndex), false);
+  } else {
+    inner.innerHTML = buildNameLabelHtml(authorName || state.author, false);
+  }
+}
+
+function renderMarkSelector() {
+  if (!els.markSelector) return;
+  els.markSelector.innerHTML = '';
+  DEV_TEST_MARKS.forEach((mark, index) => {
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = 'mark-selector-tile' + (index === state.selectedMarkIndex ? ' sel' : '');
+    tile.dataset.index = String(index);
+    tile.setAttribute('aria-label', mark.name);
+    tile.innerHTML = prepareMarkSvg(mark.svg);
+    tile.addEventListener('click', () => selectMarkIndex(index));
+    els.markSelector.appendChild(tile);
+  });
+}
+
+function selectMarkIndex(index) {
+  state.selectedMarkIndex = index;
+  if (els.markSelector) {
+    els.markSelector.querySelectorAll('.mark-selector-tile').forEach((tile) => {
+      const i = Number(tile.dataset.index);
+      tile.classList.toggle('sel', i === index);
+    });
+  }
+  if (state.lexiconComplete) {
+    updateMarkPreview(true, state.author);
+  }
+}
+
+function syncObservationMarkers() {
+  if (!observationsLayer) return;
+  observationsLayer.clearLayers();
+  state.observations.forEach((obs) => {
+    const isSelected = state.selectedObservation === obs.id;
+    const icon = createNotationDivIcon(obs.lexiconComplete, obs.author, isSelected, obs.markIndex);
+    L.marker([obs.lat, obs.lng], { icon }).addTo(observationsLayer);
+  });
+}
+
+function formatCoord(lat, lng) {
+  return lat.toFixed(5) + '°N · ' + Math.abs(lng).toFixed(5) + '°W';
+}
+
+function statusLabel(obs) {
+  return obs.lexiconComplete ? 'Lexicon mark' : 'Name label';
+}
+
+function renderNotationList() {
+  els.notationList.innerHTML = '';
+  state.observations.forEach((obs, index) => {
+    const item = document.createElement('div');
+    item.className = 'notation-item' + (state.selectedObservation === obs.id ? ' selected' : '');
+    item.dataset.id = obs.id;
+    const name = document.createElement('div');
+    name.className = 'notation-item-name';
+    name.textContent = (obs.lexiconName || 'Notation') + ' — ' + (index + 1);
+    const coord = document.createElement('div');
+    coord.className = 'notation-item-coord';
+    coord.textContent = formatCoord(obs.lat, obs.lng);
+    const status = document.createElement('div');
+    status.className = 'notation-item-status' + (obs.lexiconComplete ? '' : ' pending');
+    status.textContent = statusLabel(obs);
+    item.appendChild(name);
+    item.appendChild(coord);
+    item.appendChild(status);
+    item.addEventListener('click', () => {
+      state.selectedObservation = obs.id;
+      renderNotationList();
+      syncObservationMarkers();
+      focusObservation(obs);
+    });
+    els.notationList.appendChild(item);
+  });
+}
+
+function focusObservation(obs) {
+  if (!map) return;
+  map.panTo([obs.lat, obs.lng], { animate: false });
+}
+
+function updateLexiconField() {
+  const field = els.lexiconField;
+  if (state.lexiconComplete && state.lexiconName) {
+    field.value = state.lexiconName;
+    field.classList.remove('lexicon-empty');
+  } else {
+    field.value = 'No lexicon built';
+    field.classList.add('lexicon-empty');
+  }
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  els.btnPicker.classList.toggle('sel', mode === 'picker');
+  els.btnGps.classList.toggle('sel', mode === 'gps');
+  els.mapViewer.classList.toggle('mode-picker', mode === 'picker');
+  els.mapViewer.classList.toggle('mode-gps', mode === 'gps');
+  els.modeNote.textContent = mode === 'picker'
+    ? 'Tap anywhere on the map.'
+    : 'Places notation at your current position.';
+  els.gpsError.classList.remove('visible');
+}
+
+function openConfirmOverlay(lng, lat, method) {
+  pendingPlacement = { lng, lat, method };
+  els.confirmAuthor.textContent = state.author;
+  if (state.lexiconComplete && state.lexiconName) {
+    els.confirmLexicon.textContent = state.lexiconName;
+    els.confirmLexicon.classList.remove('pending');
+  } else {
+    els.confirmLexicon.textContent = 'No lexicon built';
+    els.confirmLexicon.classList.add('pending');
+  }
+  els.confirmCoords.textContent = lat.toFixed(5) + ', ' + lng.toFixed(5);
+  els.confirmMethod.textContent = method === 'gps' ? 'GPS' : 'Picker';
+  if (els.markSelectorBlock) {
+    els.markSelectorBlock.style.display = state.lexiconComplete ? 'block' : 'none';
+  }
+  if (state.lexiconComplete) {
+    renderMarkSelector();
+  }
+  updateMarkPreview(state.lexiconComplete, state.author);
+  els.confirmOverlay.classList.add('open');
+}
+
+function closeConfirmOverlay() {
+  pendingPlacement = null;
+  els.confirmOverlay.classList.remove('open');
+}
+
+function saveObservation() {
+  if (!pendingPlacement) return;
+  const obs = {
+    id: crypto.randomUUID(),
+    author: state.author,
+    lexiconName: state.lexiconComplete ? state.lexiconName : '',
+    lexiconComplete: state.lexiconComplete,
+    lat: pendingPlacement.lat,
+    lng: pendingPlacement.lng,
+    method: pendingPlacement.method,
+    timestamp: new Date().toISOString(),
+    status: state.lexiconComplete ? 'lexicon-mark' : 'name-label',
+    markIndex: state.lexiconComplete ? state.selectedMarkIndex : null,
+  };
+  state.observations.push(obs);
+  state.selectedObservation = obs.id;
+  // TODO: Firebase — save observation to Firestore
+  // Collection: observations / document: obs.id
+  // Project: sea-ranch-collective-score (us-west1)
+  console.log('Observation saved (local — Firebase not connected):', obs);
+  closeConfirmOverlay();
+  renderNotationList();
+  syncObservationMarkers();
+}
+
+function requestGpsPlacement() {
+  if (!navigator.geolocation) {
+    els.gpsError.classList.add('visible');
+    return;
+  }
+  els.gpsError.classList.remove('visible');
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      openConfirmOverlay(pos.coords.longitude, pos.coords.latitude, 'gps');
+    },
+    () => {
+      els.gpsError.classList.add('visible');
+    },
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+  );
+}
+
+function fitToFrame() {
+  fitSiteBounds();
+}
+
+async function loadGeoLayers() {
+  try {
+    const [streetsRes, buildingsRes] = await Promise.all([
+      fetch('geojson/streets.geojson'),
+      fetch('geojson/buildings.geojson'),
+    ]);
+    if (!streetsRes.ok || !buildingsRes.ok) throw new Error('GeoJSON fetch failed');
+    const streets = await streetsRes.json();
+    const buildings = await buildingsRes.json();
+    const prepared = prepareSiteGeoJSON(streets, buildings);
+
+    streetsLayer = L.geoJSON(prepared.streets, { style: STREETS_STYLE });
+    buildingsLayer = L.geoJSON(prepared.buildings, { style: BUILDINGS_STYLE });
+    siteLayerGroup = L.featureGroup([streetsLayer, buildingsLayer]);
+
+    applyLayerVisibility();
+    mapData.ready = true;
+    els.mapLoadMsg.style.display = 'none';
+    map.invalidateSize();
+    fitSiteBounds();
+    syncObservationMarkers();
+    renderNotationList();
+  } catch (err) {
+    console.error(err);
+    els.mapLoadMsg.textContent = 'Unable to load site layers.';
+  }
+}
+
+function bindEvents() {
+  if (!els.mapArea) {
+    console.error('Map area missing; event binding skipped.');
+    return;
+  }
+
+  els.btnPicker.addEventListener('click', () => setMode('picker'));
+  els.btnGps.addEventListener('click', () => {
+    setMode('gps');
+    requestGpsPlacement();
+  });
+
+  els.toggleStreets.addEventListener('click', () => {
+    state.layers.streets = !state.layers.streets;
+    els.toggleStreets.classList.toggle('on', state.layers.streets);
+    els.toggleStreets.setAttribute('aria-pressed', state.layers.streets);
+    applyLayerVisibility();
+  });
+
+  els.toggleBuildings.addEventListener('click', () => {
+    state.layers.buildings = !state.layers.buildings;
+    els.toggleBuildings.classList.toggle('on', state.layers.buildings);
+    els.toggleBuildings.setAttribute('aria-pressed', state.layers.buildings);
+    applyLayerVisibility();
+  });
+
+  els.zoomIn.addEventListener('click', () => {
+    if (map) map.zoomIn();
+  });
+
+  els.zoomOut.addEventListener('click', () => {
+    if (map) map.zoomOut();
+  });
+
+  els.zoomFit.addEventListener('click', fitToFrame);
+
+  els.confirmBtn.addEventListener('click', saveObservation);
+  els.cancelBtn.addEventListener('click', closeConfirmOverlay);
+  els.confirmOverlay.addEventListener('click', (e) => {
+    if (e.target === els.confirmOverlay) closeConfirmOverlay();
+  });
+
+  window.addEventListener('resize', () => {
+    if (map) map.invalidateSize();
+  });
+}
+
+function init() {
+  cacheElements();
+  if (!els.mapArea) {
+    console.error('Map area not found; initialization aborted.');
+    return;
+  }
+
+  initMap();
+  updateLexiconField();
+  setMode('picker');
+  renderNotationList();
+  bindEvents();
+  loadGeoLayers();
+}
+
+if (domReady()) {
+  init();
+} else {
+  document.addEventListener('DOMContentLoaded', init);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Sea Ranch as Prototype</title>
+<style>
+@font-face {
+  font-family: 'Miniature';
+  src: url('Fonts/Miniature-Display.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Media77';
+  src: url('Fonts/Media77-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --ink: #1a1a1a;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #ffffff;
+  color: var(--ink);
+  display: flex;
+  justify-content: center;
+}
+
+.poster {
+  position: relative;
+  width: 100%;
+  max-width: 600px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 64px 56px;
+}
+
+.poster-title {
+  font-family: 'Miniature', serif;
+  font-size: 72px;
+  font-weight: normal;
+  font-style: normal;
+  line-height: 0.92;
+  letter-spacing: normal;
+  color: var(--ink);
+  text-transform: uppercase;
+}
+
+.poster-enter {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Media77', sans-serif;
+  font-size: 18px;
+  font-weight: normal;
+  font-style: normal;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.poster-enter:hover,
+.poster-enter:focus {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.poster-footer {
+  position: absolute;
+  left: 56px;
+  right: 56px;
+  bottom: 64px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  font-family: 'Media77', sans-serif;
+  font-size: 16px;
+  font-weight: normal;
+  font-style: normal;
+  color: var(--ink);
+}
+
+.poster-footer span:nth-child(1) {
+  text-align: left;
+}
+
+.poster-footer span:nth-child(2) {
+  text-align: center;
+}
+
+.poster-footer span:nth-child(3) {
+  text-align: right;
+}
+</style>
+</head>
+<body>
+  <main class="poster">
+    <h1 class="poster-title">THE SEA RANCH<br>AS PROTOTYPE</h1>
+    <a class="poster-enter" href="lexicon-builder.html">Enter</a>
+    <footer class="poster-footer" aria-label="Themes">
+      <span>Form.</span>
+      <span>Culture.</span>
+      <span>Context.</span>
+    </footer>
+  </main>
+</body>
+</html>

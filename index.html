@@ -46,30 +46,58 @@ body {
 }
 
 .poster {
-  position: relative;
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   max-width: 600px;
-  min-height: 100vh;
-  min-height: 100dvh;
-  padding: 64px 56px;
+  height: 100vh;
+  height: 100dvh;
+  padding: clamp(2.5rem, 6vh, 4rem) clamp(1.25rem, 5vw, 3.5rem);
+}
+
+@media (max-width: 600px) {
+  .poster {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
 }
 
 .poster-title {
+  flex: 0 0 auto;
+  width: 100%;
   font-family: 'Miniature', serif;
-  font-size: 72px;
+  font-size: min(80px, 14cqw);
   font-weight: normal;
   font-style: normal;
-  line-height: 0.92;
-  letter-spacing: normal;
+  line-height: 0.9;
+  letter-spacing: -0.01em;
   color: var(--ink);
+  text-align: center;
   text-transform: uppercase;
 }
 
+@media (max-width: 600px) {
+  .poster-title {
+    font-size: clamp(5vw, 13vw, 80px);
+  }
+}
+
+.poster-title-line {
+  display: inline-block;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.poster-middle {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
 .poster-enter {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
   font-family: 'Media77', sans-serif;
   font-size: 18px;
   font-weight: normal;
@@ -85,36 +113,27 @@ body {
 }
 
 .poster-footer {
-  position: absolute;
-  left: 56px;
-  right: 56px;
-  bottom: 64px;
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  font-family: 'Media77', sans-serif;
-  font-size: 16px;
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(1.5rem, 6cqw, 3rem);
+  width: 100%;
+  font-family: 'Miniature', serif;
+  font-size: clamp(0.875rem, 2.8cqw, 1rem);
   font-weight: normal;
   font-style: normal;
   color: var(--ink);
-}
-
-.poster-footer span:nth-child(1) {
-  text-align: left;
-}
-
-.poster-footer span:nth-child(2) {
   text-align: center;
-}
-
-.poster-footer span:nth-child(3) {
-  text-align: right;
 }
 </style>
 </head>
 <body>
   <main class="poster">
-    <h1 class="poster-title">THE SEA RANCH<br>AS PROTOTYPE</h1>
-    <a class="poster-enter" href="lexicon-builder.html">Enter</a>
+    <h1 class="poster-title"><span class="poster-title-line">THE SEA RANCH</span><br><span class="poster-title-line">AS PROTOTYPE</span></h1>
+    <div class="poster-middle">
+      <a class="poster-enter" href="lexicon-builder.html">Enter</a>
+    </div>
     <footer class="poster-footer" aria-label="Themes">
       <span>Form.</span>
       <span>Culture.</span>

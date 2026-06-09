@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lexicon Builder — Sea Ranch Collective Score</title>
-<script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"></script>
 <style>
 @font-face {
   font-family: 'Miniature';
@@ -75,85 +74,44 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overflow-x: hidden;
 }
 
 .col-pad {
   padding: 16px 18px 20px;
 }
 
-.col-left.col-pad {
+.col-identity {
+  background: var(--surface);
+  min-width: 0;
   padding: 10px 11px 12px;
 }
 
-.col-left {
-  background: var(--surface);
+.col-identity .flabel {
+  font-size: 9px;
+  margin-top: 0;
+  margin-bottom: 2px;
+  letter-spacing: 0.08em;
+}
+
+.col-identity input[type="text"] {
+  font-size: 10px;
+  padding: 3px 6px;
+}
+
+.col-centre {
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  --ctl-gap: 7px;
-  --ctl-pad: 7px;
+  overflow: hidden;
+  background: var(--surface2);
 }
 
 .col-right {
   background: var(--surface);
   border-left: 1px solid var(--border);
   min-width: 0;
-}
-
-/* Wireframe panel boxes */
-.panel-box {
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  padding: 12px 14px;
-}
-
-.col-left .panel-box {
-  padding: var(--ctl-pad) 8px;
-}
-
-.panel-box__title {
-  font-family: 'Miniature', serif;
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--dim);
-  margin-bottom: 10px;
-}
-
-.col-left .panel-box__title {
-  font-size: 9px;
-  margin-bottom: 4px;
-  letter-spacing: 0.12em;
-}
-
-.col-left .panel-box__title,
-.col-left .ctl-param-label {
-  font-family: 'Media77', sans-serif;
-  font-style: italic;
-}
-
-.panel-box__subtitle {
-  font-family: 'Miniature', serif;
-  font-size: 8px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--dim);
-  margin: 14px 0 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-
-.layer-composition {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--border);
-}
-
-.layer-composition .panel-box__subtitle {
-  margin: 0 0 4px;
-  padding-top: 0;
-  border-top: none;
 }
 
 .identity-grid {
@@ -163,279 +121,9 @@ body {
   flex-shrink: 0;
 }
 
-.col-left .identity-grid {
-  gap: 7px;
-}
-
 .identity-grid .flabel { margin-top: 0; }
 
-.controls-split {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  align-items: start;
-  min-width: 0;
-}
-
-.col-left .controls-split {
-  gap: var(--ctl-gap);
-}
-
-.appearance-split {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.col-left .appearance-split {
-  gap: var(--ctl-gap);
-}
-
-.drawing-workspace {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ctl-gap, 7px);
-  min-width: 0;
-}
-
-.panel-notation .layer-tabs { margin-bottom: 8px; }
-
-.col-left .panel-notation .layer-tabs {
-  margin-bottom: 4px;
-}
-
-.panel-notation .layer-panel { padding-top: 4px; }
-
-.col-left .panel-notation .layer-panel {
-  padding-top: 4px;
-}
-
-.col-left .panel-notation .layer-panel > div {
-  padding-bottom: 0 !important;
-}
-
-/* Compact controls — left / drawing column only */
-.col-left .flabel {
-  font-size: 9px;
-  margin-top: 5px;
-  margin-bottom: 2px;
-  letter-spacing: 0.08em;
-}
-
-.col-left .flabel:first-child,
-.col-left .identity-grid .flabel {
-  margin-top: 0;
-}
-
-.col-left input[type="text"],
-.col-left input[type="number"] {
-  font-size: 10px;
-  padding: 3px 6px;
-}
-
-.col-left .btn,
-.col-left .layer-tab {
-  font-size: 8px;
-  letter-spacing: 0.08em;
-  min-height: 28px;
-  height: 28px;
-  padding: 0 8px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.col-left .btn.sm {
-  font-size: 8px;
-  min-height: 28px;
-  height: 28px;
-  padding: 0 8px;
-}
-
-.col-left .btn-row {
-  gap: 3px;
-  margin-top: 2px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.col-left .btn-row:has(.btn:only-child) {
-  grid-template-columns: 1fr;
-}
-
-.col-left .snap-grid {
-  gap: 3px;
-  margin-top: 2px;
-}
-
-.col-left #axisRow.btn-row {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.col-left .layer-panel .flabel {
-  margin-top: 5px !important;
-}
-
-.col-left .layer-panel > div > .flabel:first-of-type {
-  margin-top: 0 !important;
-}
-
-.col-left #dimensionsDock .flabel,
-.col-left #thicknessDock .flabel,
-.col-left #colourDock .flabel {
-  margin-top: 5px !important;
-}
-
-.col-left #dimensionsDock > .flabel:first-child {
-  margin-top: 0 !important;
-}
-
-.col-left .hatch-grid {
-  gap: 3px;
-  margin-top: 2px;
-}
-
-.col-left .hatch-grid .btn {
-  font-size: 8px;
-  padding: 0 6px;
-  letter-spacing: 0.04em;
-}
-
-.col-left .slider-row {
-  grid-template-columns: 44px 1fr 30px;
-  gap: 4px;
-  margin-top: 3px;
-}
-
-.col-left .slider-val {
-  font-size: 8px;
-}
-
-.col-left .colour-row {
-  gap: 5px;
-  margin-top: 3px;
-}
-
-.col-left .colour-swatch {
-  width: 36px;
-  height: 36px;
-}
-
-.col-left .btn.danger.full {
-  margin-top: 6px;
-  min-height: 28px;
-}
-
-.col-left .note {
-  margin-top: 3px;
-  font-size: 9px;
-  line-height: 1.35;
-}
-
-.col-left .layer-tab {
-  padding: 0 8px;
-  margin-right: 2px;
-  top: 0;
-}
-
-/* Dynamic control sections — desktop collapse */
-.ctl-section {
-  overflow: hidden;
-  max-height: 320px;
-  opacity: 1;
-  transition: opacity 200ms ease, max-height 200ms ease;
-}
-
-.ctl-section.ctl-hidden {
-  max-height: 0 !important;
-  opacity: 0;
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
-  pointer-events: none;
-}
-
-.layer-composition {
-  transition: opacity 200ms ease, max-height 200ms ease;
-  overflow: hidden;
-  max-height: 200px;
-}
-
-.layer-composition.ctl-hidden {
-  max-height: 0 !important;
-  opacity: 0;
-  margin-top: 0 !important;
-  padding-top: 0 !important;
-  border-top-color: transparent;
-  pointer-events: none;
-}
-
-/* Mobile tabbed controls */
-.mobile-tab-bar,
-.mobile-tab-panels {
-  display: none;
-}
-
-.mobile-tab-bar {
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 4px;
-  width: 100%;
-}
-
-.mobile-tab-btn {
-  font-family: 'Miniature', serif;
-  font-size: 8px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  min-height: 28px;
-  height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--ink);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-
-.mobile-tab-btn.active {
-  background: var(--ink);
-  color: #f0f0f0;
-  border-color: var(--ink);
-}
-
-.mobile-tab-panel {
-  display: none;
-}
-
-.mobile-tab-panel.active {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ctl-gap, 7px);
-}
-
-#panelNotation > .layer-composition {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--border);
-}
-
-#mobilePanelScale .layer-composition {
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  padding: var(--ctl-pad) 8px;
-}
-
-#mobileStyleLayerMount:empty::before {
-  content: '';
-  display: none;
-}
-
-/* Desktop: two columns */
+/* Desktop: identity · drawing · metadata */
 @media (min-width: 901px) {
   body {
     overflow: hidden;
@@ -443,99 +131,39 @@ body {
 
   .workspace {
     display: grid;
-    grid-template-columns: 55fr 45fr;
+    grid-template-columns: minmax(168px, 200px) minmax(0, 1fr) minmax(280px, 42%);
     grid-template-rows: 1fr;
+    min-height: 0;
+    overflow: hidden;
   }
 
-  .col-left {
+  .col-identity {
     min-height: 0;
     overflow: hidden;
     height: 100%;
-    display: flex;
-    flex-direction: column;
+    border-right: 1px solid var(--border);
   }
 
   .identity-grid {
-    flex-shrink: 0;
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 
-  .drawing-workspace {
+  .col-centre {
+    height: 100%;
+  }
+
+  #sketch-stage {
     flex: 1 1 0;
     min-height: 0;
-    display: grid;
-    grid-template-columns: minmax(220px, 44fr) minmax(180px, 56fr);
-    grid-template-rows: minmax(0, 1fr) auto;
-    gap: var(--ctl-gap);
-    align-items: stretch;
+    height: 100%;
+    border: none;
+    border-right: 1px solid var(--border);
   }
 
-  .controls-split {
-    grid-column: 1;
-    grid-row: 1;
-    min-height: 0;
-    overflow: hidden;
-    align-self: stretch;
-  }
-
-  .controls-split > .panel-box {
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .appearance-split {
-    grid-column: 1;
-    grid-row: 2;
-    flex-shrink: 0;
-  }
-
-  .col-left__viewer-block {
-    grid-column: 2;
-    grid-row: 1 / -1;
-    min-height: 0;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .col-left__viewer-block .viewer-wrap {
-    flex: 1 1 0;
-    min-height: 0;
-    border-bottom: none;
-  }
-
-  .col-left__viewer-block .viewer-canvas {
-    min-height: 0;
-  }
-
-  .col-left__viewer-block .viewer-header {
-    padding: 6px 10px;
-  }
-
-  .col-left__viewer-block .viewer-header .slabel {
-    font-size: 11px;
-  }
-
-  .col-left__viewer-block .viewer-header .body-text {
-    font-size: 9px;
-  }
-
-  .col-left__views {
-    flex-shrink: 0;
-    padding: 6px 10px 8px;
-  }
-
-  .col-left__views .view-label {
-    margin-bottom: 4px;
-  }
-
-  .col-left__views .note {
-    display: none;
-  }
-
-  .mobile-tab-bar,
-  .mobile-tab-panels {
-    display: none !important;
+  #sketch-stage #toolbar {
+    max-height: none;
+    overflow-x: hidden;
   }
 
   .col-right {
@@ -571,100 +199,38 @@ body {
     flex: none;
   }
 
-  .col-left,
+  .col-identity,
+  .col-centre,
   .col-right {
     width: 100%;
     overflow: visible;
     height: auto;
   }
 
-  .col-left {
+  .col-identity {
+    border-bottom: 1px solid var(--border);
+    padding: 10px 12px 14px;
+  }
+
+  .col-centre {
+    order: 2;
+    min-height: 360px;
     border-bottom: 1px solid var(--border);
   }
 
   .col-right {
+    order: 3;
     border-left: none;
-    border-top: 1px solid var(--border);
-  }
-
-  .col-left.col-pad {
-    padding: 10px 12px 14px;
+    border-top: none;
   }
 
   .identity-grid {
     grid-template-columns: 1fr 1fr;
   }
 
-  .mobile-tab-bar {
-    display: grid;
-    order: 1;
-  }
-
-  .mobile-tab-panels {
-    display: block;
-    order: 2;
-    width: 100%;
-  }
-
-  .controls-split {
-    display: none;
-  }
-
-  .appearance-split {
-    display: none;
-  }
-
-  .drawing-workspace {
-    display: flex;
-    flex-direction: column;
-    gap: 7px;
-  }
-
-  .col-left__viewer-block {
-    order: 3;
-    width: 100%;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-
-  #mobilePanelShape .layer-panel-style {
-    display: none !important;
-  }
-
-  .mobile-tab-panel .appearance-split {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--ctl-gap);
-    margin-top: var(--ctl-gap);
-  }
-
-  .col-left__viewer-block .viewer-wrap {
-    flex: none;
-    width: 100%;
-  }
-
-  .col-left__viewer-block .viewer-canvas {
-    width: 100%;
-    aspect-ratio: 1 / 1;
-    flex: none;
-    min-height: 0;
-  }
-
-  .col-left__viewer-block .viewer-header {
-    padding: 8px 12px;
-  }
-
-  .col-left__viewer-block .viewer-header .body-text {
-    display: none;
-  }
-
-  .col-left__views {
-    padding: 8px 12px 10px;
-  }
-
-  .col-left__views .note {
-    display: none;
+  #sketch-stage {
+    min-height: 360px;
+    height: 100%;
   }
 }
 
@@ -761,131 +327,303 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
 .slider-row .flabel { margin: 0; }
 .slider-val { font-family: 'Media77', sans-serif; font-size: 10px; text-align: right; color: var(--ink); }
 
-.layer-tabs { display: flex; gap: 0; margin-bottom: 0; border-bottom: 1px solid var(--border); }
-.layer-tab { font-family: 'Miniature', serif; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; padding: 6px 12px; border: 1px solid var(--border); border-bottom: none; background: var(--hi); color: var(--dim); cursor: pointer; margin-right: 3px; position: relative; top: 1px; }
-.layer-tab.active { background: var(--surface); color: var(--ink); border-bottom-color: var(--surface); }
-.layer-tab.add-btn { background: transparent; border: 1px dashed var(--border); color: var(--dim); }
-.layer-tab.add-btn:hover { border-color: var(--ink); color: var(--ink); }
-
-.layer-panel { display: none; padding-top: 12px; }
-.layer-panel.active { display: block; }
-
-.colour-row { display: grid; grid-template-columns: 56px 1fr; gap: 8px; align-items: center; margin-top: 6px; }
-.colour-swatch { width: 48px; height: 48px; border-radius: 50%; cursor: pointer; border: 1px solid var(--border); flex-shrink: 0; }
-
-.dim-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
-.dim-row .flabel { margin-top: 0; }
-
-.hatch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 4px; }
-.hatch-grid .btn { font-size: 7px; padding: 4px 6px; letter-spacing: 0.06em; }
-
-#colorPickerBackdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 9998;
-  display: none;
-  background: transparent;
-}
-#colorPickerBackdrop.open { display: block; }
-
-#colorPickerPopover {
-  position: fixed;
-  z-index: 9999;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  padding: 10px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
-  display: none;
-  pointer-events: auto;
-}
-#colorPickerPopover.open { display: block; }
-#colorPickerCanvas { display: block; cursor: crosshair; touch-action: none; }
-
-.snap-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-top: 4px; }
-
-.col-left__viewer-block {
+#sketch-stage {
   display: flex;
   flex-direction: column;
-  min-width: 0;
-}
-
-.viewer-wrap {
   width: 100%;
+  max-width: 100%;
+  height: 100%;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  font-family: 'Media77', sans-serif;
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--surface2);
+  border: none;
 }
 
-.viewer-header {
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--border);
+#sketch-stage #field-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-shrink: 1;
+  margin: 0 auto;
+}
+
+#sketch-stage #canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 1;
+  cursor: crosshair;
+  background: #fff;
+}
+
+#sketch-stage #scale-band {
+  width: 100%;
   display: flex;
-  align-items: baseline;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 12px;
+  padding: 6px 8px 0;
+  min-height: 22px;
+  flex-shrink: 0;
+  background: var(--surface2);
+}
+
+#sketch-stage #scale-indicator {
+  pointer-events: none;
   flex-shrink: 0;
 }
 
-.viewer-header .slabel {
-  margin: 0;
-  padding: 0;
-  border: none;
-  font-size: 15px;
+#sketch-stage #scale-bar-line {
+  width: 48px;
+  border-top: 1px solid var(--ink);
+  opacity: 0.42;
 }
 
-.viewer-canvas {
-  flex: 1 1 0;
-  min-height: 0;
-  width: 100%;
-  background: var(--surface2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  overflow: hidden;
-}
-
-#p5-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 0;
-  width: 100%;
-  height: 100%;
-  max-width: 100%;
-  max-height: 100%;
-}
-
-#p5-container canvas {
-  display: block;
-  max-width: 100%;
-  max-height: 100%;
-  width: auto !important;
-  height: auto !important;
-}
-
-.col-left__views {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-top: none;
-  padding: 12px 18px 14px;
-  margin-bottom: 0;
-}
-
-.col-left__views.section {
-  margin-bottom: 0;
-}
-
-.view-label {
-  font-family: 'Miniature', serif;
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+#sketch-stage #scale-bar-label {
+  margin-top: 3px;
+  font-family: 'Media77', sans-serif;
+  font-size: 10px;
   color: var(--dim);
-  margin-bottom: 8px;
+  letter-spacing: 0.02em;
+}
+
+#sketch-stage #scale-presets {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0;
+  margin-left: auto;
+}
+
+#sketch-stage .scale-preset {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: 'Media77', sans-serif;
+  font-size: 10px;
+  color: var(--dim);
+  padding: 0 1px;
+}
+
+#sketch-stage .scale-preset.on {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+#sketch-stage .scale-preset:hover:not(.on) {
+  color: var(--accent);
+}
+
+#sketch-stage .scale-dot {
+  color: var(--border2);
+  font-family: 'Media77', sans-serif;
+  font-size: 10px;
+  padding: 0 2px;
+  user-select: none;
+}
+
+#sketch-stage #toolbar {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 12px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+#sketch-stage .tool-row {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  border-top: 0.5px solid var(--border);
+  min-width: 0;
+  gap: 4px;
+}
+
+#sketch-stage .tool-row:first-child {
+  border-top: none;
+}
+
+#sketch-stage #row-shapes #shapes {
+  display: contents;
+}
+
+#sketch-stage #row-fill {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+#sketch-stage #row-fill #grp-fill {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+}
+
+#sketch-stage #row-line {
+  justify-content: center;
+  gap: 16px;
+}
+
+#sketch-stage .line-group {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+}
+
+#sketch-stage .line-divider {
+  width: 0.5px;
+  height: 22px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+#sketch-stage .tool {
+  width: 40px;
+  height: 40px;
+  border: 1px solid transparent;
+  background: var(--surface2);
+  padding: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+#sketch-stage .tool.on {
+  border-color: var(--ink);
+}
+
+#sketch-stage .tool svg {
+  display: block;
+  width: 24px;
+  height: 24px;
+  stroke: var(--ink);
+  fill: none;
+  stroke-width: 1.5;
+}
+
+#sketch-stage .tool[data-shape="dot"] svg {
+  fill: var(--ink);
+  stroke: none;
+}
+
+#sketch-stage .sw {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+#sketch-stage .sw.on {
+  box-shadow: 0 0 0 1px #fff, 0 0 0 2px var(--ink);
+}
+
+#sketch-stage .sw[data-c="#FFFFFF"] {
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+#sketch-stage .sw[data-c="#FFFFFF"].on {
+  box-shadow: inset 0 0 0 1px var(--border), 0 0 0 1px #fff, 0 0 0 2px var(--ink);
+}
+
+#sketch-stage .fill-sw {
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  padding: 0;
+  cursor: pointer;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+#sketch-stage .fill-sw.on {
+  border-color: var(--ink);
+}
+
+#sketch-stage .fill-sw canvas {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+
+#sketch-stage .ls-btn,
+#sketch-stage .wt {
+  width: 36px;
+  height: 36px;
+  border: 1px solid transparent;
+  background: var(--surface2);
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+#sketch-stage .ls-btn.on,
+#sketch-stage .wt.on {
+  border-color: var(--ink);
+}
+
+#sketch-stage .ls-btn svg {
+  display: block;
+  width: 30px;
+  height: 20px;
+}
+
+#sketch-stage .wt span {
+  display: block;
+  background: var(--ink);
+  border-radius: 1px;
+  width: 26px;
+}
+
+#sketch-stage .wt[data-w="2"] span { height: 2px; }
+#sketch-stage .wt[data-w="5"] span { height: 5px; }
+#sketch-stage .wt[data-w="10"] span { height: 10px; }
+
+#sketch-stage .stroke-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid transparent;
+  background: var(--surface2);
+  padding: 0;
+  cursor: pointer;
+  font-family: 'Media77', sans-serif;
+  font-size: 11px;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+#sketch-stage .stroke-btn.on {
+  border-color: var(--ink);
 }
 
 .meta-opts { display: flex; flex-direction: column; gap: 5px; margin-top: 2px; }
@@ -908,13 +646,6 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
 }
 .note { margin-top: 6px; }
 .sep { height: 1px; background: var(--border); margin: 28px 0; }
-
-.scale-bar { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 3px; pointer-events: none; }
-.scale-bar-line { width: 100px; height: 1px; background: #aaa; position: relative; flex-shrink: 0; }
-.scale-bar-line::before, .scale-bar-line::after { content: ''; position: absolute; top: -3px; width: 1px; height: 7px; background: #aaa; }
-.scale-bar-line::before { left: 0; }
-.scale-bar-line::after { right: 0; }
-.scale-bar-label { font-family: 'Media77', sans-serif; font-size: 8px; color: #aaa; letter-spacing: 0.08em; }
 
 </style>
 </head>
@@ -944,8 +675,7 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
 
 <div class="workspace">
 
-  <div class="col-left col-pad" id="leftCol">
-
+  <div class="col-identity" id="identityCol">
     <div class="identity-grid">
       <div>
         <span class="flabel">Author</span>
@@ -956,93 +686,37 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
         <input type="text" id="lexiconName" placeholder="Name your mark…">
       </div>
     </div>
+  </div>
 
-    <div class="drawing-workspace" id="drawingWorkspace">
-
-      <div class="mobile-tab-bar" id="mobileTabBar" role="tablist" aria-label="Drawing controls">
-        <button type="button" class="mobile-tab-btn active" role="tab" aria-selected="true" data-mobile-tab="shape" id="mobileTabBtnShape">Shape</button>
-        <button type="button" class="mobile-tab-btn" role="tab" aria-selected="false" data-mobile-tab="style" id="mobileTabBtnStyle">Style</button>
-        <button type="button" class="mobile-tab-btn" role="tab" aria-selected="false" data-mobile-tab="scale" id="mobileTabBtnScale">Scale</button>
+  <div class="col-centre" id="drawingCol">
+    <div id="sketch-stage">
+      <div id="field-wrap">
+        <canvas id="canvas" width="800" height="800"></canvas>
       </div>
-
-      <div class="mobile-tab-panels" id="mobileTabPanels">
-        <div class="mobile-tab-panel active" data-mobile-tab="shape" id="mobilePanelShape" role="tabpanel"></div>
-        <div class="mobile-tab-panel" data-mobile-tab="style" id="mobilePanelStyle" role="tabpanel">
-          <div id="mobileStyleLayerMount"></div>
-          <div id="mobileStyleAppearanceMount"></div>
+      <div id="scale-band">
+        <div id="scale-indicator">
+          <div id="scale-bar-line"></div>
+          <div id="scale-bar-label">&mdash; 10 ft</div>
         </div>
-        <div class="mobile-tab-panel" data-mobile-tab="scale" id="mobilePanelScale" role="tabpanel"></div>
+        <div id="scale-presets"></div>
       </div>
-
-      <div class="controls-split" id="controlsSplit">
-        <div class="panel-box panel-notation" id="panelNotation">
-          <div class="panel-box__title">Notation</div>
-          <div class="layer-tabs" id="layerTabs">
-            <div class="layer-tab add-btn" id="addLayerBtn">+ Add</div>
-          </div>
-          <div id="layerPanels"></div>
-          <div class="layer-composition" id="layerComposition">
-            <div class="panel-box__subtitle">Layer Composition</div>
-            <span class="flabel">Stack Axis</span>
-            <div class="btn-row" id="axisRow">
-              <button type="button" class="btn sm sel" data-axis="vertical">Vertical</button>
-              <button type="button" class="btn sm" data-axis="horizontal">Horizontal</button>
-              <button type="button" class="btn sm" data-axis="diagonal">Diagonal 45°</button>
-            </div>
-            <span class="flabel">Snap</span>
-            <div class="snap-grid" id="snapGrid">
-              <button type="button" class="btn sm sel" data-snap="centre">Centre</button>
-              <button type="button" class="btn sm" data-snap="half">½ Side</button>
-              <button type="button" class="btn sm" data-snap="full">Full Side</button>
-            </div>
-          </div>
+      <div id="toolbar">
+        <div class="tool-row" id="row-shapes">
+          <div id="shapes"></div>
         </div>
-
-        <div class="panel-box panel-dimensions" id="panelDimensions">
-          <div class="panel-box__title">Dimensions</div>
-          <div id="dimensionsDock"></div>
+        <div class="tool-row" id="row-colors"></div>
+        <div class="tool-row" id="row-fill">
+          <div id="grp-fill"></div>
         </div>
-      </div>
-
-      <div class="appearance-split" id="appearanceSplit">
-        <div class="panel-box panel-thickness">
-          <div class="panel-box__title">Thickness</div>
-          <div id="thicknessDock"></div>
+        <div class="tool-row" id="row-line">
+          <div class="line-group" id="grp-line"></div>
+          <div class="line-divider" aria-hidden="true"></div>
+          <div class="line-group" id="grp-weight"></div>
+          <div class="line-divider" aria-hidden="true"></div>
+          <div class="line-group" id="grp-stroke"></div>
         </div>
-        <div class="panel-box panel-colour">
-          <div class="panel-box__title">Colour</div>
-          <div id="colourDock"></div>
-        </div>
-      </div>
-
-      <div class="col-left__viewer-block">
-        <div class="viewer-wrap">
-          <div class="viewer-header">
-            <span class="slabel">Drawing Viewer</span>
-            <span class="body-text" style="font-size:11px;white-space:nowrap;">Plan · live · scale</span>
-          </div>
-          <div class="viewer-canvas" id="viewerCanvasPane">
-            <div id="p5-container"></div>
-            <div class="scale-bar" id="scaleBar">
-              <div class="scale-bar-line" id="scaleBarLine"></div>
-              <div class="scale-bar-label" id="scaleBarLabel">10 ft</div>
-            </div>
-          </div>
-        </div>
-
-        <section class="section col-left__views">
-          <div class="view-label">View</div>
-          <div class="btn-row">
-            <button type="button" class="btn sel">Plan</button>
-            <button type="button" class="btn" disabled style="opacity:0.3;cursor:not-allowed;">Front</button>
-            <button type="button" class="btn" disabled style="opacity:0.3;cursor:not-allowed;">Side</button>
-            <button type="button" class="btn" disabled style="opacity:0.3;cursor:not-allowed;">Axo</button>
-          </div>
-          <p class="note" style="margin-top:8px;">Front · Side · Axo views deferred to next iteration.</p>
-        </section>
       </div>
     </div>
-
   </div>
 
   <aside class="col-right col-pad">
@@ -1078,12 +752,11 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
 
     <section class="section">
       <div class="slabel">Size</div>
-      <p class="note" style="margin-bottom:10px;">Active layer · imperial or metric. Scale bar: 10&nbsp;ft or 5&nbsp;m.</p>
-      <div class="btn-group" id="unitGroup" style="margin-bottom:10px;">
+      <p class="note" style="margin-bottom:10px;">Drawing scale presets appear below the canvas. Choose imperial or metric for entry metadata.</p>
+      <div class="btn-group" id="unitGroup">
         <button type="button" class="btn sm sel" data-unit="imperial">Imperial</button>
         <button type="button" class="btn sm" data-unit="metric">Metric</button>
       </div>
-      <div id="sizeDimsDock"></div>
     </section>
 
     <section class="section">
@@ -1106,1403 +779,7 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
 
 </div><!-- .app-shell -->
 
-<div id="colorPickerBackdrop" aria-hidden="true"></div>
-<div id="colorPickerPopover" aria-hidden="true" role="dialog" aria-label="Colour picker">
-  <canvas id="colorPickerCanvas" width="200" height="200"></canvas>
-</div>
-
-<script>
-const SHAPES = ['Square', 'Triangle', 'Circle', 'Half Circle', 'Polygon', 'Line'];
-const LINE_SHAPE_DIRECTIONS = [
-  { id: 'horizontal', label: 'Horizontal' },
-  { id: 'vertical', label: 'Vertical' },
-  { id: 'diagonal-left', label: 'Diagonal 45°' },
-  { id: 'diagonal-right', label: 'Diagonal 135°' },
-];
-const FILL_MODES = [
-  { id: 'none', label: 'None' },
-  { id: 'solid', label: 'Solid' },
-];
-const HATCH_PATTERNS = [
-  { id: 'horizontal', label: 'Horiz' },
-  { id: 'vertical', label: 'Vert' },
-  { id: 'diagonal-left', label: 'Diag 45°' },
-  { id: 'diagonal-right', label: 'Diag 135°' },
-  { id: 'cross', label: 'Cross' },
-  { id: 'diamond', label: 'Diamond' },
-  { id: 'dot', label: 'Dot Grid' },
-  { id: 'brick', label: 'Brick' },
-];
-const LINES = ['Solid', 'Dash S', 'Dash L', 'Dotted'];
-const LINE_DIRS = ['Horizontal', 'Vertical', 'Diagonal', 'Cross'];
-
-const CANVAS_W = 400;
-const CANVAS_H = 420;
-const SCALE_BAR_PX = 100;
-const SCALE_REF = {
-  imperial: { distance: 10, label: '10 ft' },
-  metric: { distance: 5, label: '5 m' },
-};
-
-const state = {
-  activeLayer: 0,
-  stackAxis: 'vertical',
-  snapMode: 'centre',
-  unit: 'imperial',
-  uploads: [],
-  layers: [defaultLayer()],
-};
-
-let p5Sketch = null;
-
-function defaultLayer() {
-  return {
-    shape: 'Square',
-    sides: 5,
-    fill: 'none',
-    hatchPattern: 'horizontal',
-    outlineOn: true,
-    lineStyle: 'Solid',
-    lineOn: false,
-    lineDir: 'Horizontal',
-    density: 5,
-    thickness: 1,
-    colour: '#1a1a1a',
-    lineDirection: 'horizontal',
-    apexOffset: 0.5,
-    widthReal: 8,
-    heightReal: 8,
-  };
-}
-
-let colorPickerLayer = null;
-let colorPickerHsv = { h: 0, s: 0, v: 10 };
-let dynamicControlsReady = false;
-
-function syncChromeHeight() {
-  const chrome = document.getElementById('appChrome');
-  if (chrome) {
-    document.documentElement.style.setProperty('--chrome-height', chrome.offsetHeight + 'px');
-  }
-}
-
-function fitViewerCanvas() {
-  const pane = document.getElementById('viewerCanvasPane');
-  const canvas = document.querySelector('#p5-container canvas');
-  if (!pane || !canvas) return;
-  const pad = 8;
-  const availW = Math.max(0, pane.clientWidth - pad);
-  const availH = Math.max(0, pane.clientHeight - pad);
-  if (availW < 1 || availH < 1) return;
-  const scale = Math.min(availW / CANVAS_W, availH / CANVAS_H);
-  if (!Number.isFinite(scale) || scale <= 0) return;
-  canvas.style.width = Math.floor(CANVAS_W * scale) + 'px';
-  canvas.style.height = Math.floor(CANVAS_H * scale) + 'px';
-}
-
-function bindViewerResize() {
-  const pane = document.getElementById('viewerCanvasPane');
-  if (!pane || typeof ResizeObserver === 'undefined') {
-    window.addEventListener('resize', fitViewerCanvas);
-    return;
-  }
-  const ro = new ResizeObserver(() => fitViewerCanvas());
-  ro.observe(pane);
-  window.addEventListener('resize', fitViewerCanvas);
-}
-
-function init() {
-  syncChromeHeight();
-  window.addEventListener('resize', () => {
-    syncChromeHeight();
-    layoutControls();
-    fitViewerCanvas();
-  });
-
-  bindMetaToggles();
-  bindUnitToggle();
-  bindAxisSnap();
-  bindUpload();
-  initColorPicker();
-  bindViewerResize();
-  document.getElementById('saveBtn').addEventListener('click', saveLexiconEntry);
-  document.getElementById('lexiconName').addEventListener('input', requestDraw);
-
-  const bar = document.getElementById('scaleBarLine');
-  if (bar) bar.style.width = SCALE_BAR_PX + 'px';
-
-  buildLayerTabs();
-  buildLayerPanels();
-  bindMobileTabs();
-  initP5();
-  updateScaleBarLabel();
-  requestAnimationFrame(() => {
-    requestAnimationFrame(enableDynamicControls);
-  });
-}
-
-function bindMetaToggles() {
-  document.querySelectorAll('[data-meta-group="metaData"] .meta-opt, [data-meta-group="element"] .meta-opt').forEach((btn) => {
-    btn.addEventListener('click', () => btn.classList.toggle('sel'));
-  });
-  document.querySelectorAll('[data-meta-group="typology"] .meta-opt').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('[data-meta-group="typology"] .meta-opt').forEach((b) => b.classList.remove('sel'));
-      btn.classList.add('sel');
-    });
-  });
-}
-
-function bindUnitToggle() {
-  const group = document.getElementById('unitGroup');
-  group.querySelectorAll('.btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (btn.dataset.unit === state.unit) return;
-      const prev = state.unit;
-      group.querySelectorAll('.btn').forEach((b) => b.classList.remove('sel'));
-      btn.classList.add('sel');
-      state.unit = btn.dataset.unit;
-      convertAllDimensions(prev, state.unit);
-      updateDimUnitLabels();
-      updateScaleBarLabel();
-      buildLayerPanels();
-      requestDraw();
-    });
-  });
-}
-
-function convertLength(value, from, to) {
-  if (!Number.isFinite(value) || from === to) return value;
-  if (from === 'imperial' && to === 'metric') return value * 0.3048;
-  return value / 0.3048;
-}
-
-function convertAllDimensions(from, to) {
-  state.layers.forEach((l) => {
-    l.widthReal = roundDim(convertLength(l.widthReal, from, to));
-    l.heightReal = roundDim(convertLength(l.heightReal, from, to));
-  });
-}
-
-function roundDim(v) {
-  return Math.round(v * 1000) / 1000;
-}
-
-function unitSuffix() {
-  return state.unit === 'metric' ? 'm' : 'ft';
-}
-
-function updateDimUnitLabels() {
-  const u = unitSuffix();
-  document.querySelectorAll('[data-dim-unit]').forEach((el) => {
-    el.textContent = u;
-  });
-}
-
-function getPixelsPerUnit() {
-  const ref = SCALE_REF[state.unit];
-  return SCALE_BAR_PX / ref.distance;
-}
-
-function getLayerPixelSize(l) {
-  const ppu = getPixelsPerUnit();
-  const width = Math.max(4, l.widthReal * ppu);
-  if (l.shape === 'Line') {
-    return { width, height: Math.max(4, l.thickness * 3) };
-  }
-  return {
-    width,
-    height: Math.max(4, l.heightReal * ppu),
-  };
-}
-
-function bindAxisSnap() {
-  document.getElementById('axisRow').querySelectorAll('.btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.stackAxis = btn.dataset.axis;
-      document.getElementById('axisRow').querySelectorAll('.btn').forEach((b) => b.classList.remove('sel'));
-      btn.classList.add('sel');
-      requestDraw();
-    });
-  });
-  document.getElementById('snapGrid').querySelectorAll('.btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.snapMode = btn.dataset.snap;
-      document.getElementById('snapGrid').querySelectorAll('.btn').forEach((b) => b.classList.remove('sel'));
-      btn.classList.add('sel');
-      requestDraw();
-    });
-  });
-}
-
-function bindUpload() {
-  const zone = document.getElementById('uploadZone');
-  const input = document.getElementById('fileInput');
-  zone.addEventListener('click', () => input.click());
-  input.addEventListener('change', () => {
-    addFiles(input.files);
-    input.value = '';
-  });
-  zone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    zone.classList.add('dragover');
-  });
-  zone.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    zone.classList.remove('dragover');
-  });
-  zone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    zone.classList.remove('dragover');
-    addFiles(e.dataTransfer.files);
-  });
-}
-
-function fileCategory(file) {
-  if (file.type.startsWith('image/')) return 'Image';
-  if (file.type.startsWith('video/')) return 'Video';
-  if (/\.(pdf|svg|dwg|dxf|dgn)$/i.test(file.name)) return 'Drawing';
-  if (/\.(tif|tiff|heic|scan)$/i.test(file.name) || file.type === 'application/octet-stream') return 'Scan';
-  return file.type || 'File';
-}
-
-function renderUploadZone() {
-  const zone = document.getElementById('uploadZone');
-  if (!state.uploads.length) {
-    zone.classList.remove('has-files');
-    zone.innerHTML = 'Image · Video · Drawing · Scan<br><span style="font-size:8px;">Drop files or tap to browse</span>';
-    return;
-  }
-  zone.classList.add('has-files');
-  zone.innerHTML = state.uploads.map((f) =>
-    `<span class="upload-file">${escapeHtml(f.name)} <span style="color:var(--dim);">(${fileCategory(f)})</span></span>`
-  ).join('<br>') + '<br><span style="font-size:8px;">Drop or tap to add more</span>';
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function addFiles(fileList) {
-  if (!fileList || !fileList.length) return;
-  state.uploads = [...state.uploads, ...Array.from(fileList)];
-  renderUploadZone();
-}
-
-function addLayer() {
-  if (state.layers.length >= 3) return;
-  state.layers.push(defaultLayer());
-  state.activeLayer = state.layers.length - 1;
-  buildLayerTabs();
-  buildLayerPanels();
-  requestDraw();
-}
-
-function switchLayer(idx) {
-  state.activeLayer = idx;
-  buildLayerTabs();
-  document.querySelectorAll('.layer-panel').forEach((p, i) => p.classList.toggle('active', i === idx));
-  refreshDimensionsDock();
-  refreshAppearanceDock();
-  refreshSizeDimsDock();
-  layoutControls();
-}
-
-function removeLayer(idx) {
-  if (state.layers.length === 1) return;
-  state.layers.splice(idx, 1);
-  state.activeLayer = Math.min(state.activeLayer, state.layers.length - 1);
-  buildLayerTabs();
-  buildLayerPanels();
-  requestDraw();
-}
-
-function buildLayerTabs() {
-  const tabs = document.getElementById('layerTabs');
-  const addBtn = document.getElementById('addLayerBtn');
-  tabs.querySelectorAll('.layer-tab:not(.add-btn)').forEach((t) => t.remove());
-  state.layers.forEach((_, i) => {
-    const t = document.createElement('div');
-    t.className = 'layer-tab' + (i === state.activeLayer ? ' active' : '');
-    t.textContent = 'Layer ' + (i + 1);
-    t.addEventListener('click', () => switchLayer(i));
-    tabs.insertBefore(t, addBtn);
-  });
-  addBtn.style.display = state.layers.length >= 3 ? 'none' : 'block';
-  addBtn.onclick = addLayer;
-}
-
-function buildLayerPanels() {
-  const container = document.getElementById('layerPanels');
-  container.innerHTML = '';
-  state.layers.forEach((layer, i) => {
-    const panel = document.createElement('div');
-    panel.className = 'layer-panel' + (i === state.activeLayer ? ' active' : '');
-    panel.id = 'lp' + i;
-    panel.innerHTML = layerPanelMainHTML(layer, i);
-    wireLayerPanel(panel, i);
-    container.appendChild(panel);
-  });
-  refreshDimensionsDock();
-  refreshAppearanceDock();
-  refreshSizeDimsDock();
-  layoutControls();
-  if (dynamicControlsReady) updateAllControlVisibility();
-}
-
-function layerDimsHTML(l, i) {
-  const u = unitSuffix();
-  const isLine = l.shape === 'Line';
-  if (isLine) {
-    return `
-      <span class="flabel">Length (<span data-dim-unit>${u}</span>)</span>
-      <input type="number" min="0.1" step="any" value="${l.widthReal}" data-prop="widthReal">
-      <span class="flabel" style="margin-top:8px;">Width (<span data-dim-unit>${u}</span>)</span>
-      <input type="number" min="0.1" step="any" value="${l.widthReal}" data-prop="widthReal" disabled style="opacity:0.5;">
-      <span class="flabel" style="margin-top:8px;">Height (<span data-dim-unit>${u}</span>)</span>
-      <input type="number" min="0.1" step="any" value="${l.heightReal}" data-prop="heightReal" disabled style="opacity:0.5;">`;
-  }
-  return `
-    <span class="flabel">Width (<span data-dim-unit>${u}</span>)</span>
-    <input type="number" min="0.1" step="any" value="${l.widthReal}" data-prop="widthReal">
-    <span class="flabel" style="margin-top:8px;">Height (<span data-dim-unit>${u}</span>)</span>
-    <input type="number" min="0.1" step="any" value="${l.heightReal}" data-prop="heightReal">`;
-}
-
-function layerThicknessHTML(l) {
-  return `
-    <div class="slider-row">
-      <span class="flabel">pt</span>
-      <input type="range" min="0.25" max="3" step="0.25" value="${l.thickness}" data-prop="thickness">
-      <span class="slider-val" data-display="thickness">${l.thickness.toFixed(2)}</span>
-    </div>`;
-}
-
-function layerColourHTML(l, i) {
-  const esc = (s) => String(s).replace(/"/g, '&quot;');
-  return `
-    <div class="colour-row">
-      <div class="colour-swatch" data-swatch data-layer="${i}" style="background:${esc(l.colour)};" title="Open colour wheel"></div>
-      <input type="text" value="${esc(l.colour)}" data-prop="colour" data-hex placeholder="#000000" aria-label="Hex colour">
-    </div>`;
-}
-
-function refreshDimensionsDock() {
-  const dock = document.getElementById('dimensionsDock');
-  if (!dock) return;
-  const i = state.activeLayer;
-  dock.innerHTML = layerDimsHTML(state.layers[i], i);
-  wirePropInputs(dock, i);
-}
-
-function refreshAppearanceDock() {
-  const i = state.activeLayer;
-  const l = state.layers[i];
-  const thick = document.getElementById('thicknessDock');
-  const col = document.getElementById('colourDock');
-  if (thick) {
-    thick.innerHTML = layerThicknessHTML(l);
-    wirePropInputs(thick, i);
-  }
-  if (col) {
-    col.innerHTML = layerColourHTML(l, i);
-    wirePropInputs(col, i);
-    const swatch = col.querySelector('[data-swatch]');
-    const hexInput = col.querySelector('[data-hex]');
-    swatch?.addEventListener('mousedown', (e) => e.stopPropagation());
-    swatch?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openColorPicker(i, swatch);
-    });
-    hexInput?.addEventListener('input', () => {
-      if (/^#[0-9A-Fa-f]{6}$/.test(hexInput.value)) {
-        setLayerProp(i, 'colour', hexInput.value);
-        if (swatch) swatch.style.background = hexInput.value;
-        if (colorPickerLayer === i) colorPickerHsv = hexToHsv(hexInput.value);
-      }
-    });
-  }
-}
-
-function refreshSizeDimsDock() {
-  const dock = document.getElementById('sizeDimsDock');
-  if (!dock) return;
-  const i = state.activeLayer;
-  dock.innerHTML = layerDimsHTML(state.layers[i], i);
-  wirePropInputs(dock, i);
-}
-
-function wirePropInputs(container, i) {
-  if (!container) return;
-  container.querySelectorAll('[data-prop]').forEach((el) => {
-    const prop = el.dataset.prop;
-    const handler = () => {
-      let val;
-      if (el.type === 'range') {
-        if (prop === 'apexOffset') {
-          val = parseInt(el.value, 10) / 100;
-        } else {
-          val = prop === 'thickness' ? parseFloat(el.value) : parseInt(el.value, 10);
-        }
-      } else if (prop === 'widthReal' || prop === 'heightReal') {
-        val = parseFloat(el.value);
-        if (!Number.isFinite(val) || val <= 0) return;
-      } else {
-        val = el.value;
-      }
-      if (prop === 'colour' && !/^#[0-9A-Fa-f]{6}$/.test(val)) return;
-      setLayerProp(i, prop, val, el);
-      if (prop === 'widthReal' || prop === 'heightReal') {
-        refreshDimensionsDock();
-        refreshSizeDimsDock();
-      }
-    };
-    el.addEventListener('input', handler);
-    el.addEventListener('change', handler);
-  });
-}
-
-function layerPanelMainHTML(l, i) {
-  const shapeOpts = SHAPES.map((s) =>
-    `<button type="button" class="btn sm${l.shape === s ? ' sel' : ''}" data-prop="shape" data-val="${s}">${s}</button>`
-  ).join('');
-  const apexOffset = l.apexOffset != null ? l.apexOffset : 0.5;
-  const fillModeOpts = FILL_MODES.map((f) =>
-    `<button type="button" class="btn sm${l.fill === f.id ? ' sel' : ''}" data-fill-mode="${f.id}">${f.label}</button>`
-  ).join('');
-  const hatchOpts = HATCH_PATTERNS.map((h) =>
-    `<button type="button" class="btn sm${l.fill === 'hatch' && l.hatchPattern === h.id ? ' sel' : ''}" data-hatch="${h.id}">${h.label}</button>`
-  ).join('');
-  const lineStyleOpts = LINES.map((s) =>
-    `<button type="button" class="btn sm${l.lineStyle === s ? ' sel' : ''}" data-prop="lineStyle" data-val="${s}">${s}</button>`
-  ).join('');
-  const lineDirOpts = LINE_DIRS.map((d) =>
-    `<button type="button" class="btn sm${l.lineDir === d ? ' sel' : ''}" data-prop="lineDir" data-val="${d}">${d}</button>`
-  ).join('');
-  const lineShapeDirOpts = LINE_SHAPE_DIRECTIONS.map((d) =>
-    `<button type="button" class="btn sm${(l.lineDirection || 'horizontal') === d.id ? ' sel' : ''}" data-line-direction="${d.id}">${d.label}</button>`
-  ).join('');
-
-  return `
-    <div class="layer-panel-shape">
-      <span class="flabel ctl-param-label">Shape</span>
-      <div class="btn-row" data-btn-group="shape">${shapeOpts}</div>
-      <div class="ctl-section" data-ctl="apex">
-        <div class="slider-row" style="margin-top:6px;">
-          <span class="flabel">Apex</span>
-          <input type="range" min="0" max="100" step="1" value="${Math.round(apexOffset * 100)}" data-prop="apexOffset" data-apex-range>
-          <span class="slider-val" data-display="apexOffset">${apexOffset === 0 ? 'Left' : apexOffset === 1 ? 'Right' : apexOffset === 0.5 ? 'Centre' : Math.round(apexOffset * 100) + '%'}</span>
-        </div>
-      </div>
-      <div class="ctl-section" data-ctl="sides">
-        <div class="slider-row" style="margin-top:6px;">
-          <span class="flabel">Sides</span>
-          <input type="range" min="3" max="8" step="1" value="${l.sides}" data-prop="sides">
-          <span class="slider-val" data-display="sides">${l.sides}</span>
-        </div>
-      </div>
-      <div class="ctl-section" data-ctl="fill">
-        <span class="flabel ctl-param-label" style="margin-top:8px;">Fill</span>
-        <div class="btn-row">${fillModeOpts}</div>
-      </div>
-      <div class="ctl-section" data-ctl="hatch">
-        <span class="flabel" style="margin-top:6px;">Pattern / Hatch</span>
-        <div class="hatch-grid">${hatchOpts}</div>
-      </div>
-      <div class="ctl-section" data-ctl="outline">
-        <span class="flabel ctl-param-label" style="margin-top:8px;">Outline</span>
-        <div class="btn-row">
-          <button type="button" class="btn sm${l.outlineOn ? ' sel' : ''}" data-action="toggle-outline">On</button>
-          <button type="button" class="btn sm${!l.outlineOn ? ' sel' : ''}" data-action="toggle-outline-off">Off</button>
-        </div>
-      </div>
-      <div class="ctl-section" data-ctl="direction">
-        <span class="flabel" style="margin-top:8px;">Direction</span>
-        <div class="hatch-grid">${lineShapeDirOpts}</div>
-      </div>
-      <div class="ctl-section" data-ctl="outline-style">
-        <span class="flabel ctl-param-label" style="margin-top:8px;">Outline Style</span>
-        <div class="btn-row" data-btn-group="lineStyle">${lineStyleOpts}</div>
-      </div>
-      ${i > 0 ? '<button type="button" class="btn danger full" style="margin-top:12px;" data-action="remove">Remove Layer</button>' : ''}
-    </div>
-    <div class="layer-panel-style" data-layer-style="${i}">
-      <div class="ctl-section" data-ctl="line-modifier">
-        <span class="flabel ctl-param-label" style="margin-top:8px;">Line Modifier</span>
-        <div class="btn-row">
-          <button type="button" class="btn sm${l.lineOn ? ' sel' : ''}" data-action="toggle-line">${l.lineOn ? 'On' : 'Off'}</button>
-        </div>
-        <div class="ctl-section" data-ctl="line-modifier-opts" data-line-opts>
-          <div class="btn-row" data-btn-group="lineDir" style="margin-top:4px;">${lineDirOpts}</div>
-          <div class="slider-row">
-            <span class="flabel">Density</span>
-            <input type="range" min="1" max="12" value="${l.density}" data-prop="density">
-            <span class="slider-val" data-display="density">${l.density}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function isMobileViewport() {
-  return window.matchMedia('(max-width: 900px)').matches;
-}
-
-function setCtlVisible(el, visible) {
-  if (el) el.classList.toggle('ctl-hidden', !visible);
-}
-
-function updateLayerControlVisibility(i) {
-  const l = state.layers[i];
-  const panel = document.getElementById('lp' + i);
-  if (!panel || !l) return;
-  const isLine = l.shape === 'Line';
-  const set = (ctl, visible) => {
-    panel.querySelectorAll(`[data-ctl="${ctl}"]`).forEach((el) => setCtlVisible(el, visible));
-  };
-  set('apex', l.shape === 'Triangle');
-  set('sides', l.shape === 'Polygon');
-  set('direction', isLine);
-  set('fill', !isLine);
-  set('hatch', !isLine && l.fill !== 'none');
-  set('outline', !isLine);
-  set('outline-style', !isLine && l.outlineOn);
-  set('line-modifier', !isLine);
-  const lineOn = !isLine && l.lineOn;
-  set('line-modifier-opts', lineOn);
-}
-
-function updateGlobalControlVisibility() {
-  const comp = document.getElementById('layerComposition');
-  if (comp) setCtlVisible(comp, state.layers.length > 1);
-}
-
-function updateAllControlVisibility() {
-  state.layers.forEach((_, i) => updateLayerControlVisibility(i));
-  updateGlobalControlVisibility();
-}
-
-function restoreLayerStyleSections() {
-  document.querySelectorAll('.layer-panel-style[data-layer-style]').forEach((el) => {
-    const i = el.getAttribute('data-layer-style');
-    const panel = document.getElementById('lp' + i);
-    if (panel && el.parentElement !== panel) panel.appendChild(el);
-  });
-}
-
-function mountMobileLayerStyle() {
-  if (!isMobileViewport()) return;
-  const mount = document.getElementById('mobileStyleLayerMount');
-  if (!mount) return;
-  restoreLayerStyleSections();
-  const panel = document.getElementById('lp' + state.activeLayer);
-  const styleEl = panel?.querySelector('.layer-panel-style');
-  if (styleEl) mount.appendChild(styleEl);
-}
-
-function showAllControls() {
-  document.querySelectorAll('.ctl-section, #layerComposition').forEach((el) => {
-    el.classList.remove('ctl-hidden');
-  });
-}
-
-function layoutDesktopControls() {
-  const panelNotation = document.getElementById('panelNotation');
-  const panelDimensions = document.getElementById('panelDimensions');
-  const layerComposition = document.getElementById('layerComposition');
-  const appearanceSplit = document.getElementById('appearanceSplit');
-  const controlsSplit = document.getElementById('controlsSplit');
-  const workspace = document.getElementById('drawingWorkspace');
-  const viewer = document.querySelector('.col-left__viewer-block');
-  if (!panelNotation || !panelDimensions || !controlsSplit || !workspace) return;
-
-  controlsSplit.appendChild(panelNotation);
-  if (layerComposition && layerComposition.parentElement !== panelNotation) {
-    panelNotation.appendChild(layerComposition);
-  }
-  controlsSplit.appendChild(panelDimensions);
-  if (appearanceSplit && viewer && appearanceSplit.parentElement !== workspace) {
-    workspace.insertBefore(appearanceSplit, viewer);
-  }
-}
-
-function layoutMobileControls() {
-  const panelNotation = document.getElementById('panelNotation');
-  const panelDimensions = document.getElementById('panelDimensions');
-  const layerComposition = document.getElementById('layerComposition');
-  const appearanceSplit = document.getElementById('appearanceSplit');
-
-  document.getElementById('mobilePanelShape')?.appendChild(panelNotation);
-  const scaleMount = document.getElementById('mobilePanelScale');
-  if (scaleMount) {
-    scaleMount.appendChild(panelDimensions);
-    if (layerComposition) scaleMount.appendChild(layerComposition);
-  }
-  document.getElementById('mobileStyleAppearanceMount')?.appendChild(appearanceSplit);
-  mountMobileLayerStyle();
-}
-
-function layoutControls() {
-  if (!document.getElementById('controlsSplit')) return;
-
-  restoreLayerStyleSections();
-
-  if (isMobileViewport()) {
-    layoutMobileControls();
-  } else {
-    layoutDesktopControls();
-  }
-
-  if (!dynamicControlsReady) {
-    showAllControls();
-  } else {
-    updateAllControlVisibility();
-  }
-}
-
-function enableDynamicControls() {
-  dynamicControlsReady = true;
-  updateAllControlVisibility();
-}
-
-function bindMobileTabs() {
-  const bar = document.getElementById('mobileTabBar');
-  if (!bar) return;
-  bar.querySelectorAll('.mobile-tab-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const tab = btn.dataset.mobileTab;
-      bar.querySelectorAll('.mobile-tab-btn').forEach((b) => {
-        const on = b === btn;
-        b.classList.toggle('active', on);
-        b.setAttribute('aria-selected', on ? 'true' : 'false');
-      });
-      document.querySelectorAll('.mobile-tab-panel').forEach((p) => {
-        p.classList.toggle('active', p.dataset.mobileTab === tab);
-      });
-    });
-  });
-}
-
-function wireLayerPanel(panel, i) {
-  wirePropInputs(panel, i);
-
-  panel.querySelectorAll('[data-btn-group] .btn[data-prop]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const prop = btn.dataset.prop;
-      const val = btn.dataset.val;
-      setLayerProp(i, prop, val);
-      if (prop === 'shape') buildLayerPanels();
-      else {
-        panel.querySelectorAll(`[data-btn-group="${prop}"] .btn`).forEach((b) => {
-          b.classList.toggle('sel', b.dataset.val === val);
-        });
-      }
-    });
-  });
-
-  panel.querySelectorAll('[data-fill-mode]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.layers[i].fill = btn.dataset.fillMode;
-      buildLayerPanels();
-      requestDraw();
-    });
-  });
-
-  panel.querySelectorAll('[data-hatch]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.layers[i].fill = 'hatch';
-      state.layers[i].hatchPattern = btn.dataset.hatch;
-      buildLayerPanels();
-      requestDraw();
-    });
-  });
-
-  panel.querySelectorAll('[data-line-direction]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.layers[i].lineDirection = btn.dataset.lineDirection;
-      buildLayerPanels();
-      requestDraw();
-    });
-  });
-
-  panel.querySelector('[data-action="toggle-outline"]')?.addEventListener('click', () => {
-    state.layers[i].outlineOn = true;
-    refreshOutlineButtons(panel, true);
-    updateLayerControlVisibility(i);
-    requestDraw();
-  });
-
-  panel.querySelector('[data-action="toggle-outline-off"]')?.addEventListener('click', () => {
-    state.layers[i].outlineOn = false;
-    refreshOutlineButtons(panel, false);
-    updateLayerControlVisibility(i);
-    requestDraw();
-  });
-
-  panel.querySelector('[data-action="toggle-line"]')?.addEventListener('click', (e) => {
-    const btn = e.currentTarget;
-    state.layers[i].lineOn = !state.layers[i].lineOn;
-    btn.textContent = state.layers[i].lineOn ? 'On' : 'Off';
-    btn.classList.toggle('sel', state.layers[i].lineOn);
-    updateLayerControlVisibility(i);
-    requestDraw();
-  });
-
-  panel.querySelector('[data-action="remove"]')?.addEventListener('click', () => removeLayer(i));
-}
-
-function refreshOutlineButtons(panel, on) {
-  const onBtn = panel.querySelector('[data-action="toggle-outline"]');
-  const offBtn = panel.querySelector('[data-action="toggle-outline-off"]');
-  onBtn?.classList.toggle('sel', on);
-  offBtn?.classList.toggle('sel', !on);
-}
-
-function setLayerProp(i, prop, val, el) {
-  state.layers[i][prop] = val;
-  if (el) {
-    const display = el.closest('.slider-row')?.querySelector('[data-display="' + prop + '"]');
-    if (display) {
-      if (prop === 'thickness') display.textContent = parseFloat(val).toFixed(2);
-      else if (prop === 'apexOffset') {
-        const t = parseFloat(val);
-        display.textContent = t <= 0.02 ? 'Left' : t >= 0.98 ? 'Right' : Math.abs(t - 0.5) < 0.02 ? 'Centre' : Math.round(t * 100) + '%';
-      } else display.textContent = val;
-    }
-  }
-  if (prop === 'colour') {
-    const swatch = document.getElementById('colourDock')?.querySelector('[data-swatch]');
-    const hexInput = document.getElementById('colourDock')?.querySelector('[data-hex]');
-    if (swatch) swatch.style.background = val;
-    if (hexInput) hexInput.value = val;
-    if (colorPickerLayer === i) colorPickerHsv = hexToHsv(val);
-  }
-  if (prop === 'thickness') {
-    const display = document.getElementById('thicknessDock')?.querySelector('[data-display="thickness"]');
-    if (display) display.textContent = parseFloat(val).toFixed(2);
-  }
-  requestDraw();
-}
-
-function getOffset(idx, total) {
-  if (total === 1) return { x: 0, y: 0 };
-  const l = getLayerPixelSize(state.layers[idx]);
-  const prev = getLayerPixelSize(state.layers[idx > 0 ? idx - 1 : idx]);
-  const step = state.snapMode === 'centre' ? 0
-    : state.snapMode === 'half' ? (prev.width + l.width) / 4
-    : (prev.width + l.width) / 2;
-  const spread = (total - 1) / 2;
-  const pos = idx - spread;
-  if (state.stackAxis === 'vertical') return { x: 0, y: pos * step };
-  if (state.stackAxis === 'horizontal') return { x: pos * step, y: 0 };
-  return { x: pos * step * 0.707, y: pos * step * 0.707 };
-}
-
-function applyLineDash(ctx, style) {
-  if (style === 'Solid') ctx.setLineDash([]);
-  else if (style === 'Dash S') ctx.setLineDash([4, 3]);
-  else if (style === 'Dash L') ctx.setLineDash([10, 4]);
-  else if (style === 'Dotted') ctx.setLineDash([1.5, 4]);
-}
-
-function getLineSegment(cx, cy, length, direction) {
-  const half = length / 2;
-  if (direction === 'vertical') {
-    return { x1: cx, y1: cy - half, x2: cx, y2: cy + half };
-  }
-  if (direction === 'diagonal-left') {
-    const d = half * Math.SQRT1_2;
-    return { x1: cx - d, y1: cy - d, x2: cx + d, y2: cy + d };
-  }
-  if (direction === 'diagonal-right') {
-    const d = half * Math.SQRT1_2;
-    return { x1: cx - d, y1: cy + d, x2: cx + d, y2: cy - d };
-  }
-  return { x1: cx - half, y1: cy, x2: cx + half, y2: cy };
-}
-
-function drawLineModifierInRect(ctx, cx, cy, width, height, l, col) {
-  const hw = width / 2;
-  const hh = height / 2;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(cx - hw, cy - hh, width, height);
-  ctx.clip();
-  ctx.setLineDash([]);
-  const cnt = l.density + 2;
-  ctx.lineWidth = 0.6;
-  ctx.strokeStyle = col;
-  for (let n = 0; n <= cnt; n++) {
-    const t = n / cnt;
-    ctx.beginPath();
-    if (l.lineDir === 'Horizontal') {
-      const y = cy - hh + t * height;
-      ctx.moveTo(cx - width, y);
-      ctx.lineTo(cx + width, y);
-    } else if (l.lineDir === 'Vertical') {
-      const x = cx - hw + t * width;
-      ctx.moveTo(x, cy - height);
-      ctx.lineTo(x, cy + height);
-    } else if (l.lineDir === 'Diagonal') {
-      const x = cx - width + t * width * 2;
-      ctx.moveTo(x - height, cy - height);
-      ctx.lineTo(x + height, cy + height);
-    } else {
-      const y = cy - hh + t * height;
-      ctx.moveTo(cx - width, y);
-      ctx.lineTo(cx + width, y);
-      const x = cx - hw + t * width;
-      ctx.moveTo(x, cy - height);
-      ctx.lineTo(x, cy + height);
-    }
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawLineShapeP5(ctx, cx, cy, l) {
-  const length = Math.max(4, l.widthReal * getPixelsPerUnit());
-  const col = l.colour || '#1a1a1a';
-  const dir = l.lineDirection || 'horizontal';
-  const { x1, y1, x2, y2 } = getLineSegment(cx, cy, length, dir);
-
-  ctx.strokeStyle = col;
-  ctx.lineWidth = l.thickness;
-  applyLineDash(ctx, l.lineStyle);
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  ctx.stroke();
-
-  if (l.lineOn) {
-    const pad = Math.max(length * 0.2, 14);
-    const minX = Math.min(x1, x2) - pad;
-    const maxX = Math.max(x1, x2) + pad;
-    const minY = Math.min(y1, y2) - pad;
-    const maxY = Math.max(y1, y2) + pad;
-    const clipW = maxX - minX;
-    const clipH = maxY - minY;
-    drawLineModifierInRect(ctx, (minX + maxX) / 2, (minY + maxY) / 2, clipW, clipH, l, col);
-  }
-  ctx.setLineDash([]);
-}
-
-function drawShapeP5(p, cx, cy, l) {
-  const ctx = p.drawingContext;
-  if (l.shape === 'Line') {
-    drawLineShapeP5(ctx, cx, cy, l);
-    return;
-  }
-  const { width, height } = getLayerPixelSize(l);
-  const hw = width / 2;
-  const hh = height / 2;
-  const col = l.colour || '#1a1a1a';
-
-  const buildPath = () => {
-    ctx.beginPath();
-    if (l.shape === 'Square') ctx.rect(cx - hw, cy - hh, width, height);
-    else if (l.shape === 'Triangle') {
-      const t = l.apexOffset != null ? l.apexOffset : 0.5;
-      const apexX = cx - hw + t * width;
-      const apexY = cy - hh;
-      const baseLeftX = cx - hw;
-      const baseRightX = cx + hw;
-      const baseY = cy + hh;
-      ctx.moveTo(apexX, apexY);
-      ctx.lineTo(baseRightX, baseY);
-      ctx.lineTo(baseLeftX, baseY);
-      ctx.closePath();
-    } else if (l.shape === 'Circle') ctx.ellipse(cx, cy, hw, hh, 0, 0, Math.PI * 2);
-    else if (l.shape === 'Half Circle') {
-      ctx.ellipse(cx, cy, hw, hh, 0, Math.PI, 0);
-      ctx.closePath();
-    } else if (l.shape === 'Polygon') {
-      const sides = l.sides || 5;
-      for (let n = 0; n < sides; n++) {
-        const a = (n / sides) * Math.PI * 2 - Math.PI / 2;
-        const x = cx + hw * Math.cos(a);
-        const y = cy + hh * Math.sin(a);
-        if (n === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.closePath();
-    }
-  };
-
-  if (l.fill === 'solid') {
-    buildPath();
-    ctx.fillStyle = col;
-    ctx.fill();
-  } else if (l.fill === 'hatch') {
-    drawHatchFill(ctx, cx, cy, width, height, l.hatchPattern, col, buildPath);
-  }
-
-  if (l.outlineOn) {
-    buildPath();
-    ctx.strokeStyle = col;
-    ctx.lineWidth = l.thickness;
-    applyLineDash(ctx, l.lineStyle);
-    ctx.stroke();
-  }
-
-  if (l.lineOn) {
-    drawLineModifierInRect(ctx, cx, cy, width, height, l, col);
-  }
-  ctx.setLineDash([]);
-}
-
-function drawHatchFill(ctx, cx, cy, width, height, pattern, col, buildPath) {
-  const hw = width / 2;
-  const hh = height / 2;
-  const left = cx - hw;
-  const right = cx + hw;
-  const top = cy - hh;
-  const bottom = cy + hh;
-  const spacing = 8;
-  const pad = Math.max(width, height);
-
-  ctx.save();
-  buildPath();
-  ctx.clip();
-  ctx.setLineDash([]);
-  ctx.strokeStyle = col;
-  ctx.fillStyle = col;
-  const lw = 0.75;
-
-  const strokeH = (y) => {
-    ctx.beginPath();
-    ctx.moveTo(left - pad, y);
-    ctx.lineTo(right + pad, y);
-    ctx.lineWidth = lw;
-    ctx.stroke();
-  };
-  const strokeV = (x) => {
-    ctx.beginPath();
-    ctx.moveTo(x, top - pad);
-    ctx.lineTo(x, bottom + pad);
-    ctx.lineWidth = lw;
-    ctx.stroke();
-  };
-  const strokeDiag = (angle) => {
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    const extent = pad * 2;
-    for (let d = -extent; d < extent; d += spacing) {
-      ctx.beginPath();
-      const ox = cx + d * -sin;
-      const oy = cy + d * cos;
-      ctx.moveTo(ox - extent * cos, oy - extent * sin);
-      ctx.lineTo(ox + extent * cos, oy + extent * sin);
-      ctx.lineWidth = lw;
-      ctx.stroke();
-    }
-  };
-
-  if (pattern === 'horizontal') {
-    for (let y = top; y <= bottom; y += spacing) strokeH(y);
-  } else if (pattern === 'vertical') {
-    for (let x = left; x <= right; x += spacing) strokeV(x);
-  } else if (pattern === 'diagonal-left') {
-    strokeDiag(Math.PI / 4);
-  } else if (pattern === 'diagonal-right') {
-    strokeDiag(-Math.PI / 4);
-  } else if (pattern === 'cross') {
-    for (let y = top; y <= bottom; y += spacing) strokeH(y);
-    for (let x = left; x <= right; x += spacing) strokeV(x);
-  } else if (pattern === 'diamond') {
-    strokeDiag(Math.PI / 4);
-    strokeDiag(-Math.PI / 4);
-  } else if (pattern === 'dot') {
-    const dot = 2;
-    for (let y = top + spacing / 2; y <= bottom; y += spacing) {
-      for (let x = left + spacing / 2; x <= right; x += spacing) {
-        ctx.beginPath();
-        ctx.arc(x, y, dot / 2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-  } else if (pattern === 'brick') {
-    const rowH = spacing * 1.2;
-    const brickW = spacing * 2.2;
-    let row = 0;
-    for (let y = top; y <= bottom + rowH; y += rowH) {
-      const offset = (row % 2) * (brickW / 2);
-      for (let x = left - brickW + offset; x <= right + brickW; x += brickW) {
-        ctx.beginPath();
-        ctx.rect(x, y, brickW - 2, rowH - 2);
-        ctx.lineWidth = lw;
-        ctx.stroke();
-      }
-      row++;
-    }
-  }
-  ctx.restore();
-}
-
-/* —— HSB colour wheel picker —— */
-function hexToHsv(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  const r = ((n >> 16) & 255) / 255;
-  const g = ((n >> 8) & 255) / 255;
-  const b = (n & 255) / 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const d = max - min;
-  let h = 0;
-  const s = max === 0 ? 0 : d / max;
-  const v = max;
-  if (d !== 0) {
-    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
-    else if (max === g) h = ((b - r) / d + 2) / 6;
-    else h = ((r - g) / d + 4) / 6;
-  }
-  return { h: h * 360, s: s * 100, v: v * 100 };
-}
-
-function hsvToHex(h, s, v) {
-  s /= 100;
-  v /= 100;
-  const c = v * s;
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-  const m = v - c;
-  let r = 0, g = 0, b = 0;
-  if (h < 60) { r = c; g = x; }
-  else if (h < 120) { r = x; g = c; }
-  else if (h < 180) { g = c; b = x; }
-  else if (h < 240) { g = x; b = c; }
-  else if (h < 300) { r = x; b = c; }
-  else { r = c; b = x; }
-  const R = Math.round((r + m) * 255);
-  const G = Math.round((g + m) * 255);
-  const B = Math.round((b + m) * 255);
-  return '#' + [R, G, B].map((v) => v.toString(16).padStart(2, '0')).join('');
-}
-
-function initColorPicker() {
-  const popover = document.getElementById('colorPickerPopover');
-  const canvas = document.getElementById('colorPickerCanvas');
-  const ctx = canvas.getContext('2d');
-  const size = canvas.width;
-  const cx = size / 2;
-  const cy = size / 2;
-  const outerR = size / 2 - 4;
-  const innerR = 42;
-
-  let dragMode = null;
-
-  function paintPicker() {
-    ctx.clearRect(0, 0, size, size);
-    for (let a = 0; a < 360; a++) {
-      const start = ((a - 0.5) * Math.PI) / 180;
-      const end = ((a + 0.5) * Math.PI) / 180;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, outerR, start, end);
-      ctx.closePath();
-      ctx.fillStyle = hsvToHex(a, 100, 100);
-      ctx.fill();
-    }
-    ctx.beginPath();
-    ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
-    ctx.fillStyle = '#fff';
-    ctx.fill();
-    const { h, s, v } = colorPickerHsv;
-    const block = innerR * 1.35;
-    const bx = cx - block / 2;
-    const by = cy - block / 2;
-    const satGrad = ctx.createLinearGradient(bx, by, bx + block, by);
-    satGrad.addColorStop(0, '#ffffff');
-    satGrad.addColorStop(1, hsvToHex(h, 100, 100));
-    ctx.fillStyle = satGrad;
-    ctx.fillRect(bx, by, block, block);
-    const valGrad = ctx.createLinearGradient(bx, by, bx, by + block);
-    valGrad.addColorStop(0, 'rgba(0,0,0,0)');
-    valGrad.addColorStop(1, 'rgba(0,0,0,1)');
-    ctx.fillStyle = valGrad;
-    ctx.fillRect(bx, by, block, block);
-    ctx.beginPath();
-    ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
-    ctx.strokeStyle = varBorder();
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    const hueRad = (h * Math.PI) / 180;
-    const hx = cx + Math.cos(hueRad) * (outerR - 6);
-    const hy = cy + Math.sin(hueRad) * (outerR - 6);
-    ctx.beginPath();
-    ctx.arc(hx, hy, 5, 0, Math.PI * 2);
-    ctx.fillStyle = '#fff';
-    ctx.fill();
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    const sx = bx + (s / 100) * block;
-    const sy = by + (1 - v / 100) * block;
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(sx - 4, sy - 4, 8, 8);
-    ctx.strokeStyle = '#1a1a1a';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(sx - 4, sy - 4, 8, 8);
-  }
-
-  function varBorder() {
-    return getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#ccc';
-  }
-
-  function applyColor() {
-    const hex = hsvToHex(colorPickerHsv.h, colorPickerHsv.s, colorPickerHsv.v);
-    if (colorPickerLayer === null) return;
-    setLayerProp(colorPickerLayer, 'colour', hex);
-    paintPicker();
-  }
-
-  function hitTest(mx, my) {
-    const dx = mx - cx;
-    const dy = my - cy;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist >= innerR && dist <= outerR) return 'hue';
-    const block = innerR * 1.35;
-    const bx = cx - block / 2;
-    const by = cy - block / 2;
-    if (mx >= bx && mx <= bx + block && my >= by && my <= by + block) return 'sv';
-    return null;
-  }
-
-  function onPointer(mx, my) {
-    const mode = dragMode || hitTest(mx, my);
-    if (!mode) return;
-    dragMode = mode;
-    const dx = mx - cx;
-    const dy = my - cy;
-    if (mode === 'hue') {
-      let ang = (Math.atan2(dy, dx) * 180) / Math.PI;
-      if (ang < 0) ang += 360;
-      colorPickerHsv.h = ang;
-    } else {
-      const block = innerR * 1.35;
-      const bx = cx - block / 2;
-      const by = cy - block / 2;
-      colorPickerHsv.s = Math.max(0, Math.min(100, ((mx - bx) / block) * 100));
-      colorPickerHsv.v = Math.max(0, Math.min(100, (1 - (my - by) / block) * 100));
-    }
-    applyColor();
-  }
-
-  canvas.addEventListener('mousedown', (e) => {
-    const r = canvas.getBoundingClientRect();
-    onPointer(e.clientX - r.left, e.clientY - r.top);
-  });
-  window.addEventListener('mousemove', (e) => {
-    if (!dragMode) return;
-    const r = canvas.getBoundingClientRect();
-    onPointer(e.clientX - r.left, e.clientY - r.top);
-  });
-  window.addEventListener('mouseup', () => { dragMode = null; });
-
-  canvas.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    const t = e.touches[0];
-    const r = canvas.getBoundingClientRect();
-    onPointer(t.clientX - r.left, t.clientY - r.top);
-  }, { passive: false });
-  window.addEventListener('touchmove', (e) => {
-    if (!dragMode) return;
-    const t = e.touches[0];
-    const r = canvas.getBoundingClientRect();
-    onPointer(t.clientX - r.left, t.clientY - r.top);
-  }, { passive: false });
-  window.addEventListener('touchend', () => { dragMode = null; });
-
-  const backdrop = document.getElementById('colorPickerBackdrop');
-  backdrop.addEventListener('click', closeColorPicker);
-
-  window._paintColorPicker = paintPicker;
-}
-
-function openColorPicker(layerIdx, anchor) {
-  const popover = document.getElementById('colorPickerPopover');
-  const backdrop = document.getElementById('colorPickerBackdrop');
-  colorPickerLayer = layerIdx;
-  colorPickerHsv = hexToHsv(state.layers[layerIdx].colour || '#1a1a1a');
-  const rect = anchor.getBoundingClientRect();
-  const popW = 220;
-  const popH = 220;
-  let left = rect.right + 8;
-  let top = rect.top - 40;
-  if (left + popW > window.innerWidth - 8) left = rect.left - popW - 8;
-  if (left < 8) left = 8;
-  if (top + popH > window.innerHeight - 8) top = window.innerHeight - popH - 8;
-  if (top < 8) top = 8;
-  popover.style.left = left + 'px';
-  popover.style.top = top + 'px';
-  backdrop.classList.add('open');
-  backdrop.setAttribute('aria-hidden', 'false');
-  popover.classList.add('open');
-  popover.setAttribute('aria-hidden', 'false');
-  window._paintColorPicker?.();
-}
-
-function closeColorPicker() {
-  const popover = document.getElementById('colorPickerPopover');
-  const backdrop = document.getElementById('colorPickerBackdrop');
-  backdrop.classList.remove('open');
-  backdrop.setAttribute('aria-hidden', 'true');
-  popover.classList.remove('open');
-  popover.setAttribute('aria-hidden', 'true');
-  colorPickerLayer = null;
-}
-
-function getGridSpec() {
-  const ppu = getPixelsPerUnit();
-  if (state.unit === 'metric') {
-    return { minor: 0.5, major: 2.5, ppu };
-  }
-  return { minor: 1, major: 5, ppu };
-}
-
-function drawViewerGrid(ctx, w, h) {
-  const { minor, major, ppu } = getGridSpec();
-  const minorPx = minor * ppu;
-  const majorPx = major * ppu;
-  const cx = w / 2;
-  const cy = h / 2;
-
-  ctx.save();
-  ctx.setLineDash([]);
-
-  const drawVerticals = (spacing, alpha, lineWidth) => {
-    ctx.strokeStyle = `rgba(180, 180, 180, ${alpha})`;
-    ctx.lineWidth = lineWidth;
-    const start = Math.floor(-cx / spacing) * spacing;
-    for (let x = start; x <= w - cx + spacing; x += spacing) {
-      const px = cx + x;
-      if (px < 0 || px > w) continue;
-      ctx.beginPath();
-      ctx.moveTo(px, 0);
-      ctx.lineTo(px, h);
-      ctx.stroke();
-    }
-  };
-
-  const drawHorizontals = (spacing, alpha, lineWidth) => {
-    ctx.strokeStyle = `rgba(180, 180, 180, ${alpha})`;
-    ctx.lineWidth = lineWidth;
-    const start = Math.floor(-cy / spacing) * spacing;
-    for (let y = start; y <= h - cy + spacing; y += spacing) {
-      const py = cy + y;
-      if (py < 0 || py > h) continue;
-      ctx.beginPath();
-      ctx.moveTo(0, py);
-      ctx.lineTo(w, py);
-      ctx.stroke();
-    }
-  };
-
-  drawVerticals(minorPx, 0.1, 0.5);
-  drawHorizontals(minorPx, 0.1, 0.5);
-  drawVerticals(majorPx, 0.22, 0.75);
-  drawHorizontals(majorPx, 0.22, 0.75);
-
-  ctx.strokeStyle = 'rgba(180, 180, 180, 0.15)';
-  ctx.lineWidth = 0.5;
-  ctx.setLineDash([4, 6]);
-  ctx.beginPath();
-  ctx.moveTo(cx, 0);
-  ctx.lineTo(cx, h);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(0, cy);
-  ctx.lineTo(w, cy);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.restore();
-}
-
-function initP5() {
-  p5Sketch = new p5((p) => {
-    p.setup = () => {
-      const cnv = p.createCanvas(CANVAS_W, CANVAS_H);
-      cnv.parent('p5-container');
-      p.noLoop();
-      requestDraw();
-      fitViewerCanvas();
-    };
-    p.draw = () => {
-      p.background(255);
-      const ctx = p.drawingContext;
-      drawViewerGrid(ctx, p.width, p.height);
-      state.layers.forEach((layer, i) => {
-        const o = getOffset(i, state.layers.length);
-        drawShapeP5(p, p.width / 2 + o.x, p.height / 2 + o.y, layer);
-      });
-    };
-  });
-}
-
-function requestDraw() {
-  if (p5Sketch) p5Sketch.redraw();
-}
-
-function getSelectedMetaMulti(group) {
-  return [...document.querySelectorAll(`[data-meta-group="${group}"] .meta-opt.sel`)]
-    .map((btn) => btn.dataset.value);
-}
-
-function getSelectedTypology() {
-  const sel = document.querySelector('[data-meta-group="typology"] .meta-opt.sel');
-  return sel ? sel.dataset.value : null;
-}
-
-function collectLexiconEntry() {
-  const lexiconName = document.getElementById('lexiconName').value.trim();
-  return {
-    author: document.getElementById('author').value.trim(),
-    lexiconName,
-    status: 'draft',
-    layers: state.layers.map((l) => ({ ...l })),
-    composition: {
-      stackAxis: state.stackAxis,
-      snap: state.snapMode,
-    },
-    markScale: {
-      unit: state.unit,
-      referenceLabel: SCALE_REF[state.unit].label,
-      barPixels: SCALE_BAR_PX,
-      referenceDistance: SCALE_REF[state.unit].distance,
-      pixelsPerUnit: getPixelsPerUnit(),
-    },
-    metadata: {
-      metaData: getSelectedMetaMulti('metaData'),
-      element: getSelectedMetaMulti('element'),
-      typology: getSelectedTypology(),
-    },
-    description: document.getElementById('description').value.trim(),
-    uploads: state.uploads.map((f) => ({
-      name: f.name,
-      type: f.type || fileCategory(f),
-      category: fileCategory(f),
-      size: f.size,
-    })),
-    savedAt: new Date().toISOString(),
-  };
-}
-
-function saveLexiconEntry() {
-  const entry = collectLexiconEntry();
-  console.log('Lexicon entry saved (local preview — Firebase not connected):');
-  console.log(entry);
-  console.log(JSON.stringify(entry, null, 2));
-}
-
-function updateScaleBarLabel() {
-  const lbl = document.getElementById('scaleBarLabel');
-  if (lbl) lbl.textContent = SCALE_REF[state.unit].label;
-}
-
-init();
-</script>
+<script src="js/sketch-composer.js"></script>
+<script src="js/lexicon-app.js"></script>
 </body>
 </html>

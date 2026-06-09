@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shape Composer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      background: #b5b5b5;
+      overflow: hidden;
+      font-family: ui-monospace, Consolas, monospace;
+    }
+    #stage {
+      position: fixed;
+      left: 50%;
+      top: 16px;
+      transform: translateX(-50%);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    #doc-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      width: 100%;
+      padding-bottom: 7px;
+      flex-shrink: 0;
+    }
+    .doc-input {
+      font: 11px ui-monospace, Consolas, monospace;
+      border: none;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.16);
+      background: transparent;
+      padding: 3px 0;
+      color: #111;
+      flex-shrink: 0;
+    }
+    .doc-input:focus { outline: none; border-bottom-color: rgba(0, 0, 0, 0.45); }
+    .doc-input::placeholder { color: rgba(0, 0, 0, 0.3); }
+    #mark-name { width: 108px; }
+    #student-name { width: 108px; }
+    #save {
+      margin-left: auto;
+      border: none;
+      background: none;
+      font: 11px ui-monospace, Consolas, monospace;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      padding: 3px 0;
+      color: rgba(0, 0, 0, 0.55);
+    }
+    #save:hover { color: #111; }
+    #field-wrap { position: relative; width: 100%; flex-shrink: 0; }
+    #canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 1;
+      cursor: crosshair;
+      background: #fff;
+    }
+    #scale-band {
+      width: 100%;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      padding: 6px 0 0;
+      min-height: 22px;
+    }
+    #scale-indicator { pointer-events: none; flex-shrink: 0; }
+    #scale-bar-line {
+      width: 48px;
+      border-top: 1px solid rgba(0, 0, 0, 0.42);
+    }
+    #scale-bar-label {
+      margin-top: 3px;
+      font: 10px ui-monospace, Consolas, monospace;
+      color: rgba(0, 0, 0, 0.5);
+      letter-spacing: 0.02em;
+    }
+    #scale-presets {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 0;
+      margin-left: auto;
+    }
+    .scale-preset {
+      border: none;
+      background: none;
+      cursor: pointer;
+      font: 10px ui-monospace, Consolas, monospace;
+      color: rgba(0, 0, 0, 0.42);
+      padding: 0 1px;
+    }
+    .scale-preset.on {
+      color: #111;
+      font-weight: 600;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .scale-preset:hover:not(.on) { color: rgba(0, 0, 0, 0.65); }
+    .scale-dot {
+      color: rgba(0, 0, 0, 0.22);
+      font: 10px ui-monospace, Consolas, monospace;
+      padding: 0 2px;
+      user-select: none;
+    }
+    #toolbar { box-sizing: border-box; width: 100%; margin-top: 12px; flex-shrink: 0; }
+    .tool-row {
+      box-sizing: border-box;
+      width: 100%;
+      max-width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-evenly;
+      padding: 12px 0;
+      border-top: 0.5px solid rgba(0, 0, 0, 0.14);
+      min-width: 0;
+    }
+    #row-shapes #shapes { display: contents; }
+    #row-fill { padding-left: 0; padding-right: 0; }
+    #row-fill #grp-fill {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-evenly;
+    }
+    #row-line {
+      justify-content: center;
+      gap: 16px;
+    }
+    .line-group {
+      flex: 1 1 0;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-evenly;
+    }
+    .line-divider {
+      width: 0.5px;
+      height: 22px;
+      background: rgba(0, 0, 0, 0.14);
+      flex-shrink: 0;
+    }
+    .tool {
+      width: 40px;
+      height: 40px;
+      border: 1px solid transparent;
+      background: none;
+      padding: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .tool.on { border-color: #111; }
+    .tool svg {
+      display: block;
+      width: 24px;
+      height: 24px;
+      stroke: #111;
+      fill: none;
+      stroke-width: 1.5;
+    }
+    .tool[data-shape="dot"] svg { fill: #111; stroke: none; }
+    .sw {
+      width: 20px;
+      height: 20px;
+      border: none;
+      border-radius: 50%;
+      padding: 0;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .sw.on { box-shadow: 0 0 0 1px #fff, 0 0 0 2px #111; }
+    .sw[data-c="#FFFFFF"] { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12); }
+    .sw[data-c="#FFFFFF"].on { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12), 0 0 0 1px #fff, 0 0 0 2px #111; }
+    .fill-sw {
+      width: 24px;
+      height: 24px;
+      border: 1px solid transparent;
+      padding: 0;
+      cursor: pointer;
+      background: #fff;
+      flex-shrink: 0;
+    }
+    .fill-sw.on { border-color: #111; }
+    .fill-sw canvas { display: block; width: 24px; height: 24px; }
+    .ls-btn,
+    .wt {
+      width: 36px;
+      height: 36px;
+      border: 1px solid transparent;
+      background: none;
+      padding: 0;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .ls-btn.on,
+    .wt.on { border-color: #111; }
+    .ls-btn svg {
+      display: block;
+      width: 30px;
+      height: 20px;
+    }
+    .wt span {
+      display: block;
+      background: #111;
+      border-radius: 1px;
+      width: 26px;
+    }
+    .wt[data-w="2"] span { height: 2px; }
+    .wt[data-w="5"] span { height: 5px; }
+    .wt[data-w="10"] span { height: 10px; }
+    .stroke-btn {
+      width: 36px;
+      height: 36px;
+      border: 1px solid transparent;
+      background: none;
+      padding: 0;
+      cursor: pointer;
+      font: 11px ui-monospace, Consolas, monospace;
+      color: #111;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .stroke-btn.on { border-color: #111; }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div style="display:flex;justify-content:space-between;align-items:center;width:100%;font-family:ui-monospace,Consolas,monospace;font-size:11px;padding-bottom:7px;flex-shrink:0;">
+      <input type="text" id="mark-name" placeholder="mark name" spellcheck="false" maxlength="64" style="border:none;background:transparent;font:inherit;color:#111;padding:3px 0;width:108px;">
+      <input type="text" id="student-name" placeholder="student name" spellcheck="false" maxlength="64" style="border:none;background:transparent;font:inherit;color:#111;padding:3px 0;width:108px;">
+      <button type="button" id="save" style="border:none;background:none;font:inherit;cursor:pointer;color:rgba(0,0,0,0.55);padding:3px 0;">save</button>
+    </div>
+    <div id="field-wrap">
+      <canvas id="canvas" width="800" height="800"></canvas>
+    </div>
+    <div id="scale-band">
+      <div id="scale-indicator">
+        <div id="scale-bar-line"></div>
+        <div id="scale-bar-label">&mdash; 10 ft</div>
+      </div>
+      <div id="scale-presets"></div>
+    </div>
+    <div id="toolbar">
+      <div class="tool-row" id="row-shapes">
+        <div id="shapes"></div>
+      </div>
+      <div class="tool-row" id="row-colors"></div>
+      <div class="tool-row" id="row-fill">
+        <div id="grp-fill"></div>
+      </div>
+      <div class="tool-row" id="row-line">
+        <div class="line-group" id="grp-line"></div>
+        <div class="line-divider" aria-hidden="true"></div>
+        <div class="line-group" id="grp-weight"></div>
+        <div class="line-divider" aria-hidden="true"></div>
+        <div class="line-group" id="grp-stroke"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const FIELD = 800;
+    const GRID = 100;
+    const UNIT = GRID / 2;
+    const HANDLE = 8;
+    const ROT_HANDLE = 10;
+    const HATCH_LINE_STEP = 8;
+    const HATCH_DOT_STEP = 10;
+    const PALETTE = [
+      '#E83A2F', '#F26B1D', '#F5C800', '#2E9E4F', '#1A5BA6', '#7B3FA0',
+      '#E8547A', '#00A0C1', '#3D8C2F', '#E8A020', '#1A3A8A', '#C13A2A'
+    ];
+    const COLORS = ['#000000', '#FFFFFF', ...PALETTE];
+    const SHAPES = ['line', 'semicircle', 'circle', 'triangle', 'rightTriangle', 'rectangle', 'diamond', 'dot'];
+    const ICONS = {
+      line: '<line x1="4" y1="14" x2="20" y2="14"/>',
+      semicircle: '<path d="M4 18 A8 8 0 0 1 20 18"/>',
+      circle: '<circle cx="12" cy="12" r="8"/>',
+      triangle: '<polygon points="12,4 20,20 4,20"/>',
+      rightTriangle: '<polyline points="4,20 20,20 4,6 4,20"/>',
+      rectangle: '<rect x="4" y="6" width="16" height="12"/>',
+      diamond: '<polygon points="12,4 20,12 12,20 4,12"/>',
+      dot: '<circle cx="12" cy="12" r="3"/>'
+    };
+    const FILLS = ['solid', 'h', 'd', 'cross', 'dots', 'none'];
+    const CLOSED = new Set(['circle', 'triangle', 'rectangle', 'diamond']);
+    const STROKED = new Set(['line', 'semicircle', 'circle', 'triangle', 'rectangle', 'diamond']);
+    const SCALE_PRESETS = [1, 5, 10, 50, 100, 500];
+    const S = {
+      marks: [],
+      selected: null,
+      tool: 'rectangle',
+      color: '#000000',
+      weight: 5,
+      fill: 'solid',
+      lineStyle: 'solid',
+      stroke: true,
+      scaleFt: 10,
+      pointer: null,
+      undo: []
+    };
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    // --- geometry ---
+
+    const snap = v => Math.round(v / GRID) * GRID;
+    const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+
+    function boxFromPts(pts) {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      pts.forEach(p => {
+        x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y);
+        x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
+      });
+      return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    }
+
+    function inBox(x, y, b, pad = 0) {
+      return x >= b.x - pad && x <= b.x + b.w + pad && y >= b.y - pad && y <= b.y + b.h + pad;
+    }
+
+    function bounds(m) {
+      const b = localBounds(m);
+      const rot = m.rot || 0;
+      if (!rot) return b;
+      return rotatedBounds(b, center(m), rot);
+    }
+
+    function localBounds(m) {
+      const g = m.geom;
+      if (m.type === 'line') return boxFromPts([{ x: g.x1, y: g.y1 }, { x: g.x2, y: g.y2 }]);
+      if (m.type === 'circle' || m.type === 'dot') {
+        return { x: g.cx - g.r, y: g.cy - g.r, w: g.r * 2, h: g.r * 2 };
+      }
+      if (m.type === 'semicircle') {
+        const r = g.r;
+        if (g.orient === 1) return { x: g.cx - r, y: g.cy - r, w: r, h: r * 2 };
+        if (g.orient === 2) return { x: g.cx - r, y: g.cy, w: r * 2, h: r };
+        if (g.orient === 3) return { x: g.cx, y: g.cy - r, w: r, h: r * 2 };
+        return { x: g.cx - r, y: g.cy - r, w: r * 2, h: r };
+      }
+      return boxFromPts(g.pts);
+    }
+
+    function center(m) {
+      const b = localBounds(m);
+      return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+    }
+
+    function rotatePt(p, c, rot) {
+      const cos = Math.cos(rot), sin = Math.sin(rot);
+      const dx = p.x - c.x, dy = p.y - c.y;
+      return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos };
+    }
+
+    function unrotatePt(p, c, rot) {
+      return rotatePt(p, c, -rot);
+    }
+
+    function rotatedBounds(b, c, rot) {
+      const pts = [
+        { x: b.x, y: b.y }, { x: b.x + b.w, y: b.y },
+        { x: b.x + b.w, y: b.y + b.h }, { x: b.x, y: b.y + b.h }
+      ].map(p => rotatePt(p, c, rot));
+      return boxFromPts(pts);
+    }
+
+    function rotateHandlePos(m) {
+      const c = center(m);
+      const lb = localBounds(m);
+      const dist = Math.max(lb.w, lb.h) * 0.5 + 22;
+      const a = (m.rot || 0) - Math.PI / 2;
+      return { x: c.x + Math.cos(a) * dist, y: c.y + Math.sin(a) * dist };
+    }
+
+    function cloneGeom(g) {
+      return JSON.parse(JSON.stringify(g));
+    }
+
+    function translateGeom(g, type, dx, dy) {
+      if (type === 'line') { g.x1 += dx; g.y1 += dy; g.x2 += dx; g.y2 += dy; }
+      else if (type === 'circle' || type === 'dot' || type === 'semicircle') { g.cx += dx; g.cy += dy; }
+      else g.pts.forEach(p => { p.x += dx; p.y += dy; });
+    }
+
+    function scalePt(p, ax, ay, sx, sy) {
+      return { x: ax + (p.x - ax) * sx, y: ay + (p.y - ay) * sy };
+    }
+
+    function resizeGeom(orig, type, b0, handle, p) {
+      const g = cloneGeom(orig);
+      const opp = { tl: 'br', tr: 'bl', br: 'tl', bl: 'tr' };
+      const corners = {
+        tl: { x: b0.x, y: b0.y },
+        tr: { x: b0.x + b0.w, y: b0.y },
+        br: { x: b0.x + b0.w, y: b0.y + b0.h },
+        bl: { x: b0.x, y: b0.y + b0.h }
+      };
+      const anchor = corners[opp[handle]];
+      const start = corners[handle];
+      const sx = Math.abs(start.x - anchor.x) < 1 ? 1 : (p.x - anchor.x) / (start.x - anchor.x);
+      const sy = Math.abs(start.y - anchor.y) < 1 ? 1 : (p.y - anchor.y) / (start.y - anchor.y);
+      const clamp = v => Math.abs(v) < 0.05 ? 0.05 * Math.sign(v || 1) : v;
+
+      if (type === 'dot') {
+        const np = scalePt({ x: g.cx, y: g.cy }, anchor.x, anchor.y, sx, sy);
+        g.cx = np.x; g.cy = np.y;
+        g.r = Math.max(orig.r * Math.max(Math.abs(sx), Math.abs(sy)), 3);
+      } else if (type === 'circle' || type === 'semicircle') {
+        const np = scalePt({ x: g.cx, y: g.cy }, anchor.x, anchor.y, sx, sy);
+        g.cx = np.x; g.cy = np.y;
+        g.r = Math.max(orig.r * Math.max(Math.abs(sx), Math.abs(sy)), 4);
+      } else if (type === 'line') {
+        g.x1 = scalePt({ x: orig.x1, y: orig.y1 }, anchor.x, anchor.y, clamp(sx), clamp(sy)).x;
+        g.y1 = scalePt({ x: orig.x1, y: orig.y1 }, anchor.x, anchor.y, clamp(sx), clamp(sy)).y;
+        g.x2 = scalePt({ x: orig.x2, y: orig.y2 }, anchor.x, anchor.y, clamp(sx), clamp(sy)).x;
+        g.y2 = scalePt({ x: orig.x2, y: orig.y2 }, anchor.x, anchor.y, clamp(sx), clamp(sy)).y;
+      } else {
+        g.pts = orig.pts.map(pt => scalePt(pt, anchor.x, anchor.y, clamp(sx), clamp(sy)));
+      }
+      return g;
+    }
+
+    function snapMark(m) {
+      const b = localBounds(m);
+      const dx = snap(b.x) - b.x;
+      const dy = snap(b.y) - b.y;
+      translateGeom(m.geom, m.type, dx, dy);
+    }
+
+    function makeTriangleGeom(cx, cy, variant = 'equilateral') {
+      const s = UNIT;
+      if (variant === 'isosceles') {
+        const hw = s * 0.38;
+        const hh = hw * 4;
+        return {
+          variant: 'isosceles',
+          pts: [
+            { x: cx, y: cy - hh / 2 },
+            { x: cx + hw, y: cy + hh / 2 },
+            { x: cx - hw, y: cy + hh / 2 },
+            { x: cx, y: cy - hh / 2 }
+          ]
+        };
+      }
+      if (variant === 'right') {
+        const w = s * 0.85;
+        const h = s * 0.85;
+        return {
+          variant: 'right',
+          pts: [
+            { x: cx - w / 2, y: cy + h / 2 },
+            { x: cx + w / 2, y: cy + h / 2 },
+            { x: cx - w / 2, y: cy - h / 2 },
+            { x: cx - w / 2, y: cy + h / 2 }
+          ]
+        };
+      }
+      const pts = [];
+      for (let i = 0; i < 3; i++) {
+        const a = -Math.PI / 2 + i * 2 * Math.PI / 3;
+        pts.push({ x: cx + s * Math.cos(a), y: cy + s * Math.sin(a) });
+      }
+      pts.push({ ...pts[0] });
+      return { variant: 'equilateral', pts };
+    }
+
+    function makeGeom(type, x, y) {
+      x = snap(x); y = snap(y);
+      const s = UNIT;
+      if (type === 'line') return { x1: x - s, y1: y, x2: x + s, y2: y };
+      if (type === 'circle') return { cx: x, cy: y, r: s };
+      if (type === 'dot') return { cx: x, cy: y, r: 10 };
+      if (type === 'semicircle') return { cx: x, cy: y, r: s, orient: 0 };
+      if (type === 'rectangle') {
+        const hw = s, hh = s * 0.72;
+        return { pts: rectPts(x, y, hw, hh) };
+      }
+      if (type === 'diamond') {
+        return { pts: [
+          { x, y: y - s * 0.72 }, { x: x + s, y }, { x, y: y + s * 0.72 }, { x: x - s, y }, { x, y: y - s * 0.72 }
+        ]};
+      }
+      if (type === 'triangle') return makeTriangleGeom(x, y, 'equilateral');
+      if (type === 'rightTriangle') return makeTriangleGeom(x, y, 'right');
+      return makeTriangleGeom(x, y, 'equilateral');
+    }
+
+    function rectPts(cx, cy, hw, hh) {
+      return [
+        { x: cx - hw, y: cy - hh }, { x: cx + hw, y: cy - hh },
+        { x: cx + hw, y: cy + hh }, { x: cx - hw, y: cy + hh },
+        { x: cx - hw, y: cy - hh }
+      ];
+    }
+
+    // --- hit test (bounding box only) ---
+
+    function pickMark(x, y) {
+      for (let i = S.marks.length - 1; i >= 0; i--) {
+        if (inBox(x, y, bounds(S.marks[i]))) return S.marks[i];
+      }
+      return null;
+    }
+
+    function cornerHandles(m) {
+      const lb = localBounds(m);
+      const c = center(m);
+      const corners = [
+        { id: 'tl', x: lb.x, y: lb.y },
+        { id: 'tr', x: lb.x + lb.w, y: lb.y },
+        { id: 'br', x: lb.x + lb.w, y: lb.y + lb.h },
+        { id: 'bl', x: lb.x, y: lb.y + lb.h }
+      ];
+      if (!m.rot) return corners;
+      return corners.map(h => ({ id: h.id, ...rotatePt(h, c, m.rot) }));
+    }
+
+    function pickRotateHandle(x, y, m) {
+      const rh = rotateHandlePos(m);
+      return inBox(x, y, { x: rh.x - HANDLE, y: rh.y - HANDLE, w: HANDLE * 2, h: HANDLE * 2 });
+    }
+
+    function pickHandle(x, y, m) {
+      for (const h of cornerHandles(m)) {
+        if (inBox(x, y, { x: h.x - HANDLE, y: h.y - HANDLE, w: HANDLE * 2, h: HANDLE * 2 })) return h.id;
+      }
+      return null;
+    }
+
+    // --- marks ---
+
+    function markById(id) {
+      return S.marks.find(m => m.id === id) || null;
+    }
+
+    function pushUndo() {
+      S.undo.push(JSON.stringify(S.marks));
+      if (S.undo.length > 80) S.undo.shift();
+    }
+
+    function addMark(type, x, y) {
+      pushUndo();
+      const markType = type === 'rightTriangle' ? 'triangle' : type;
+      const m = {
+        id: uid(),
+        type: markType,
+        color: S.color,
+        weight: S.weight,
+        fill: CLOSED.has(markType) ? S.fill : 'none',
+        lineStyle: (markType === 'line' || markType === 'semicircle') ? S.lineStyle : 'solid',
+        stroke: STROKED.has(markType) ? S.stroke : false,
+        rot: 0,
+        geom: makeGeom(type, x, y)
+      };
+      snapMark(m);
+      S.marks.push(m);
+      S.selected = m.id;
+      syncUI();
+      draw();
+    }
+
+    function deleteSelected() {
+      if (!S.selected) return;
+      pushUndo();
+      S.marks = S.marks.filter(m => m.id !== S.selected);
+      S.selected = S.marks.length ? S.marks[S.marks.length - 1].id : null;
+      syncUI();
+      draw();
+    }
+
+    function undo() {
+      if (!S.undo.length) return;
+      S.marks = JSON.parse(S.undo.pop());
+      S.selected = S.marks.length ? S.marks[S.marks.length - 1].id : null;
+      syncUI();
+      draw();
+    }
+
+    // --- pointer ---
+
+    function canvasPos(e) {
+      const r = canvas.getBoundingClientRect();
+      return {
+        x: (e.clientX - r.left) / r.width * FIELD,
+        y: (e.clientY - r.top) / r.height * FIELD
+      };
+    }
+
+    function resetPointer() {
+      S.pointer = null;
+      canvas.style.cursor = 'crosshair';
+    }
+
+    function endPointer() {
+      if (S.pointer) {
+        const m = markById(S.pointer.id);
+        if (m && S.pointer.kind !== 'rotate') snapMark(m);
+        draw();
+      }
+      resetPointer();
+    }
+
+    canvas.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      endPointer();
+      const p = canvasPos(e);
+      if (p.x < 0 || p.y < 0 || p.x > FIELD || p.y > FIELD) return;
+
+      const sel = S.selected ? markById(S.selected) : null;
+      if (sel) {
+        if (pickRotateHandle(p.x, p.y, sel)) {
+          S.pointer = {
+            kind: 'rotate',
+            id: sel.id,
+            rot0: sel.rot || 0,
+            x0: p.x,
+            y0: p.y
+          };
+          canvas.style.cursor = 'grab';
+          return;
+        }
+        const handle = pickHandle(p.x, p.y, sel);
+        if (handle) {
+          S.pointer = {
+            kind: 'scale',
+            id: sel.id,
+            handle,
+            geom: cloneGeom(sel.geom),
+            bounds: localBounds(sel),
+            x0: p.x,
+            y0: p.y
+          };
+          canvas.style.cursor = 'nwse-resize';
+          return;
+        }
+      }
+
+      const hit = pickMark(p.x, p.y);
+      if (hit) {
+        S.selected = hit.id;
+        S.pointer = {
+          kind: 'move',
+          id: hit.id,
+          geom: cloneGeom(hit.geom),
+          x0: p.x,
+          y0: p.y
+        };
+        canvas.style.cursor = 'move';
+        syncUI();
+        return;
+      }
+
+      addMark(S.tool, p.x, p.y);
+    });
+
+    canvas.addEventListener('mousemove', e => {
+      if (!S.pointer) return;
+      const p = canvasPos(e);
+      const m = markById(S.pointer.id);
+      if (!m) return;
+
+      if (S.pointer.kind === 'move') {
+        m.geom = cloneGeom(S.pointer.geom);
+        translateGeom(m.geom, m.type, p.x - S.pointer.x0, p.y - S.pointer.y0);
+        snapMark(m);
+        draw();
+        return;
+      }
+
+      if (S.pointer.kind === 'scale') {
+        let rp = { x: snap(p.x), y: snap(p.y) };
+        if (m.rot) rp = unrotatePt(rp, center(m), m.rot);
+        m.geom = resizeGeom(
+          S.pointer.geom, m.type, S.pointer.bounds, S.pointer.handle, rp
+        );
+        snapMark(m);
+        draw();
+        return;
+      }
+
+      if (S.pointer.kind === 'rotate') {
+        const c = center(m);
+        const a0 = Math.atan2(S.pointer.y0 - c.y, S.pointer.x0 - c.x);
+        const a1 = Math.atan2(p.y - c.y, p.x - c.x);
+        let rot = S.pointer.rot0 + (a1 - a0);
+        if (e.shiftKey) rot = Math.round(rot / (Math.PI / 4)) * (Math.PI / 4);
+        m.rot = rot;
+        draw();
+      }
+    });
+
+    canvas.addEventListener('mouseup', e => {
+      if (e.button !== 0) return;
+      endPointer();
+    });
+
+    canvas.addEventListener('mouseleave', endPointer);
+    window.addEventListener('mouseup', e => {
+      if (e.button !== 0) return;
+      endPointer();
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.target === document.getElementById('mark-name') ||
+          e.target === document.getElementById('student-name')) return;
+      if (e.key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undo(); }
+      else if (e.key === 'Delete') { e.preventDefault(); deleteSelected(); }
+      else if (e.key === 'Escape') { e.preventDefault(); S.selected = null; syncUI(); draw(); }
+    });
+
+    // --- draw ---
+
+    function setDash(style, w) {
+      if (style === 'dashed') ctx.setLineDash([Math.max(w * 3, 8), Math.max(w * 2, 5)]);
+      else if (style === 'dotted') ctx.setLineDash([Math.max(w * 0.2, 1), Math.max(w * 2, 4)]);
+      else ctx.setLineDash([]);
+    }
+
+    function tracePts(pts, close) {
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      if (close) ctx.closePath();
+    }
+
+    function hatchFill(pts, color, fill, b) {
+      ctx.save();
+      ctx.beginPath();
+      tracePts(pts, true);
+      ctx.clip();
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = 1.5;
+      if (fill === 'h' || fill === 'cross') {
+        for (let y = b.y; y <= b.y + b.h; y += HATCH_LINE_STEP) {
+          ctx.beginPath(); ctx.moveTo(b.x, y); ctx.lineTo(b.x + b.w, y); ctx.stroke();
+        }
+      }
+      if (fill === 'd' || fill === 'cross') {
+        const span = Math.max(b.w, b.h) * 2;
+        for (let d = -span; d <= span; d += HATCH_LINE_STEP) {
+          ctx.beginPath(); ctx.moveTo(b.x + d, b.y); ctx.lineTo(b.x + d + span, b.y + b.h); ctx.stroke();
+        }
+      }
+      if (fill === 'dots') {
+        for (let y = b.y; y <= b.y + b.h; y += HATCH_DOT_STEP) {
+          for (let x = b.x; x <= b.x + b.w; x += HATCH_DOT_STEP) {
+            ctx.beginPath(); ctx.arc(x, y, 1.3, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawClosed(m) {
+      const g = m.geom;
+      const b = localBounds(m);
+      const pts = g.pts;
+      if (m.fill === 'solid') {
+        ctx.beginPath(); tracePts(pts, true); ctx.fill();
+      } else if (m.fill !== 'none') {
+        hatchFill(pts, m.color, m.fill, b);
+      }
+      if (m.stroke) {
+        ctx.beginPath(); tracePts(pts, true); ctx.stroke();
+      }
+    }
+
+    function semiArc(g) {
+      const o = g.orient || 0;
+      if (o === 1) return { start: Math.PI / 2, end: -Math.PI / 2, ccw: true };
+      if (o === 2) return { start: 0, end: Math.PI, ccw: false };
+      if (o === 3) return { start: -Math.PI / 2, end: Math.PI / 2, ccw: false };
+      return { start: Math.PI, end: 0, ccw: true };
+    }
+
+    function withRotation(m, fn) {
+      const rot = m.rot || 0;
+      if (!rot) { fn(); return; }
+      const c = center(m);
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate(rot);
+      ctx.translate(-c.x, -c.y);
+      fn();
+      ctx.restore();
+    }
+
+    function drawMarkLocal(m) {
+      ctx.strokeStyle = m.color;
+      ctx.fillStyle = m.color;
+      ctx.lineWidth = m.weight;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.setLineDash([]);
+      const g = m.geom;
+
+      if (m.type === 'dot') {
+        ctx.beginPath();
+        ctx.arc(g.cx, g.cy, g.r, 0, Math.PI * 2);
+        ctx.fill();
+        return;
+      }
+
+      if (m.type === 'line') {
+        if (!m.stroke) return;
+        ctx.beginPath();
+        ctx.moveTo(g.x1, g.y1);
+        ctx.lineTo(g.x2, g.y2);
+        setDash(m.lineStyle, m.weight);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        return;
+      }
+
+      if (m.type === 'semicircle') {
+        if (!m.stroke) return;
+        const a = semiArc(g);
+        ctx.beginPath();
+        ctx.arc(g.cx, g.cy, g.r, a.start, a.end, a.ccw);
+        setDash(m.lineStyle, m.weight);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        return;
+      }
+
+      if (m.type === 'circle') {
+        if (m.fill === 'solid') {
+          ctx.beginPath(); ctx.arc(g.cx, g.cy, g.r, 0, Math.PI * 2); ctx.fill();
+        } else if (m.fill !== 'none') {
+          const b = localBounds(m);
+          const pts = [];
+          for (let i = 0; i <= 32; i++) {
+            const t = i / 32 * Math.PI * 2;
+            pts.push({ x: g.cx + g.r * Math.cos(t), y: g.cy + g.r * Math.sin(t) });
+          }
+          pts.push(pts[0]);
+          hatchFill(pts, m.color, m.fill, b);
+        }
+        if (m.stroke) {
+          ctx.beginPath(); ctx.arc(g.cx, g.cy, g.r, 0, Math.PI * 2); ctx.stroke();
+        }
+        return;
+      }
+
+      drawClosed(m);
+    }
+
+    function drawMark(m) {
+      withRotation(m, () => drawMarkLocal(m));
+    }
+
+    function drawGrid() {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,0,0,0.07)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= FIELD; x += GRID) {
+        ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, FIELD); ctx.stroke();
+      }
+      for (let y = 0; y <= FIELD; y += GRID) {
+        ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(FIELD, y + 0.5); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawSelection() {
+      const m = S.selected ? markById(S.selected) : null;
+      if (!m) return;
+      const b = bounds(m);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 4]);
+      ctx.strokeRect(b.x - 3, b.y - 3, b.w + 6, b.h + 6);
+      ctx.setLineDash([]);
+      cornerHandles(m).forEach(h => {
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillRect(h.x - 4, h.y - 4, 8, 8);
+        ctx.strokeRect(h.x - 4, h.y - 4, 8, 8);
+      });
+      const rh = rotateHandlePos(m);
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.beginPath();
+      ctx.arc(rh.x, rh.y, ROT_HANDLE, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function draw(showGrid = true) {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, FIELD, FIELD);
+      if (showGrid) drawGrid();
+      S.marks.forEach(drawMark);
+      drawSelection();
+    }
+
+    // --- UI ---
+
+    function scaleFileSuffix() {
+      return S.scaleFt + 'ft';
+    }
+
+    function exportFilename() {
+      const raw = document.getElementById('mark-name').value.trim();
+      const safe = raw.replace(/[^\w\-]+/g, '_').replace(/^_+|_+$/g, '');
+      return (safe || 'mark') + '_' + scaleFileSuffix() + '.png';
+    }
+
+    function updateScaleUI() {
+      document.getElementById('scale-bar-label').textContent = '\u2014 ' + S.scaleFt + ' ft';
+      document.querySelectorAll('.scale-preset').forEach(b => {
+        b.classList.toggle('on', Number(b.dataset.ft) === S.scaleFt);
+      });
+    }
+
+    function layoutStage() {
+      const stage = document.getElementById('stage');
+      const padX = 40;
+      const padY = 32;
+      const availW = window.innerWidth - padX;
+      const availH = window.innerHeight - padY;
+
+      function chromeHeight() {
+        const header = stage.firstElementChild;
+        const scaleBand = document.getElementById('scale-band');
+        const toolbar = document.getElementById('toolbar');
+        const tbmt = parseFloat(getComputedStyle(toolbar).marginTop) || 0;
+        return header.offsetHeight + scaleBand.offsetHeight + toolbar.offsetHeight + tbmt;
+      }
+
+      stage.style.width = availW + 'px';
+      let chromeH = chromeHeight();
+      let size = Math.min(availW, Math.max(160, availH - chromeH));
+      stage.style.width = size + 'px';
+      chromeH = chromeHeight();
+      size = Math.min(availW, Math.max(160, availH - chromeH));
+      stage.style.width = size + 'px';
+    }
+
+    function syncUI() {
+      const m = S.selected ? markById(S.selected) : null;
+      document.querySelectorAll('.tool').forEach(b => {
+        let activeTool = S.tool;
+        if (m && m.type === 'triangle') {
+          activeTool = m.geom && m.geom.variant === 'right' ? 'rightTriangle' : 'triangle';
+        }
+        b.classList.toggle('on', b.dataset.shape === activeTool);
+      });
+      document.querySelectorAll('.sw').forEach(b => {
+        b.classList.toggle('on', b.dataset.c === (m ? m.color : S.color));
+      });
+      document.querySelectorAll('.fill-sw').forEach(b => {
+        b.classList.toggle('on', b.dataset.fill === (m && CLOSED.has(m.type) ? m.fill : S.fill));
+      });
+      document.querySelectorAll('.wt').forEach(b => {
+        b.classList.toggle('on', Number(b.dataset.w) === (m ? m.weight : S.weight));
+      });
+      document.querySelectorAll('[data-ls]').forEach(b => {
+        const ls = m && (m.type === 'line' || m.type === 'semicircle') ? m.lineStyle : S.lineStyle;
+        b.classList.toggle('on', b.dataset.ls === ls);
+      });
+      document.querySelectorAll('[data-stroke]').forEach(b => {
+        const on = m && STROKED.has(m.type) ? m.stroke : S.stroke;
+        b.classList.toggle('on', (b.dataset.stroke === '1') === on);
+      });
+
+      updateScaleUI();
+    }
+
+    function drawFillPreview(c, fillId) {
+      const x = c.getContext('2d');
+      const s = c.width;
+      x.fillStyle = '#fff';
+      x.fillRect(0, 0, s, s);
+      x.strokeStyle = '#111';
+      x.fillStyle = '#111';
+      x.lineWidth = 1;
+      if (fillId === 'none') { x.strokeRect(0.5, 0.5, s - 1, s - 1); return; }
+      if (fillId === 'solid') { x.fillRect(1, 1, s - 2, s - 2); return; }
+      const step = 3;
+      if (fillId === 'h') {
+        for (let y = 2; y < s - 1; y += step) {
+          x.beginPath(); x.moveTo(1, y + 0.5); x.lineTo(s - 1, y + 0.5); x.stroke();
+        }
+      }
+      if (fillId === 'd') {
+        for (let d = -s; d <= s; d += step) {
+          x.beginPath(); x.moveTo(d, 1); x.lineTo(d + s, s - 1); x.stroke();
+        }
+      }
+      if (fillId === 'cross') {
+        x.fillStyle = '#fff';
+        x.fillRect(0, 0, s, s);
+        x.strokeStyle = '#111';
+        x.lineWidth = 1;
+        const crossStep = 6;
+        for (let y = 3; y < s - 2; y += crossStep) {
+          x.beginPath(); x.moveTo(1, y + 0.5); x.lineTo(s - 1, y + 0.5); x.stroke();
+        }
+        for (let d = -s; d <= s; d += crossStep) {
+          x.beginPath(); x.moveTo(d, 1); x.lineTo(d + s, s - 1); x.stroke();
+        }
+      }
+      if (fillId === 'dots') {
+        x.fillStyle = '#fff';
+        x.fillRect(0, 0, s, s);
+        x.fillStyle = '#111';
+        const dotStep = 6;
+        for (let y = dotStep; y < s - 1; y += dotStep) {
+          for (let x0 = dotStep; x0 < s - 1; x0 += dotStep) {
+            x.beginPath(); x.arc(x0, y, 1, 0, Math.PI * 2); x.fill();
+          }
+        }
+      }
+    }
+
+    SHAPES.forEach(type => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'tool' + (type === S.tool ? ' on' : '');
+      b.dataset.shape = type;
+      b.innerHTML = `<svg viewBox="0 0 24 24">${ICONS[type]}</svg>`;
+      b.addEventListener('click', () => { S.tool = type; syncUI(); });
+      document.getElementById('shapes').appendChild(b);
+    });
+
+    COLORS.forEach(hex => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'sw';
+      b.style.background = hex;
+      b.dataset.c = hex;
+      b.addEventListener('click', () => {
+        S.color = hex;
+        const m = S.selected ? markById(S.selected) : null;
+        if (m) m.color = hex;
+        syncUI(); draw();
+      });
+      document.getElementById('row-colors').appendChild(b);
+    });
+
+    FILLS.forEach(fillId => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'fill-sw';
+      b.dataset.fill = fillId;
+      const c = document.createElement('canvas');
+      c.width = 24; c.height = 24;
+      drawFillPreview(c, fillId);
+      b.appendChild(c);
+      b.addEventListener('click', () => {
+        S.fill = fillId;
+        const m = S.selected ? markById(S.selected) : null;
+        if (m && CLOSED.has(m.type)) m.fill = fillId;
+        syncUI(); draw();
+      });
+      document.getElementById('grp-fill').appendChild(b);
+    });
+
+    [2, 5, 10].forEach(w => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'wt' + (w === 5 ? ' on' : '');
+      b.dataset.w = w;
+      b.innerHTML = '<span></span>';
+      b.addEventListener('click', () => {
+        S.weight = w;
+        const m = S.selected ? markById(S.selected) : null;
+        if (m) m.weight = w;
+        syncUI(); draw();
+      });
+      document.getElementById('grp-weight').appendChild(b);
+    });
+
+    const LINE_STYLE_SVGS = {
+      solid: '<line x1="4" y1="12" x2="36" y2="12" stroke="#111" stroke-width="2"/>',
+      dashed: '<line x1="4" y1="12" x2="36" y2="12" stroke="#111" stroke-width="2" stroke-dasharray="6 4"/>',
+      dotted: '<line x1="4" y1="12" x2="36" y2="12" stroke="#111" stroke-width="2" stroke-dasharray="2 4" stroke-linecap="round"/>'
+    };
+
+    ['solid', 'dashed', 'dotted'].forEach(id => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ls-btn' + (id === S.lineStyle ? ' on' : '');
+      b.dataset.ls = id;
+      b.innerHTML = `<svg viewBox="0 0 40 24">${LINE_STYLE_SVGS[id]}</svg>`;
+      b.addEventListener('click', () => {
+        S.lineStyle = id;
+        const m = S.selected ? markById(S.selected) : null;
+        if (m && (m.type === 'line' || m.type === 'semicircle')) m.lineStyle = id;
+        syncUI(); draw();
+      });
+      document.getElementById('grp-line').appendChild(b);
+    });
+
+    [
+      { id: '1', label: 'O' },
+      { id: '0', label: '\u2212' }
+    ].forEach(o => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'stroke-btn' + ((o.id === '1') === S.stroke ? ' on' : '');
+      b.dataset.stroke = o.id;
+      b.textContent = o.label;
+      b.addEventListener('click', () => {
+        S.stroke = o.id === '1';
+        const m = S.selected ? markById(S.selected) : null;
+        if (m && STROKED.has(m.type)) m.stroke = S.stroke;
+        syncUI(); draw();
+      });
+      document.getElementById('grp-stroke').appendChild(b);
+    });
+
+    document.getElementById('save').addEventListener('click', () => {
+      draw(false);
+      const a = document.createElement('a');
+      a.download = exportFilename();
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+      draw();
+    });
+
+    const scalePresets = document.getElementById('scale-presets');
+    SCALE_PRESETS.forEach((ft, i) => {
+      if (i > 0) {
+        const dot = document.createElement('span');
+        dot.className = 'scale-dot';
+        dot.textContent = '\u00b7';
+        scalePresets.appendChild(dot);
+      }
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'scale-preset' + (ft === S.scaleFt ? ' on' : '');
+      b.dataset.ft = ft;
+      b.textContent = ft + 'ft';
+      b.addEventListener('click', () => {
+        S.scaleFt = ft;
+        updateScaleUI();
+      });
+      scalePresets.appendChild(b);
+    });
+
+    syncUI();
+    draw();
+    layoutStage();
+    window.addEventListener('resize', layoutStage);
+  </script>
+</body>
+</html>

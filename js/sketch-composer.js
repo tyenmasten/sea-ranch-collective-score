@@ -665,8 +665,22 @@ const FIELD = 800;
       const fieldWrap = document.getElementById('field-wrap');
       if (!stage || !block) return;
 
+      const isMobile = window.matchMedia('(max-width: 767px)').matches;
       const availW = block.clientWidth;
       const availH = block.clientHeight;
+
+      stage.style.width = '100%';
+      stage.style.maxWidth = '100%';
+
+      if (isMobile) {
+        const size = Math.max(0, availW);
+        if (fieldWrap) {
+          fieldWrap.style.flex = 'none';
+          fieldWrap.style.width = size + 'px';
+          fieldWrap.style.maxWidth = '100%';
+        }
+        return;
+      }
 
       function chromeHeight() {
         const scaleBand = document.getElementById('scale-band');
@@ -675,8 +689,7 @@ const FIELD = 800;
         return (scaleBand?.offsetHeight || 0) + (toolbar?.offsetHeight || 0) + tbmt;
       }
 
-      stage.style.width = '100%';
-      stage.style.maxWidth = '100%';
+      if (fieldWrap) fieldWrap.style.flex = '';
 
       let chromeH = chromeHeight();
       let size = Math.min(availW, Math.max(160, availH - chromeH));

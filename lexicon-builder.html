@@ -124,7 +124,7 @@ body {
 .identity-grid .flabel { margin-top: 0; }
 
 /* Desktop: identity · drawing · metadata */
-@media (min-width: 901px) {
+@media (min-width: 768px) {
   body {
     overflow: hidden;
   }
@@ -179,8 +179,8 @@ body {
   .col-right::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
 }
 
-/* Mobile: single scrolling column */
-@media (max-width: 900px) {
+/* Mobile: single scrolling column (below 768px) */
+@media (max-width: 767px) {
   .app-shell {
     height: auto;
     min-height: 100%;
@@ -190,6 +190,7 @@ body {
   body {
     overflow-x: hidden;
     overflow-y: auto;
+    font-size: 12px;
   }
 
   .workspace {
@@ -197,6 +198,61 @@ body {
     flex-direction: column;
     overflow: visible;
     flex: none;
+    min-height: 0;
+  }
+
+  header {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .h-title {
+    font-size: clamp(17px, 4.8vw, 22px);
+    line-height: 1.15;
+  }
+
+  .h-sub {
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    margin-top: 4px;
+  }
+
+  .h-right {
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .h-app-name {
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+
+  .h-user {
+    font-size: 10px;
+    padding: 8px 12px;
+  }
+
+  nav {
+    padding: 0 16px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-item {
+    font-size: 12px;
+    padding: 12px 14px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .col-identity,
@@ -208,29 +264,217 @@ body {
   }
 
   .col-identity {
+    order: 1;
+    padding: 16px;
     border-bottom: 1px solid var(--border);
-    padding: 10px 12px 14px;
+  }
+
+  .col-identity .flabel {
+    font-size: 10px;
+    margin-bottom: 6px;
+  }
+
+  .col-identity input[type="text"] {
+    font-size: 16px;
+    padding: 10px 12px;
+    min-height: 44px;
+  }
+
+  .identity-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
   }
 
   .col-centre {
     order: 2;
-    min-height: 360px;
+    padding: 0 16px 16px;
+    min-height: 0;
     border-bottom: 1px solid var(--border);
+  }
+
+  #sketch-stage {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  #sketch-stage #field-wrap {
+    flex: none;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+  }
+
+  #sketch-stage #canvas {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    max-width: 100%;
+    max-height: none;
+    border: 1px solid var(--border);
+    box-sizing: border-box;
+  }
+
+  #sketch-stage #scale-band {
+    padding: 8px 0 0;
+  }
+
+  #sketch-stage #scale-bar-label,
+  #sketch-stage .scale-preset,
+  #sketch-stage .scale-dot {
+    font-size: 11px;
+  }
+
+  #sketch-stage .scale-preset {
+    padding: 8px 4px;
+    min-height: 36px;
+  }
+
+  #sketch-stage #toolbar {
+    margin-top: 8px;
+    overflow-x: hidden;
+    overflow-y: visible;
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  #sketch-stage .tool-row {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 6px;
+  }
+
+  #sketch-stage #row-fill #grp-fill {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  #sketch-stage #row-line {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  #sketch-stage .line-group {
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  #sketch-stage .line-divider {
+    display: none;
+  }
+
+  #sketch-stage .tool,
+  #sketch-stage .ls-btn,
+  #sketch-stage .wt,
+  #sketch-stage .stroke-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  #sketch-stage .sw {
+    width: 32px;
+    height: 32px;
+  }
+
+  #sketch-stage .fill-sw {
+    width: 36px;
+    height: 36px;
+  }
+
+  #sketch-stage .fill-sw canvas {
+    width: 34px;
+    height: 34px;
   }
 
   .col-right {
     order: 3;
     border-left: none;
-    border-top: none;
+    padding: 16px;
   }
 
-  .identity-grid {
-    grid-template-columns: 1fr 1fr;
+  .col-right.col-pad {
+    padding: 16px;
   }
 
-  #sketch-stage {
-    min-height: 360px;
-    height: 100%;
+  .slabel {
+    font-size: 14px;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+  }
+
+  .meta-opt {
+    font-size: 12px;
+    padding: 12px 14px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  .btn {
+    font-size: 11px;
+    min-height: 44px;
+    padding: 10px 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn.sm {
+    font-size: 11px;
+    min-height: 44px;
+    padding: 10px 16px;
+  }
+
+  .btn-group {
+    width: 100%;
+  }
+
+  .btn-group .btn {
+    flex: 1;
+  }
+
+  .btn.primary {
+    font-size: 12px;
+    padding: 14px 16px;
+    min-height: 48px;
+  }
+
+  input[type="text"],
+  input[type="number"],
+  textarea {
+    font-size: 16px;
+  }
+
+  textarea {
+    min-height: 100px;
+    padding: 12px;
+  }
+
+  .upload-zone {
+    font-size: 10px;
+    padding: 18px 12px;
+    line-height: 1.6;
+  }
+
+  .note,
+  .body-text {
+    font-size: 12px;
+  }
+
+  .section {
+    margin-bottom: 20px;
+  }
+
+  .flabel {
+    font-size: 10px;
   }
 }
 

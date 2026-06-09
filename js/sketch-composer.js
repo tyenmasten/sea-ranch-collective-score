@@ -673,14 +673,15 @@ const FIELD = 800;
       stage.style.maxWidth = '100%';
 
       if (isMobile) {
-        const size = Math.max(0, availW);
         if (fieldWrap) {
           fieldWrap.style.flex = 'none';
-          fieldWrap.style.width = size + 'px';
+          fieldWrap.style.removeProperty('width');
           fieldWrap.style.maxWidth = '100%';
         }
         return;
       }
+
+      if (availW < 1 || availH < 1) return;
 
       function chromeHeight() {
         const scaleBand = document.getElementById('scale-band');
@@ -689,7 +690,7 @@ const FIELD = 800;
         return (scaleBand?.offsetHeight || 0) + (toolbar?.offsetHeight || 0) + tbmt;
       }
 
-      if (fieldWrap) fieldWrap.style.flex = '';
+      if (fieldWrap) fieldWrap.style.flex = '0 0 auto';
 
       let chromeH = chromeHeight();
       let size = Math.min(availW, Math.max(160, availH - chromeH));
@@ -699,7 +700,7 @@ const FIELD = 800;
       }
       chromeH = chromeHeight();
       size = Math.min(availW, Math.max(160, availH - chromeH));
-      if (fieldWrap) {
+      if (fieldWrap && size > 0) {
         fieldWrap.style.width = size + 'px';
         fieldWrap.style.maxWidth = '100%';
       }
@@ -902,7 +903,9 @@ const FIELD = 800;
     syncUI();
     draw();
     layoutStage();
+    requestAnimationFrame(layoutStage);
     window.addEventListener('resize', layoutStage);
+    window.addEventListener('load', layoutStage);
     const drawingCol = document.querySelector('.col-centre');
     if (drawingCol && typeof ResizeObserver !== 'undefined') {
       new ResizeObserver(() => layoutStage()).observe(drawingCol);

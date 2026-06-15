@@ -404,7 +404,7 @@ nav {
   padding: 8px;
 }
 
-.mark-preview-inner svg {
+.mark-preview-inner canvas {
   display: block;
   max-width: 104px;
   max-height: 74px;
@@ -483,16 +483,14 @@ nav {
 .tile-canvas {
   width: 80px;
   height: 80px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 12px;
+  display: block;
   flex-shrink: 0;
+  background: var(--surface2);
 }
 
-.tile-canvas svg {
-  width: 56px;
-  height: 56px;
+.tile-canvas canvas {
+  width: 80px;
+  height: 80px;
   display: block;
 }
 
@@ -670,115 +668,425 @@ const ORGANISE_OPTIONS = [
   { key: 'chrono', label: 'Chronological', count: '—' },
 ];
 
-const TILE_MARK_SIZE = 56;
+const TILE_CANVAS_SIZE = 80;
 const PREVIEW_MARK_SIZE = 88;
 
-/** DEV: remove before launch */
-const DEV_TEST_MARKS = [
-  {
-    name: 'Solid black square',
-    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#1a1a1a"/></svg>',
-  },
-  {
-    name: 'Outlined square, no fill',
-    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="15" height="15" x="0.5" y="0.5" fill="none" stroke="#1a1a1a" stroke-width="1.5"/></svg>',
-  },
-  {
-    name: 'Solid black circle',
-    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#1a1a1a"/></svg>',
-  },
-  {
-    name: 'Triangle',
-    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><polygon points="8,1 15,15 1,15" fill="#1a1a1a"/></svg>',
-  },
-  {
-    name: 'Hatched square',
-    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><defs><pattern id="hatch-dev" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="#1a1a1a" stroke-width="1"/></pattern></defs><rect width="16" height="16" fill="url(#hatch-dev)"/></svg>',
-  },
-  {
-    name: 'Horizontal line',
-    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="0" y1="8" x2="16" y2="8" stroke="#1a1a1a" stroke-width="2"/></svg>',
-  },
+const MARK_UNIT = 50;
+const MARK_ORIGIN = 50;
+const HATCH_LINE_STEP = 8;
+const HATCH_DOT_STEP = 10;
+
+const PALETTE = [
+  '#E83A2F', '#F26B1D', '#F5C800', '#2E9E4F', '#1A5BA6', '#7B3FA0',
+  '#E8547A', '#00A0C1', '#3D8C2F', '#E8A020', '#1A3A8A', '#C13A2A',
+];
+const SPECTRUM = ['#000000', '#FFFFFF', ...PALETTE];
+
+const MARK_FILLS = ['solid', 'h', 'd', 'cross', 'dots', 'none'];
+const MARK_LINE_STYLES = ['solid', 'dashed', 'dotted'];
+const MARK_WEIGHTS = [2, 5, 10];
+const CLOSED_SHAPES = new Set(['circle', 'triangle', 'rightTriangle', 'square', 'diamond']);
+const CLOSED_TYPES = new Set(['circle', 'triangle', 'rectangle', 'diamond']);
+const STROKED_TYPES = new Set(['line', 'semicircle', 'circle', 'triangle', 'rectangle', 'diamond']);
+
+/** Five unique shapes per student — no shape repeated within a student. */
+const STUDENT_SHAPE_SETS = [
+  ['line', 'semicircle', 'circle', 'triangle', 'rightTriangle'],
+  ['semicircle', 'circle', 'triangle', 'rightTriangle', 'square'],
+  ['circle', 'triangle', 'rightTriangle', 'square', 'diamond'],
+  ['triangle', 'rightTriangle', 'square', 'diamond', 'dot'],
+  ['rightTriangle', 'square', 'diamond', 'dot', 'line'],
+  ['square', 'diamond', 'dot', 'line', 'semicircle'],
+  ['diamond', 'dot', 'line', 'semicircle', 'circle'],
+  ['dot', 'line', 'semicircle', 'circle', 'triangle'],
+  ['line', 'circle', 'rightTriangle', 'diamond', 'square'],
+  ['semicircle', 'triangle', 'square', 'dot', 'rightTriangle'],
+  ['circle', 'rightTriangle', 'diamond', 'line', 'square'],
+  ['triangle', 'square', 'dot', 'semicircle', 'diamond'],
+  ['rightTriangle', 'diamond', 'line', 'circle', 'dot'],
+  ['square', 'dot', 'semicircle', 'triangle', 'line'],
+  ['diamond', 'line', 'square', 'semicircle', 'triangle'],
 ];
 
 // TODO: Firebase — replace with real lexicon entries from Firestore
-const LEXICONS = [
-  { id: 'l1', author: 'A. Halprin', lexicon: 'Coastal Edge Mark', markIndex: 0, colour: '#2E9E4F', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-19T09:00:00Z', description: 'Reads as a spatial threshold.' },
-  { id: 'l2', author: 'A. Halprin', lexicon: 'Timber Grain Section', markIndex: 1, colour: '#F5C800', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-20T10:00:00Z', description: 'Follows the ridgeline contour.' },
-  { id: 'l3', author: 'A. Halprin', lexicon: 'Ground Plane Field', markIndex: 2, colour: '#1A5BA6', meta: 'culture', element: 'people', typology: 'public', savedAt: '2026-07-21T11:00:00Z', description: 'Grain runs with the wind.' },
-  { id: 'l4', author: 'A. Halprin', lexicon: 'Bluff Profile Trace', markIndex: 3, colour: '#F26B1D', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-22T12:00:00Z', description: 'Colour as instruction.' },
-  { id: 'l5', author: 'A. Halprin', lexicon: 'Canopy Edge Plane', markIndex: 4, colour: '#E83A2F', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-23T13:00:00Z', description: 'Steps negotiate the grade.' },
-  { id: 'l6', author: 'L. Moore', lexicon: 'Supergraphic Mark', markIndex: 1, colour: '#7B3FA0', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-24T09:00:00Z', description: 'The path as notation.' },
-  { id: 'l7', author: 'L. Moore', lexicon: 'Wind Trace Section', markIndex: 2, colour: '#F5C800', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-25T10:00:00Z', description: 'Where land meets sky.' },
-  { id: 'l8', author: 'L. Moore', lexicon: 'Commons Edge Field', markIndex: 3, colour: '#E8A020', meta: 'form', element: 'architecture', typology: 'single', savedAt: '2026-07-26T11:00:00Z', description: 'The framed view beyond.' },
-  { id: 'l9', author: 'L. Moore', lexicon: 'View Corridor Trace', markIndex: 4, colour: '#2E9E4F', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-19T12:00:00Z', description: 'Joint at the corner.' },
-  { id: 'l10', author: 'L. Moore', lexicon: 'Sequence Plane', markIndex: 5, colour: '#F26B1D', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-20T13:00:00Z', description: 'Entry as procession.' },
-  { id: 'l11', author: 'J. Esherick', lexicon: 'Bluff Profile Mark', markIndex: 2, colour: '#1A3A8A', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-21T09:00:00Z', description: 'The marine layer datum.' },
-  { id: 'l12', author: 'J. Esherick', lexicon: 'Canopy Edge Section', markIndex: 3, colour: '#E83A2F', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-22T10:00:00Z', description: 'Horizontal field load.' },
-  { id: 'l13', author: 'J. Esherick', lexicon: 'Material Joint Field', markIndex: 4, colour: '#1A5BA6', meta: 'context', element: 'landscape', typology: 'multi', savedAt: '2026-07-23T11:00:00Z', description: 'Edge as shared limit.' },
-  { id: 'l14', author: 'J. Esherick', lexicon: 'Fog Line Trace', markIndex: 5, colour: '#2E9E4F', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-24T12:00:00Z', description: 'Surface as canvas.' },
-  { id: 'l15', author: 'J. Esherick', lexicon: 'Surface Pattern Plane', markIndex: 0, colour: '#F26B1D', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-25T13:00:00Z', description: 'Section through terrace.' },
-  { id: 'l16', author: 'B. Solomon', lexicon: 'View Corridor Mark', markIndex: 3, colour: '#2E9E4F', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-26T09:00:00Z', description: 'Reads as a spatial threshold.' },
-  { id: 'l17', author: 'B. Solomon', lexicon: 'Sequence Section', markIndex: 4, colour: '#F5C800', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-19T10:00:00Z', description: 'Follows the ridgeline contour.' },
-  { id: 'l18', author: 'B. Solomon', lexicon: 'Path Score Field', markIndex: 5, colour: '#00A0C1', meta: 'culture', element: 'people', typology: 'public', savedAt: '2026-07-20T11:00:00Z', description: 'Grain runs with the wind.' },
-  { id: 'l19', author: 'B. Solomon', lexicon: 'Ridge Line Trace', markIndex: 0, colour: '#E83A2F', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-21T12:00:00Z', description: 'Colour as instruction.' },
-  { id: 'l20', author: 'B. Solomon', lexicon: 'Field Condition Plane', markIndex: 1, colour: '#F26B1D', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-22T13:00:00Z', description: 'Steps negotiate the grade.' },
-  { id: 'l21', author: 'H. Eckbo', lexicon: 'Fog Line Mark', markIndex: 4, colour: '#3D8C2F', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-23T09:00:00Z', description: 'The path as notation.' },
-  { id: 'l22', author: 'H. Eckbo', lexicon: 'Surface Pattern Section', markIndex: 5, colour: '#1A3A8A', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-24T10:00:00Z', description: 'Where land meets sky.' },
-  { id: 'l23', author: 'H. Eckbo', lexicon: 'Threshold Field', markIndex: 0, colour: '#E83A2F', meta: 'form', element: 'architecture', typology: 'single', savedAt: '2026-07-25T11:00:00Z', description: 'The framed view beyond.' },
-  { id: 'l24', author: 'H. Eckbo', lexicon: 'Horizon Band Trace', markIndex: 1, colour: '#F26B1D', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-26T12:00:00Z', description: 'Joint at the corner.' },
-  { id: 'l25', author: 'H. Eckbo', lexicon: 'Coastal Edge Plane', markIndex: 2, colour: '#1A5BA6', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-19T13:00:00Z', description: 'Entry as procession.' },
-  { id: 'l26', author: 'R. Royston', lexicon: 'Ridge Line Mark', markIndex: 5, colour: '#F26B1D', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-20T09:00:00Z', description: 'The marine layer datum.' },
-  { id: 'l27', author: 'R. Royston', lexicon: 'Field Condition Section', markIndex: 0, colour: '#2E9E4F', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-21T10:00:00Z', description: 'Horizontal field load.' },
-  { id: 'l28', author: 'R. Royston', lexicon: 'Shelter Edge Field', markIndex: 1, colour: '#7B3FA0', meta: 'context', element: 'landscape', typology: 'multi', savedAt: '2026-07-22T11:00:00Z', description: 'Edge as shared limit.' },
-  { id: 'l29', author: 'R. Royston', lexicon: 'Meadow Section Trace', markIndex: 2, colour: '#F5C800', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-23T12:00:00Z', description: 'Surface as canvas.' },
-  { id: 'l30', author: 'R. Royston', lexicon: 'Supergraphic Plane', markIndex: 3, colour: '#E83A2F', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-24T13:00:00Z', description: 'Section through terrace.' },
-  { id: 'l31', author: 'D. Appleyard', lexicon: 'Horizon Band Mark', markIndex: 0, colour: '#E8547A', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-25T09:00:00Z', description: 'Reads as a spatial threshold.' },
-  { id: 'l32', author: 'D. Appleyard', lexicon: 'Coastal Edge Section', markIndex: 1, colour: '#3D8C2F', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-26T10:00:00Z', description: 'Follows the ridgeline contour.' },
-  { id: 'l33', author: 'D. Appleyard', lexicon: 'Timber Grain Field', markIndex: 2, colour: '#F5C800', meta: 'culture', element: 'people', typology: 'public', savedAt: '2026-07-19T11:00:00Z', description: 'Grain runs with the wind.' },
-  { id: 'l34', author: 'D. Appleyard', lexicon: 'Ground Plane Trace', markIndex: 3, colour: '#E83A2F', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-20T12:00:00Z', description: 'Colour as instruction.' },
-  { id: 'l35', author: 'D. Appleyard', lexicon: 'Bluff Profile Plane', markIndex: 4, colour: '#F26B1D', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-21T13:00:00Z', description: 'Steps negotiate the grade.' },
-  { id: 'l36', author: 'K. Breckenridge', lexicon: 'Meadow Section Mark', markIndex: 1, colour: '#C13A2A', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-22T09:00:00Z', description: 'The path as notation.' },
-  { id: 'l37', author: 'K. Breckenridge', lexicon: 'Supergraphic Section', markIndex: 2, colour: '#F5C800', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-23T10:00:00Z', description: 'Where land meets sky.' },
-  { id: 'l38', author: 'K. Breckenridge', lexicon: 'Wind Trace Field', markIndex: 3, colour: '#E83A2F', meta: 'form', element: 'architecture', typology: 'single', savedAt: '2026-07-24T11:00:00Z', description: 'The framed view beyond.' },
-  { id: 'l39', author: 'K. Breckenridge', lexicon: 'Commons Edge Trace', markIndex: 4, colour: '#7B3FA0', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-25T12:00:00Z', description: 'Joint at the corner.' },
-  { id: 'l40', author: 'K. Breckenridge', lexicon: 'View Corridor Plane', markIndex: 5, colour: '#00A0C1', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-26T13:00:00Z', description: 'Entry as procession.' },
-  { id: 'l41', author: 'M. Treib', lexicon: 'Ground Plane Mark', markIndex: 2, colour: '#F26B1D', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-19T09:00:00Z', description: 'The marine layer datum.' },
-  { id: 'l42', author: 'M. Treib', lexicon: 'Bluff Profile Section', markIndex: 3, colour: '#E8547A', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-20T10:00:00Z', description: 'Horizontal field load.' },
-  { id: 'l43', author: 'M. Treib', lexicon: 'Canopy Edge Field', markIndex: 4, colour: '#3D8C2F', meta: 'context', element: 'landscape', typology: 'multi', savedAt: '2026-07-21T11:00:00Z', description: 'Edge as shared limit.' },
-  { id: 'l44', author: 'M. Treib', lexicon: 'Material Joint Trace', markIndex: 5, colour: '#2E9E4F', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-22T12:00:00Z', description: 'Surface as canvas.' },
-  { id: 'l45', author: 'M. Treib', lexicon: 'Fog Line Plane', markIndex: 0, colour: '#F5C800', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-23T13:00:00Z', description: 'Section through terrace.' },
-  { id: 'l46', author: 'C. Dorner', lexicon: 'Commons Edge Mark', markIndex: 3, colour: '#E83A2F', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-24T09:00:00Z', description: 'Reads as a spatial threshold.' },
-  { id: 'l47', author: 'C. Dorner', lexicon: 'View Corridor Section', markIndex: 4, colour: '#C13A2A', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-25T10:00:00Z', description: 'Follows the ridgeline contour.' },
-  { id: 'l48', author: 'C. Dorner', lexicon: 'Sequence Field', markIndex: 5, colour: '#2E9E4F', meta: 'culture', element: 'people', typology: 'public', savedAt: '2026-07-26T11:00:00Z', description: 'Grain runs with the wind.' },
-  { id: 'l49', author: 'C. Dorner', lexicon: 'Path Score Trace', markIndex: 0, colour: '#F26B1D', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-19T12:00:00Z', description: 'Colour as instruction.' },
-  { id: 'l50', author: 'C. Dorner', lexicon: 'Ridge Line Plane', markIndex: 1, colour: '#7B3FA0', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-20T13:00:00Z', description: 'Steps negotiate the grade.' },
-  { id: 'l51', author: 'P. Walker', lexicon: 'Material Joint Mark', markIndex: 4, colour: '#E83A2F', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-21T09:00:00Z', description: 'The path as notation.' },
-  { id: 'l52', author: 'P. Walker', lexicon: 'Fog Line Section', markIndex: 5, colour: '#1A5BA6', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-22T10:00:00Z', description: 'Where land meets sky.' },
-  { id: 'l53', author: 'P. Walker', lexicon: 'Surface Pattern Field', markIndex: 0, colour: '#E8547A', meta: 'form', element: 'architecture', typology: 'single', savedAt: '2026-07-23T11:00:00Z', description: 'The framed view beyond.' },
-  { id: 'l54', author: 'P. Walker', lexicon: 'Threshold Trace', markIndex: 1, colour: '#3D8C2F', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-24T12:00:00Z', description: 'Joint at the corner.' },
-  { id: 'l55', author: 'P. Walker', lexicon: 'Horizon Band Plane', markIndex: 2, colour: '#1A3A8A', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-25T13:00:00Z', description: 'Entry as procession.' },
-  { id: 'l56', author: 'S. Schindler', lexicon: 'Path Score Mark', markIndex: 5, colour: '#E83A2F', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-26T09:00:00Z', description: 'The marine layer datum.' },
-  { id: 'l57', author: 'S. Schindler', lexicon: 'Ridge Line Section', markIndex: 0, colour: '#E8A020', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-19T10:00:00Z', description: 'Horizontal field load.' },
-  { id: 'l58', author: 'S. Schindler', lexicon: 'Field Condition Field', markIndex: 1, colour: '#C13A2A', meta: 'context', element: 'landscape', typology: 'multi', savedAt: '2026-07-20T11:00:00Z', description: 'Edge as shared limit.' },
-  { id: 'l59', author: 'S. Schindler', lexicon: 'Shelter Edge Trace', markIndex: 2, colour: '#2E9E4F', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-21T12:00:00Z', description: 'Surface as canvas.' },
-  { id: 'l60', author: 'S. Schindler', lexicon: 'Meadow Section Plane', markIndex: 3, colour: '#F5C800', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-22T13:00:00Z', description: 'Section through terrace.' },
-  { id: 'l61', author: 'T. Church', lexicon: 'Threshold Mark', markIndex: 0, colour: '#F26B1D', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-23T09:00:00Z', description: 'Reads as a spatial threshold.' },
-  { id: 'l62', author: 'T. Church', lexicon: 'Horizon Band Section', markIndex: 1, colour: '#F5C800', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-24T10:00:00Z', description: 'Follows the ridgeline contour.' },
-  { id: 'l63', author: 'T. Church', lexicon: 'Coastal Edge Field', markIndex: 2, colour: '#2E9E4F', meta: 'culture', element: 'people', typology: 'public', savedAt: '2026-07-25T11:00:00Z', description: 'Grain runs with the wind.' },
-  { id: 'l64', author: 'T. Church', lexicon: 'Timber Grain Trace', markIndex: 3, colour: '#E8547A', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-26T12:00:00Z', description: 'Colour as instruction.' },
-  { id: 'l65', author: 'T. Church', lexicon: 'Ground Plane Plane', markIndex: 4, colour: '#E83A2F', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-19T13:00:00Z', description: 'Steps negotiate the grade.' },
-  { id: 'l66', author: 'G. Hargreaves', lexicon: 'Shelter Edge Mark', markIndex: 1, colour: '#E83A2F', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-20T09:00:00Z', description: 'The path as notation.' },
-  { id: 'l67', author: 'G. Hargreaves', lexicon: 'Meadow Section Section', markIndex: 2, colour: '#00A0C1', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-21T10:00:00Z', description: 'Where land meets sky.' },
-  { id: 'l68', author: 'G. Hargreaves', lexicon: 'Supergraphic Field', markIndex: 3, colour: '#E8A020', meta: 'form', element: 'architecture', typology: 'single', savedAt: '2026-07-22T11:00:00Z', description: 'The framed view beyond.' },
-  { id: 'l69', author: 'G. Hargreaves', lexicon: 'Wind Trace Trace', markIndex: 4, colour: '#C13A2A', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-23T12:00:00Z', description: 'Joint at the corner.' },
-  { id: 'l70', author: 'G. Hargreaves', lexicon: 'Commons Edge Plane', markIndex: 5, colour: '#F26B1D', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-24T13:00:00Z', description: 'Entry as procession.' },
-  { id: 'l71', author: 'M. Schwartz', lexicon: 'Timber Grain Mark', markIndex: 2, colour: '#1A3A8A', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-25T09:00:00Z', description: 'The marine layer datum.' },
-  { id: 'l72', author: 'M. Schwartz', lexicon: 'Ground Plane Section', markIndex: 3, colour: '#F26B1D', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-26T10:00:00Z', description: 'Horizontal field load.' },
-  { id: 'l73', author: 'M. Schwartz', lexicon: 'Bluff Profile Field', markIndex: 4, colour: '#E83A2F', meta: 'context', element: 'landscape', typology: 'multi', savedAt: '2026-07-19T11:00:00Z', description: 'Edge as shared limit.' },
-  { id: 'l74', author: 'M. Schwartz', lexicon: 'Canopy Edge Trace', markIndex: 5, colour: '#1A5BA6', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-20T12:00:00Z', description: 'Surface as canvas.' },
-  { id: 'l75', author: 'M. Schwartz', lexicon: 'Material Joint Plane', markIndex: 0, colour: '#2E9E4F', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-21T13:00:00Z', description: 'Section through terrace.' }
+const LEXICON_META = [
+  { id: 'l1', author: 'A. Halprin', lexicon: 'Coastal Edge Mark', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-19T09:00:00Z', description: 'Reads as a spatial threshold.' },
+  { id: 'l2', author: 'A. Halprin', lexicon: 'Timber Grain Section', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-20T10:00:00Z', description: 'Follows the ridgeline contour.' },
+  { id: 'l3', author: 'A. Halprin', lexicon: 'Ground Plane Field', meta: 'culture', element: 'people', typology: 'public', savedAt: '2026-07-21T11:00:00Z', description: 'Grain runs with the wind.' },
+  { id: 'l4', author: 'A. Halprin', lexicon: 'Bluff Profile Trace', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-22T12:00:00Z', description: 'Colour as instruction.' },
+  { id: 'l5', author: 'A. Halprin', lexicon: 'Canopy Edge Plane', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-23T13:00:00Z', description: 'Steps negotiate the grade.' },
+  { id: 'l6', author: 'L. Moore', lexicon: 'Supergraphic Mark', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-24T09:00:00Z', description: 'The path as notation.' },
+  { id: 'l7', author: 'L. Moore', lexicon: 'Wind Trace Section', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-25T10:00:00Z', description: 'Where land meets sky.' },
+  { id: 'l8', author: 'L. Moore', lexicon: 'Commons Edge Field', meta: 'form', element: 'architecture', typology: 'single', savedAt: '2026-07-26T11:00:00Z', description: 'The framed view beyond.' },
+  { id: 'l9', author: 'L. Moore', lexicon: 'View Corridor Trace', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-19T12:00:00Z', description: 'Joint at the corner.' },
+  { id: 'l10', author: 'L. Moore', lexicon: 'Sequence Plane', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-20T13:00:00Z', description: 'Entry as procession.' },
+  { id: 'l11', author: 'J. Esherick', lexicon: 'Bluff Profile Mark', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-21T09:00:00Z', description: 'The marine layer datum.' },
+  { id: 'l12', author: 'J. Esherick', lexicon: 'Canopy Edge Section', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-22T10:00:00Z', description: 'Horizontal field load.' },
+  { id: 'l13', author: 'J. Esherick', lexicon: 'Material Joint Field', meta: 'context', element: 'landscape', typology: 'multi', savedAt: '2026-07-23T11:00:00Z', description: 'Edge as shared limit.' },
+  { id: 'l14', author: 'J. Esherick', lexicon: 'Fog Line Trace', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-24T12:00:00Z', description: 'Surface as canvas.' },
+  { id: 'l15', author: 'J. Esherick', lexicon: 'Surface Pattern Plane', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-25T13:00:00Z', description: 'Section through terrace.' },
+  { id: 'l16', author: 'B. Solomon', lexicon: 'View Corridor Mark', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-26T09:00:00Z', description: 'Reads as a spatial threshold.' },
+  { id: 'l17', author: 'B. Solomon', lexicon: 'Sequence Section', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-19T10:00:00Z', description: 'Follows the ridgeline contour.' },
+  { id: 'l18', author: 'B. Solomon', lexicon: 'Path Score Field', meta: 'culture', element: 'people', typology: 'public', savedAt: '2026-07-20T11:00:00Z', description: 'Grain runs with the wind.' },
+  { id: 'l19', author: 'B. Solomon', lexicon: 'Ridge Line Trace', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-21T12:00:00Z', description: 'Colour as instruction.' },
+  { id: 'l20', author: 'B. Solomon', lexicon: 'Field Condition Plane', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-22T13:00:00Z', description: 'Steps negotiate the grade.' },
+  { id: 'l21', author: 'H. Eckbo', lexicon: 'Fog Line Mark', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-23T09:00:00Z', description: 'The path as notation.' },
+  { id: 'l22', author: 'H. Eckbo', lexicon: 'Surface Pattern Section', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-24T10:00:00Z', description: 'Where land meets sky.' },
+  { id: 'l23', author: 'H. Eckbo', lexicon: 'Threshold Field', meta: 'form', element: 'architecture', typology: 'single', savedAt: '2026-07-25T11:00:00Z', description: 'The framed view beyond.' },
+  { id: 'l24', author: 'H. Eckbo', lexicon: 'Horizon Band Trace', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-26T12:00:00Z', description: 'Joint at the corner.' },
+  { id: 'l25', author: 'H. Eckbo', lexicon: 'Coastal Edge Plane', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-19T13:00:00Z', description: 'Entry as procession.' },
+  { id: 'l26', author: 'R. Royston', lexicon: 'Ridge Line Mark', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-20T09:00:00Z', description: 'The marine layer datum.' },
+  { id: 'l27', author: 'R. Royston', lexicon: 'Field Condition Section', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-21T10:00:00Z', description: 'Horizontal field load.' },
+  { id: 'l28', author: 'R. Royston', lexicon: 'Shelter Edge Field', meta: 'context', element: 'landscape', typology: 'multi', savedAt: '2026-07-22T11:00:00Z', description: 'Edge as shared limit.' },
+  { id: 'l29', author: 'R. Royston', lexicon: 'Meadow Section Trace', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-23T12:00:00Z', description: 'Surface as canvas.' },
+  { id: 'l30', author: 'R. Royston', lexicon: 'Supergraphic Plane', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-24T13:00:00Z', description: 'Section through terrace.' },
+  { id: 'l31', author: 'D. Appleyard', lexicon: 'Horizon Band Mark', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-25T09:00:00Z', description: 'Reads as a spatial threshold.' },
+  { id: 'l32', author: 'D. Appleyard', lexicon: 'Coastal Edge Section', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-26T10:00:00Z', description: 'Follows the ridgeline contour.' },
+  { id: 'l33', author: 'D. Appleyard', lexicon: 'Timber Grain Field', meta: 'culture', element: 'people', typology: 'public', savedAt: '2026-07-19T11:00:00Z', description: 'Grain runs with the wind.' },
+  { id: 'l34', author: 'D. Appleyard', lexicon: 'Ground Plane Trace', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-20T12:00:00Z', description: 'Colour as instruction.' },
+  { id: 'l35', author: 'D. Appleyard', lexicon: 'Bluff Profile Plane', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-21T13:00:00Z', description: 'Steps negotiate the grade.' },
+  { id: 'l36', author: 'K. Breckenridge', lexicon: 'Meadow Section Mark', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-22T09:00:00Z', description: 'The path as notation.' },
+  { id: 'l37', author: 'K. Breckenridge', lexicon: 'Supergraphic Section', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-23T10:00:00Z', description: 'Where land meets sky.' },
+  { id: 'l38', author: 'K. Breckenridge', lexicon: 'Wind Trace Field', meta: 'form', element: 'architecture', typology: 'single', savedAt: '2026-07-24T11:00:00Z', description: 'The framed view beyond.' },
+  { id: 'l39', author: 'K. Breckenridge', lexicon: 'Commons Edge Trace', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-25T12:00:00Z', description: 'Joint at the corner.' },
+  { id: 'l40', author: 'K. Breckenridge', lexicon: 'View Corridor Plane', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-26T13:00:00Z', description: 'Entry as procession.' },
+  { id: 'l41', author: 'M. Treib', lexicon: 'Ground Plane Mark', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-19T09:00:00Z', description: 'The marine layer datum.' },
+  { id: 'l42', author: 'M. Treib', lexicon: 'Bluff Profile Section', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-20T10:00:00Z', description: 'Horizontal field load.' },
+  { id: 'l43', author: 'M. Treib', lexicon: 'Canopy Edge Field', meta: 'context', element: 'landscape', typology: 'multi', savedAt: '2026-07-21T11:00:00Z', description: 'Edge as shared limit.' },
+  { id: 'l44', author: 'M. Treib', lexicon: 'Material Joint Trace', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-22T12:00:00Z', description: 'Surface as canvas.' },
+  { id: 'l45', author: 'M. Treib', lexicon: 'Fog Line Plane', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-23T13:00:00Z', description: 'Section through terrace.' },
+  { id: 'l46', author: 'C. Dorner', lexicon: 'Commons Edge Mark', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-24T09:00:00Z', description: 'Reads as a spatial threshold.' },
+  { id: 'l47', author: 'C. Dorner', lexicon: 'View Corridor Section', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-25T10:00:00Z', description: 'Follows the ridgeline contour.' },
+  { id: 'l48', author: 'C. Dorner', lexicon: 'Sequence Field', meta: 'culture', element: 'people', typology: 'public', savedAt: '2026-07-26T11:00:00Z', description: 'Grain runs with the wind.' },
+  { id: 'l49', author: 'C. Dorner', lexicon: 'Path Score Trace', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-19T12:00:00Z', description: 'Colour as instruction.' },
+  { id: 'l50', author: 'C. Dorner', lexicon: 'Ridge Line Plane', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-20T13:00:00Z', description: 'Steps negotiate the grade.' },
+  { id: 'l51', author: 'P. Walker', lexicon: 'Material Joint Mark', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-21T09:00:00Z', description: 'The path as notation.' },
+  { id: 'l52', author: 'P. Walker', lexicon: 'Fog Line Section', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-22T10:00:00Z', description: 'Where land meets sky.' },
+  { id: 'l53', author: 'P. Walker', lexicon: 'Surface Pattern Field', meta: 'form', element: 'architecture', typology: 'single', savedAt: '2026-07-23T11:00:00Z', description: 'The framed view beyond.' },
+  { id: 'l54', author: 'P. Walker', lexicon: 'Threshold Trace', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-24T12:00:00Z', description: 'Joint at the corner.' },
+  { id: 'l55', author: 'P. Walker', lexicon: 'Horizon Band Plane', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-25T13:00:00Z', description: 'Entry as procession.' },
+  { id: 'l56', author: 'S. Schindler', lexicon: 'Path Score Mark', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-26T09:00:00Z', description: 'The marine layer datum.' },
+  { id: 'l57', author: 'S. Schindler', lexicon: 'Ridge Line Section', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-19T10:00:00Z', description: 'Horizontal field load.' },
+  { id: 'l58', author: 'S. Schindler', lexicon: 'Field Condition Field', meta: 'context', element: 'landscape', typology: 'multi', savedAt: '2026-07-20T11:00:00Z', description: 'Edge as shared limit.' },
+  { id: 'l59', author: 'S. Schindler', lexicon: 'Shelter Edge Trace', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-21T12:00:00Z', description: 'Surface as canvas.' },
+  { id: 'l60', author: 'S. Schindler', lexicon: 'Meadow Section Plane', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-22T13:00:00Z', description: 'Section through terrace.' },
+  { id: 'l61', author: 'T. Church', lexicon: 'Threshold Mark', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-23T09:00:00Z', description: 'Reads as a spatial threshold.' },
+  { id: 'l62', author: 'T. Church', lexicon: 'Horizon Band Section', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-24T10:00:00Z', description: 'Follows the ridgeline contour.' },
+  { id: 'l63', author: 'T. Church', lexicon: 'Coastal Edge Field', meta: 'culture', element: 'people', typology: 'public', savedAt: '2026-07-25T11:00:00Z', description: 'Grain runs with the wind.' },
+  { id: 'l64', author: 'T. Church', lexicon: 'Timber Grain Trace', meta: 'form', element: 'landscape', typology: 'single', savedAt: '2026-07-26T12:00:00Z', description: 'Colour as instruction.' },
+  { id: 'l65', author: 'T. Church', lexicon: 'Ground Plane Plane', meta: 'context', element: 'architecture', typology: 'multi', savedAt: '2026-07-19T13:00:00Z', description: 'Steps negotiate the grade.' },
+  { id: 'l66', author: 'G. Hargreaves', lexicon: 'Shelter Edge Mark', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-20T09:00:00Z', description: 'The path as notation.' },
+  { id: 'l67', author: 'G. Hargreaves', lexicon: 'Meadow Section Section', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-21T10:00:00Z', description: 'Where land meets sky.' },
+  { id: 'l68', author: 'G. Hargreaves', lexicon: 'Supergraphic Field', meta: 'form', element: 'architecture', typology: 'single', savedAt: '2026-07-22T11:00:00Z', description: 'The framed view beyond.' },
+  { id: 'l69', author: 'G. Hargreaves', lexicon: 'Wind Trace Trace', meta: 'context', element: 'people', typology: 'multi', savedAt: '2026-07-23T12:00:00Z', description: 'Joint at the corner.' },
+  { id: 'l70', author: 'G. Hargreaves', lexicon: 'Commons Edge Plane', meta: 'culture', element: 'landscape', typology: 'public', savedAt: '2026-07-24T13:00:00Z', description: 'Entry as procession.' },
+  { id: 'l71', author: 'M. Schwartz', lexicon: 'Timber Grain Mark', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-25T09:00:00Z', description: 'The marine layer datum.' },
+  { id: 'l72', author: 'M. Schwartz', lexicon: 'Ground Plane Section', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-26T10:00:00Z', description: 'Horizontal field load.' },
+  { id: 'l73', author: 'M. Schwartz', lexicon: 'Bluff Profile Field', meta: 'context', element: 'landscape', typology: 'multi', savedAt: '2026-07-19T11:00:00Z', description: 'Edge as shared limit.' },
+  { id: 'l74', author: 'M. Schwartz', lexicon: 'Canopy Edge Trace', meta: 'culture', element: 'architecture', typology: 'public', savedAt: '2026-07-20T12:00:00Z', description: 'Surface as canvas.' },
+  { id: 'l75', author: 'M. Schwartz', lexicon: 'Material Joint Plane', meta: 'form', element: 'people', typology: 'single', savedAt: '2026-07-21T13:00:00Z', description: 'Section through terrace.' }
 ];
+
+function assignMarkProps(entries) {
+  const authors = [...new Set(entries.map((e) => e.author))].sort((a, b) => a.localeCompare(b));
+  const authorIndex = {};
+  authors.forEach((author, i) => { authorIndex[author] = i; });
+  const perAuthor = {};
+
+  return entries.map((entry, idx) => {
+    const aIdx = authorIndex[entry.author];
+    const within = perAuthor[entry.author] || 0;
+    perAuthor[entry.author] = within + 1;
+
+    const shape = STUDENT_SHAPE_SETS[aIdx][within];
+    const closed = CLOSED_SHAPES.has(shape);
+    let fill = closed ? MARK_FILLS[(idx + aIdx * 2) % MARK_FILLS.length] : 'none';
+    let stroke = shape === 'dot'
+      ? false
+      : (shape === 'line' || shape === 'semicircle')
+        ? true
+        : idx % 3 !== 2;
+    if (closed && !stroke && fill === 'none') stroke = true;
+
+    return {
+      id: entry.id,
+      author: entry.author,
+      lexicon: entry.lexicon,
+      meta: entry.meta,
+      element: entry.element,
+      typology: entry.typology,
+      savedAt: entry.savedAt,
+      description: entry.description,
+      shape,
+      fill,
+      lineStyle: MARK_LINE_STYLES[(idx + within) % MARK_LINE_STYLES.length],
+      weight: MARK_WEIGHTS[(idx + aIdx) % MARK_WEIGHTS.length],
+      stroke,
+      colour: SPECTRUM[idx % SPECTRUM.length],
+    };
+  });
+}
+
+const LEXICONS = assignMarkProps(LEXICON_META);
+
+// --- mark drawing (matches sketch.html) ---
+
+function boxFromPts(pts) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  pts.forEach((p) => {
+    x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y);
+    x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
+  });
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+function rectPts(cx, cy, hw, hh) {
+  return [
+    { x: cx - hw, y: cy - hh }, { x: cx + hw, y: cy - hh },
+    { x: cx + hw, y: cy + hh }, { x: cx - hw, y: cy + hh },
+    { x: cx - hw, y: cy - hh },
+  ];
+}
+
+function makeTriangleGeom(cx, cy, variant) {
+  const s = MARK_UNIT;
+  if (variant === 'right') {
+    const w = s * 0.85;
+    const h = s * 0.85;
+    return {
+      variant: 'right',
+      pts: [
+        { x: cx - w / 2, y: cy + h / 2 },
+        { x: cx + w / 2, y: cy + h / 2 },
+        { x: cx - w / 2, y: cy - h / 2 },
+        { x: cx - w / 2, y: cy + h / 2 },
+      ],
+    };
+  }
+  const pts = [];
+  for (let i = 0; i < 3; i++) {
+    const a = -Math.PI / 2 + i * 2 * Math.PI / 3;
+    pts.push({ x: cx + s * Math.cos(a), y: cy + s * Math.sin(a) });
+  }
+  pts.push({ ...pts[0] });
+  return { variant: 'equilateral', pts };
+}
+
+function makeMarkGeom(shape, cx, cy) {
+  const s = MARK_UNIT;
+  if (shape === 'line') return { x1: cx - s, y1: cy, x2: cx + s, y2: cy };
+  if (shape === 'circle') return { cx, cy, r: s };
+  if (shape === 'dot') return { cx, cy, r: 10 };
+  if (shape === 'semicircle') return { cx, cy, r: s, orient: 0 };
+  if (shape === 'square') {
+    const hw = s;
+    const hh = s * 0.72;
+    return { pts: rectPts(cx, cy, hw, hh) };
+  }
+  if (shape === 'diamond') {
+    return {
+      pts: [
+        { x: cx, y: cy - s * 0.72 }, { x: cx + s, y: cy },
+        { x: cx, y: cy + s * 0.72 }, { x: cx - s, y: cy }, { x: cx, y: cy - s * 0.72 },
+      ],
+    };
+  }
+  if (shape === 'rightTriangle') return makeTriangleGeom(cx, cy, 'right');
+  return makeTriangleGeom(cx, cy, 'equilateral');
+}
+
+function shapeToType(shape) {
+  if (shape === 'rightTriangle') return 'triangle';
+  if (shape === 'square') return 'rectangle';
+  return shape;
+}
+
+function localBounds(m) {
+  const g = m.geom;
+  if (m.type === 'line') return boxFromPts([{ x: g.x1, y: g.y1 }, { x: g.x2, y: g.y2 }]);
+  if (m.type === 'circle' || m.type === 'dot') {
+    return { x: g.cx - g.r, y: g.cy - g.r, w: g.r * 2, h: g.r * 2 };
+  }
+  if (m.type === 'semicircle') {
+    const r = g.r;
+    if (g.orient === 1) return { x: g.cx - r, y: g.cy - r, w: r, h: r * 2 };
+    if (g.orient === 2) return { x: g.cx - r, y: g.cy, w: r * 2, h: r };
+    if (g.orient === 3) return { x: g.cx, y: g.cy - r, w: r, h: r * 2 };
+    return { x: g.cx - r, y: g.cy - r, w: r * 2, h: r };
+  }
+  return boxFromPts(g.pts);
+}
+
+function lexiconToMark(lex) {
+  const type = shapeToType(lex.shape);
+  return {
+    type,
+    color: lex.colour,
+    weight: lex.weight,
+    fill: CLOSED_TYPES.has(type) ? lex.fill : 'none',
+    lineStyle: (type === 'line' || type === 'semicircle') ? lex.lineStyle : 'solid',
+    stroke: STROKED_TYPES.has(type) ? lex.stroke : false,
+    rot: 0,
+    geom: makeMarkGeom(lex.shape, MARK_ORIGIN, MARK_ORIGIN),
+  };
+}
+
+function setDash(ctx, style, w) {
+  if (style === 'dashed') ctx.setLineDash([Math.max(w * 3, 8), Math.max(w * 2, 5)]);
+  else if (style === 'dotted') ctx.setLineDash([Math.max(w * 0.2, 1), Math.max(w * 2, 4)]);
+  else ctx.setLineDash([]);
+}
+
+function tracePts(ctx, pts, close) {
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  if (close) ctx.closePath();
+}
+
+function hatchFill(ctx, pts, color, fill, b) {
+  ctx.save();
+  ctx.beginPath();
+  tracePts(ctx, pts, true);
+  ctx.clip();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 1.5;
+  if (fill === 'h' || fill === 'cross') {
+    for (let y = b.y; y <= b.y + b.h; y += HATCH_LINE_STEP) {
+      ctx.beginPath(); ctx.moveTo(b.x, y); ctx.lineTo(b.x + b.w, y); ctx.stroke();
+    }
+  }
+  if (fill === 'd' || fill === 'cross') {
+    const span = Math.max(b.w, b.h) * 2;
+    for (let d = -span; d <= span; d += HATCH_LINE_STEP) {
+      ctx.beginPath(); ctx.moveTo(b.x + d, b.y); ctx.lineTo(b.x + d + span, b.y + b.h); ctx.stroke();
+    }
+  }
+  if (fill === 'dots') {
+    for (let y = b.y; y <= b.y + b.h; y += HATCH_DOT_STEP) {
+      for (let x = b.x; x <= b.x + b.w; x += HATCH_DOT_STEP) {
+        ctx.beginPath(); ctx.arc(x, y, 1.3, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  }
+  ctx.restore();
+}
+
+function semiArc(g) {
+  const o = g.orient || 0;
+  if (o === 1) return { start: Math.PI / 2, end: -Math.PI / 2, ccw: true };
+  if (o === 2) return { start: 0, end: Math.PI, ccw: false };
+  if (o === 3) return { start: -Math.PI / 2, end: Math.PI / 2, ccw: false };
+  return { start: Math.PI, end: 0, ccw: true };
+}
+
+function drawClosed(ctx, m) {
+  const g = m.geom;
+  const b = localBounds(m);
+  const pts = g.pts;
+  if (m.fill === 'solid') {
+    ctx.beginPath(); tracePts(ctx, pts, true); ctx.fill();
+  } else if (m.fill !== 'none') {
+    hatchFill(ctx, pts, m.color, m.fill, b);
+  }
+  if (m.stroke) {
+    ctx.beginPath(); tracePts(ctx, pts, true); ctx.stroke();
+  }
+}
+
+function drawMarkLocal(ctx, m) {
+  ctx.strokeStyle = m.color;
+  ctx.fillStyle = m.color;
+  ctx.lineWidth = m.weight;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.setLineDash([]);
+  const g = m.geom;
+
+  if (m.type === 'dot') {
+    ctx.beginPath();
+    ctx.arc(g.cx, g.cy, g.r, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+
+  if (m.type === 'line') {
+    if (!m.stroke) return;
+    ctx.beginPath();
+    ctx.moveTo(g.x1, g.y1);
+    ctx.lineTo(g.x2, g.y2);
+    setDash(ctx, m.lineStyle, m.weight);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    return;
+  }
+
+  if (m.type === 'semicircle') {
+    if (!m.stroke) return;
+    const a = semiArc(g);
+    ctx.beginPath();
+    ctx.arc(g.cx, g.cy, g.r, a.start, a.end, a.ccw);
+    setDash(ctx, m.lineStyle, m.weight);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    return;
+  }
+
+  if (m.type === 'circle') {
+    if (m.fill === 'solid') {
+      ctx.beginPath(); ctx.arc(g.cx, g.cy, g.r, 0, Math.PI * 2); ctx.fill();
+    } else if (m.fill !== 'none') {
+      const b = localBounds(m);
+      const pts = [];
+      for (let i = 0; i <= 32; i++) {
+        const t = i / 32 * Math.PI * 2;
+        pts.push({ x: g.cx + g.r * Math.cos(t), y: g.cy + g.r * Math.sin(t) });
+      }
+      pts.push(pts[0]);
+      hatchFill(ctx, pts, m.color, m.fill, b);
+    }
+    if (m.stroke) {
+      ctx.beginPath(); ctx.arc(g.cx, g.cy, g.r, 0, Math.PI * 2); ctx.stroke();
+    }
+    return;
+  }
+
+  drawClosed(ctx, m);
+}
+
+function drawLexiconMark(canvas, lex, sizePx) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = sizePx * dpr;
+  canvas.height = sizePx * dpr;
+  canvas.style.width = sizePx + 'px';
+  canvas.style.height = sizePx + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#e8e8e8';
+  ctx.fillRect(0, 0, sizePx, sizePx);
+
+  const mark = lexiconToMark(lex);
+  const b = localBounds(mark);
+  const pad = sizePx * 0.14;
+  const avail = sizePx - pad * 2;
+  const scale = Math.min(avail / (b.w || 1), avail / (b.h || 1));
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h / 2;
+
+  ctx.save();
+  ctx.translate(sizePx / 2, sizePx / 2);
+  ctx.scale(scale, scale);
+  ctx.translate(-cx, -cy);
+  drawMarkLocal(ctx, mark);
+  ctx.restore();
+}
+
+function createMarkCanvas(lex, sizePx) {
+  const canvas = document.createElement('canvas');
+  drawLexiconMark(canvas, lex, sizePx);
+  return canvas;
+}
 
 const state = {
   organiseBy: 'author',
@@ -821,26 +1129,6 @@ function escapeHtml(text) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
-}
-
-function getMarkDefinition(index) {
-  const i = index != null && index >= 0 && index < DEV_TEST_MARKS.length ? index : 0;
-  return DEV_TEST_MARKS[i] || DEV_TEST_MARKS[0];
-}
-
-function buildMarkSvg(lexicon, sizePx) {
-  const markDef = getMarkDefinition(lexicon.markIndex);
-  const colour = lexicon.colour || '#1a1a1a';
-  let svg = markDef.svg.replace(/#1a1a1a/gi, colour);
-  if (svg.includes('hatch-dev')) {
-    const patternId = 'hatch-' + lexicon.id + '-' + sizePx;
-    svg = svg
-      .replace(/id="hatch-dev"/g, `id="${patternId}"`)
-      .replace(/#hatch-dev/g, `#${patternId}`);
-  }
-  return svg
-    .replace(/width="16"/, `width="${sizePx}"`)
-    .replace(/height="16"/, `height="${sizePx}"`);
 }
 
 function sortLexicons(items) {
@@ -935,9 +1223,9 @@ function renderGrid() {
       tile.className = 'tile' + (lex.id === state.selectedId ? ' selected' : '');
       tile.setAttribute('aria-label', lex.lexicon + ' — ' + lex.author);
 
-      const canvas = document.createElement('div');
-      canvas.className = 'tile-canvas';
-      canvas.innerHTML = buildMarkSvg(lex, TILE_MARK_SIZE);
+      const canvasWrap = document.createElement('div');
+      canvasWrap.className = 'tile-canvas';
+      canvasWrap.appendChild(createMarkCanvas(lex, TILE_CANVAS_SIZE));
 
       const footer = document.createElement('div');
       footer.className = 'tile-footer';
@@ -948,7 +1236,7 @@ function renderGrid() {
         escapeHtml(lex.author) +
         '</div>';
 
-      tile.appendChild(canvas);
+      tile.appendChild(canvasWrap);
       tile.appendChild(footer);
       tile.addEventListener('click', () => selectLexicon(lex.id));
       grid.appendChild(tile);
@@ -960,7 +1248,8 @@ function renderGrid() {
 }
 
 function populateSelectedPanel(lex) {
-  els.selectedMarkPreview.innerHTML = buildMarkSvg(lex, PREVIEW_MARK_SIZE);
+  els.selectedMarkPreview.innerHTML = '';
+  els.selectedMarkPreview.appendChild(createMarkCanvas(lex, PREVIEW_MARK_SIZE));
   els.selAuthor.textContent = lex.author;
   els.selLexicon.textContent = lex.lexicon;
   els.selMeta.textContent = META_LABELS[lex.meta] || lex.meta;

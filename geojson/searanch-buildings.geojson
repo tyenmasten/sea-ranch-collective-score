@@ -1,0 +1,8 @@
+{
+"type": "FeatureCollection",
+"name": "SeaRanch_Buildings",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "OBJECTID": 279241, "Name": null, "PropType": "Out Building", "GovtType": null, "last_edite": "2025-11-04T19:24:00", "Shape__Are": 571.91962283554972, "Shape__Len": 95.662220575425295 }, "geometry": { "type": "MultiPolygon", "coordinates": [ [ [ [ -123.436150261850742, 38.697714890370008 ], [ -123.4361746581924, 38.697652510539321 ], [ -123.436255273663662, 38.697671894277747 ], [ -123.436251715597308, 38.697681084350826 ], [ -123.43623115829709, 38.69773417873914 ], [ -123.436150261850742, 38.697714890370008 ] ] ] ] } }
+]
+}

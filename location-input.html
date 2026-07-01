@@ -429,6 +429,25 @@ input.lexicon-empty {
   font-family: 'Media77', sans-serif;
 }
 
+.street-label-icon {
+  background: none;
+  border: none;
+}
+
+.street-label-text {
+  font-family: 'Media77', sans-serif;
+  font-size: 9px;
+  color: #666666;
+  white-space: nowrap;
+  pointer-events: none;
+  line-height: 1;
+  transform-origin: center center;
+}
+
+.leaflet-container:not(.street-labels-visible) .street-label-icon {
+  visibility: hidden;
+}
+
 .map-controls {
   position: absolute;
   bottom: 16px;
@@ -735,6 +754,10 @@ input.lexicon-empty {
           <span class="layer-name">Buildings</span>
           <button type="button" class="layer-toggle on" id="toggleBuildings" aria-pressed="true" aria-label="Toggle buildings"></button>
         </div>
+        <div class="layer-row">
+          <span class="layer-name">Contours</span>
+          <button type="button" class="layer-toggle" id="toggleContours" aria-pressed="false" aria-label="Toggle contours"></button>
+        </div>
       </div>
 
       <div class="sep"></div>
@@ -808,13 +831,8 @@ input.lexicon-empty {
 </div>
 
 <script>
-const STREETS_STYLE = { color: '#999999', weight: 1, fill: false };
-const BUILDINGS_STYLE = {
-  color: '#aaaaaa',
-  weight: 0.5,
-  fillColor: '#dddddd',
-  fillOpacity: 0.4,
-};
+const STREET_LABEL_MIN_ZOOM = 17;
+const CONTOURS_STYLE = { color: '#cccccc', weight: 0.5, fill: false };
 const FIT_BOUNDS_PADDING = [20, 20];
 const NOTATION_MARK_SIZE = 16;
 
@@ -855,6 +873,7 @@ const state = {
   layers: {
     streets: true,
     buildings: true,
+    contours: false,
   },
   observations: [],
   selectedObservation: null,
@@ -866,7 +885,9 @@ const mapData = {
 
 let map = null;
 let streetsLayer = null;
+let streetLabelsLayer = null;
 let buildingsLayer = null;
+let contoursLayer = null;
 let observationsLayer = null;
 let siteLayerGroup = null;
 let pendingPlacement = null;
@@ -887,6 +908,7 @@ const ELEMENT_IDS = {
   btnGps: 'btnGps',
   toggleStreets: 'toggleStreets',
   toggleBuildings: 'toggleBuildings',
+  toggleContours: 'toggleContours',
   confirmOverlay: 'confirmOverlay',
   confirmAuthor: 'confirmAuthor',
   confirmLexicon: 'confirmLexicon',
@@ -1074,6 +1096,119 @@ function prepareSiteGeoJSON(streets, buildings) {
   };
 }
 
+function buildingStyle(feature) {
+  const propType = feature.properties && feature.properties.PropType;
+  const border = { color: '#aaa', weight: 0.5 };
+  switch (propType) {
+    case 'Single Family Residence':
+      return { ...border, fillColor: '#d4c9b8', fillOpacity: 0.6 };
+    case 'Commercial':
+      return { ...border, fillColor: '#b8c4d4', fillOpacity: 0.6 };
+    case 'Industrial':
+      return { ...border, fillColor: '#c4b8d4', fillOpacity: 0.6 };
+    case 'Park Building':
+      return { ...border, fillColor: '#b8d4bc', fillOpacity: 0.6 };
+    case 'Out Building':
+      return { ...border, fillColor: '#e8e4dc', fillOpacity: 0.4 };
+    case 'Agriculture':
+      return { ...border, fillColor: '#d4dab8', fillOpacity: 0.5 };
+    default:
+      return { ...border, fillColor: '#e0ddd8', fillOpacity: 0.3 };
+  }
+}
+
+function roadStyle(feature) {
+  const props = feature.properties || {};
+  const surfaceType = props.SurfaceType || props.SurfaceTyp;
+
+  if (props.Class === 'Local' && props.PubPriv === 'Public') {
+    return { color: '#888888', weight: 1.5, fill: false };
+  }
+  if (props.Class === 'Local' && props.PubPriv === 'Private') {
+    return { color: '#aaaaaa', weight: 1, fill: false };
+  }
+  if (surfaceType === 'Unpaved') {
+    return { color: '#bbbbbb', weight: 0.8, fill: false, dashArray: '4 4' };
+  }
+  return { color: '#cccccc', weight: 0.8, fill: false };
+}
+
+function getGeometryEndpoints(geometry) {
+  if (!geometry || !geometry.coordinates) return null;
+  const { type, coordinates } = geometry;
+  if (type === 'LineString') {
+    if (coordinates.length < 2) return null;
+    return [coordinates[0], coordinates[coordinates.length - 1]];
+  }
+  if (type === 'MultiLineString') {
+    if (!coordinates.length) return null;
+    const firstLine = coordinates[0];
+    const lastLine = coordinates[coordinates.length - 1];
+    if (!firstLine.length || !lastLine.length) return null;
+    if (coordinates.length === 1 && firstLine.length < 2) return null;
+    return [firstLine[0], lastLine[lastLine.length - 1]];
+  }
+  return null;
+}
+
+function streetSegmentBearingDeg(geometry) {
+  const endpoints = getGeometryEndpoints(geometry);
+  if (!endpoints) return 0;
+  const [first, last] = endpoints;
+  const deltaLng = last[0] - first[0];
+  const deltaLat = last[1] - first[1];
+  return Math.atan2(deltaLng, deltaLat) * (180 / Math.PI);
+}
+
+function getGeometryMidpoint(geometry) {
+  const endpoints = getGeometryEndpoints(geometry);
+  if (!endpoints) return null;
+  const [first, last] = endpoints;
+  return [(first[0] + last[0]) / 2, (first[1] + last[1]) / 2];
+}
+
+function estimateStreetLabelSize(name) {
+  const text = String(name || '');
+  return [Math.max(24, Math.ceil(text.length * 5.5) + 8), 12];
+}
+
+function createStreetLabelMarker(feature) {
+  const name = feature.properties && feature.properties.Name;
+  if (!name) return null;
+  const midpoint = getGeometryMidpoint(feature.geometry);
+  if (!midpoint) return null;
+  const bearing = streetSegmentBearingDeg(feature.geometry);
+  const iconSize = estimateStreetLabelSize(name);
+  const icon = L.divIcon({
+    className: 'street-label-icon',
+    html: `<div class="street-label-text" style="transform:rotate(${bearing}deg)">${escapeHtml(name)}</div>`,
+    iconSize,
+    iconAnchor: [iconSize[0] / 2, iconSize[1] / 2],
+  });
+  return L.marker([midpoint[1], midpoint[0]], { icon, interactive: false });
+}
+
+function createStreetLabelsLayer(geojson) {
+  const group = L.layerGroup();
+  geojson.features.forEach((feature) => {
+    const marker = createStreetLabelMarker(feature);
+    if (marker) marker.addTo(group);
+  });
+  return group;
+}
+
+function createStreetsLayer(geojson) {
+  return L.geoJSON(geojson, { style: roadStyle });
+}
+
+function updateStreetLabelVisibility() {
+  if (!map) return;
+  map.getContainer().classList.toggle(
+    'street-labels-visible',
+    map.getZoom() >= STREET_LABEL_MIN_ZOOM
+  );
+}
+
 function initMap() {
   map = L.map('mapArea', {
     zoomControl: false,
@@ -1081,6 +1216,7 @@ function initMap() {
   });
   observationsLayer = L.layerGroup().addTo(map);
   map.on('click', onMapClick);
+  map.on('zoomend', updateStreetLabelVisibility);
 }
 
 function onMapClick(e) {
@@ -1099,13 +1235,22 @@ function applyLayerVisibility() {
   if (!map || !streetsLayer || !buildingsLayer) return;
   if (state.layers.streets) {
     if (!map.hasLayer(streetsLayer)) streetsLayer.addTo(map);
-  } else if (map.hasLayer(streetsLayer)) {
-    map.removeLayer(streetsLayer);
+    if (streetLabelsLayer && !map.hasLayer(streetLabelsLayer)) streetLabelsLayer.addTo(map);
+  } else {
+    if (map.hasLayer(streetsLayer)) map.removeLayer(streetsLayer);
+    if (streetLabelsLayer && map.hasLayer(streetLabelsLayer)) map.removeLayer(streetLabelsLayer);
   }
   if (state.layers.buildings) {
     if (!map.hasLayer(buildingsLayer)) buildingsLayer.addTo(map);
   } else if (map.hasLayer(buildingsLayer)) {
     map.removeLayer(buildingsLayer);
+  }
+  if (contoursLayer) {
+    if (state.layers.contours) {
+      if (!map.hasLayer(contoursLayer)) contoursLayer.addTo(map);
+    } else if (map.hasLayer(contoursLayer)) {
+      map.removeLayer(contoursLayer);
+    }
   }
 }
 
@@ -1358,16 +1503,34 @@ function fitToFrame() {
 async function loadGeoLayers() {
   try {
     const [streetsRes, buildingsRes] = await Promise.all([
-      fetch('geojson/streets.geojson'),
-      fetch('geojson/buildings.geojson'),
+      fetch('geojson/searanch-roads.geojson'),
+      fetch('geojson/searanch-buildings.geojson'),
     ]);
     if (!streetsRes.ok || !buildingsRes.ok) throw new Error('GeoJSON fetch failed');
     const streets = await streetsRes.json();
     const buildings = await buildingsRes.json();
     const prepared = prepareSiteGeoJSON(streets, buildings);
 
-    streetsLayer = L.geoJSON(prepared.streets, { style: STREETS_STYLE });
-    buildingsLayer = L.geoJSON(prepared.buildings, { style: BUILDINGS_STYLE });
+    let contours = null;
+    try {
+      const contoursRes = await fetch('geojson/contours-1m.geojson');
+      if (contoursRes.ok) contours = await contoursRes.json();
+    } catch (_) {}
+
+    streetsLayer = createStreetsLayer(prepared.streets);
+    streetLabelsLayer = createStreetLabelsLayer(prepared.streets);
+    buildingsLayer = L.geoJSON(prepared.buildings, { style: buildingStyle });
+    if (contours && contours.features) {
+      let contoursFeatures = contours.features;
+      if (featuresNeedStatePlaneTransform(contoursFeatures)) {
+        const fit = fitStatePlaneToWgs84(prepared.streets.features);
+        contoursFeatures = transformStatePlaneWithFit(contoursFeatures, fit);
+      }
+      contoursLayer = L.geoJSON(
+        { type: 'FeatureCollection', features: contoursFeatures },
+        { style: CONTOURS_STYLE }
+      );
+    }
     siteLayerGroup = L.featureGroup([streetsLayer, buildingsLayer]);
 
     applyLayerVisibility();
@@ -1375,6 +1538,7 @@ async function loadGeoLayers() {
     els.mapLoadMsg.style.display = 'none';
     map.invalidateSize();
     fitSiteBounds();
+    updateStreetLabelVisibility();
     syncObservationMarkers();
     renderNotationList();
   } catch (err) {
@@ -1406,6 +1570,13 @@ function bindEvents() {
     state.layers.buildings = !state.layers.buildings;
     els.toggleBuildings.classList.toggle('on', state.layers.buildings);
     els.toggleBuildings.setAttribute('aria-pressed', state.layers.buildings);
+    applyLayerVisibility();
+  });
+
+  els.toggleContours.addEventListener('click', () => {
+    state.layers.contours = !state.layers.contours;
+    els.toggleContours.classList.toggle('on', state.layers.contours);
+    els.toggleContours.setAttribute('aria-pressed', state.layers.contours);
     applyLayerVisibility();
   });
 

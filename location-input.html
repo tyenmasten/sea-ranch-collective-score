@@ -834,6 +834,11 @@ input.lexicon-empty {
 const STREET_LABEL_MIN_ZOOM = 17;
 const CONTOURS_STYLE = { color: '#cccccc', weight: 0.5, fill: false };
 const FIT_BOUNDS_PADDING = [20, 20];
+const MAP_MIN_ZOOM = 12;
+const SITE_MAX_BOUNDS = L.latLngBounds(
+  [38.48, -123.58],
+  [38.82, -123.30]
+);
 const NOTATION_MARK_SIZE = 16;
 
 /** DEV: remove before launch */
@@ -1213,6 +1218,7 @@ function initMap() {
   map = L.map('mapArea', {
     zoomControl: false,
     attributionControl: false,
+    minZoom: MAP_MIN_ZOOM,
   });
   observationsLayer = L.layerGroup().addTo(map);
   map.on('click', onMapClick);
@@ -1229,6 +1235,11 @@ function fitSiteBounds() {
   const bounds = siteLayerGroup.getBounds();
   if (!bounds.isValid()) return;
   map.fitBounds(bounds, { padding: FIT_BOUNDS_PADDING });
+}
+
+function applySiteMapConstraints() {
+  if (!map) return;
+  map.setMaxBounds(SITE_MAX_BOUNDS);
 }
 
 function applyLayerVisibility() {
@@ -1538,6 +1549,7 @@ async function loadGeoLayers() {
     els.mapLoadMsg.style.display = 'none';
     map.invalidateSize();
     fitSiteBounds();
+    applySiteMapConstraints();
     updateStreetLabelVisibility();
     syncObservationMarkers();
     renderNotationList();

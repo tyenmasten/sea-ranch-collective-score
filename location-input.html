@@ -693,6 +693,109 @@ input.lexicon-empty {
   gap: 6px;
   margin-top: 14px;
 }
+
+@media (max-width: 767px) {
+  .app-shell {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+
+  body {
+    overflow-x: hidden;
+    overflow-y: auto;
+    font-size: 12px;
+  }
+
+  .workspace {
+    flex-direction: column;
+    overflow: visible;
+    flex: none;
+    min-height: 0;
+  }
+
+  header {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .h-title {
+    font-size: clamp(17px, 4.8vw, 22px);
+    line-height: 1.15;
+  }
+
+  .h-sub {
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    margin-top: 4px;
+  }
+
+  .h-right {
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .h-app-name {
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+
+  .h-user {
+    font-size: 10px;
+    padding: 8px 12px;
+  }
+
+  nav {
+    padding: 0 16px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-item {
+    font-size: 12px;
+    padding: 12px 14px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .sidebar {
+    order: 1;
+    width: 100%;
+    flex: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: none;
+    overflow: visible;
+  }
+
+  .sidebar input[type="text"] {
+    font-size: 16px;
+    padding: 10px 12px;
+    min-height: 44px;
+  }
+
+  .sidebar .btn {
+    min-height: 44px;
+  }
+
+  .map-viewer {
+    order: 2;
+    width: 100%;
+    flex: none;
+    height: 60vh;
+    min-height: 320px;
+  }
+}
 </style>
 </head>
 <body>

@@ -988,6 +988,69 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
   }
 }
 
+@media (max-width: 767px) {
+  #sketch-stage .tool-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  #sketch-stage #row-fill #grp-fill {
+    flex-wrap: nowrap;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  #sketch-stage #row-line {
+    flex-wrap: nowrap;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  #sketch-stage .line-group {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  #sketch-stage .line-divider {
+    display: block;
+  }
+
+  #sketch-stage .tool,
+  #sketch-stage .ls-btn,
+  #sketch-stage .wt,
+  #sketch-stage .stroke-btn {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+  }
+
+  #sketch-stage .sw {
+    width: 22px;
+    height: 22px;
+  }
+
+  #sketch-stage .fill-sw {
+    width: 26px;
+    height: 26px;
+  }
+
+  #sketch-stage .fill-sw canvas {
+    width: 24px;
+    height: 24px;
+  }
+
+  #sketch-stage .tool-toggle {
+    width: 36px;
+    height: 36px;
+  }
+}
+
 </style>
 </head>
 <body>

@@ -1,4 +1,5 @@
-const FIELD = 800;
+const FIELD_W = 600;
+const FIELD_H = 800;
     const GRID = 100;
     const UNIT = GRID / 2;
     const HANDLE = 8;
@@ -323,8 +324,8 @@ const FIELD = 800;
     function canvasPos(e) {
       const r = canvas.getBoundingClientRect();
       return {
-        x: (e.clientX - r.left) / r.width * FIELD,
-        y: (e.clientY - r.top) / r.height * FIELD
+        x: (e.clientX - r.left) / r.width * FIELD_W,
+        y: (e.clientY - r.top) / r.height * FIELD_H
       };
     }
 
@@ -346,7 +347,7 @@ const FIELD = 800;
       if (e.button !== 0) return;
       endPointer();
       const p = canvasPos(e);
-      if (p.x < 0 || p.y < 0 || p.x > FIELD || p.y > FIELD) return;
+      if (p.x < 0 || p.y < 0 || p.x > FIELD_W || p.y > FIELD_H) return;
 
       const sel = S.selected ? markById(S.selected) : null;
       if (sel) {
@@ -596,11 +597,11 @@ const FIELD = 800;
       ctx.save();
       ctx.strokeStyle = 'rgba(0,0,0,0.07)';
       ctx.lineWidth = 1;
-      for (let x = 0; x <= FIELD; x += GRID) {
-        ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, FIELD); ctx.stroke();
+      for (let x = 0; x <= FIELD_W; x += GRID) {
+        ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, FIELD_H); ctx.stroke();
       }
-      for (let y = 0; y <= FIELD; y += GRID) {
-        ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(FIELD, y + 0.5); ctx.stroke();
+      for (let y = 0; y <= FIELD_H; y += GRID) {
+        ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(FIELD_W, y + 0.5); ctx.stroke();
       }
       ctx.restore();
     }
@@ -633,7 +634,7 @@ const FIELD = 800;
 
     function draw(showGrid = true) {
       ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, FIELD, FIELD);
+      ctx.fillRect(0, 0, FIELD_W, FIELD_H);
       if (showGrid) drawGrid();
       S.marks.forEach(drawMark);
       drawSelection();
@@ -653,7 +654,8 @@ const FIELD = 800;
     }
 
     function updateScaleUI() {
-      document.getElementById('scale-bar-label').textContent = '\u2014 ' + S.scaleFt + ' ft';
+      const scaleBarLabel = document.getElementById('scale-bar-label');
+      if (scaleBarLabel) scaleBarLabel.textContent = '\u2014 ' + S.scaleFt + ' ft';
       document.querySelectorAll('.scale-preset').forEach(b => {
         b.classList.toggle('on', Number(b.dataset.ft) === S.scaleFt);
       });
@@ -666,8 +668,10 @@ const FIELD = 800;
       if (!stage || !block) return;
 
       const isMobile = window.matchMedia('(max-width: 767px)').matches;
-      const availW = block.clientWidth;
-      const availH = block.clientHeight;
+      const stageStyle = getComputedStyle(stage);
+      const stagePadV = (parseFloat(stageStyle.paddingTop) || 0) + (parseFloat(stageStyle.paddingBottom) || 0);
+      const availW = block.clientWidth - 396;
+      const availH = block.clientHeight - stagePadV;
 
       stage.style.width = '100%';
       stage.style.maxWidth = '100%';
@@ -693,13 +697,13 @@ const FIELD = 800;
       if (fieldWrap) fieldWrap.style.flex = '0 0 auto';
 
       let chromeH = chromeHeight();
-      let size = Math.min(availW, Math.max(160, availH - chromeH));
+      let size = Math.min(availW, Math.max(160, (availH - chromeH) * 3 / 4));
       if (fieldWrap) {
         fieldWrap.style.width = size + 'px';
         fieldWrap.style.maxWidth = '100%';
       }
       chromeH = chromeHeight();
-      size = Math.min(availW, Math.max(160, availH - chromeH));
+      size = Math.min(availW, Math.max(160, (availH - chromeH) * 3 / 4));
       if (fieldWrap && size > 0) {
         fieldWrap.style.width = size + 'px';
         fieldWrap.style.maxWidth = '100%';
@@ -898,6 +902,20 @@ const FIELD = 800;
         updateScaleUI();
       });
       scalePresets.appendChild(b);
+    });
+
+    document.querySelectorAll('.tool-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const panel = document.getElementById(btn.dataset.panel);
+        const isOpen = btn.classList.contains('open');
+        document.querySelectorAll('.tool-panel').forEach(p => p.classList.remove('open'));
+        document.querySelectorAll('.tool-toggle').forEach(b => b.classList.remove('open'));
+        if (!isOpen) {
+          panel.classList.add('open');
+          btn.classList.add('open');
+        }
+        layoutStage();
+      });
     });
 
     syncUI();

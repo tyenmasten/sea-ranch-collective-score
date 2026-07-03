@@ -84,7 +84,7 @@ body {
 .col-identity {
   background: var(--surface);
   min-width: 0;
-  padding: 10px 11px 12px;
+  padding: 24px 20px;
 }
 
 .col-identity .flabel {
@@ -117,7 +117,7 @@ body {
 .identity-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 20px;
   flex-shrink: 0;
 }
 
@@ -156,7 +156,7 @@ nav {
 
   .workspace {
     display: grid;
-    grid-template-columns: minmax(168px, 200px) minmax(0, 1fr) minmax(280px, 42%);
+    grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr;
     min-height: 0;
     overflow: hidden;
@@ -172,6 +172,8 @@ nav {
   .identity-grid {
     grid-template-columns: 1fr;
     gap: 10px;
+    max-width: 140px;
+    margin: 0 auto;
   }
 
   .col-centre {
@@ -339,7 +341,7 @@ nav {
     aspect-ratio: 3 / 4;
     max-width: 100%;
     max-height: none;
-    border: 1px solid var(--border);
+    border: 1px solid var(--ink);
     box-sizing: border-box;
   }
 
@@ -585,8 +587,9 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
   font-family: 'Media77', sans-serif;
   font-size: 11px;
   color: var(--ink);
-  background: var(--surface2);
+  background: transparent;
   border: none;
+  padding: 24px;
 }
 
 #sketch-stage #field-wrap {
@@ -598,6 +601,37 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
   margin: 0 auto;
 }
 
+#sketch-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  width: 100%;
+}
+
+#canvas-frame {
+  flex: 1 1 0;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.identity-inline {
+  width: 150px;
+  flex-shrink: 0;
+}
+
+.identity-inline .flabel {
+  font-size: 9px;
+  margin-top: 0;
+  margin-bottom: 2px;
+  letter-spacing: 0.08em;
+}
+
+.identity-inline input[type="text"] {
+  font-size: 10px;
+  padding: 3px 6px;
+}
+
 #sketch-stage #canvas {
   display: block;
   width: 100%;
@@ -606,18 +640,19 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
   aspect-ratio: 3 / 4;
   cursor: crosshair;
   background: #fff;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ink);
+  box-sizing: border-box;
 }
 
 #sketch-stage #scale-band {
   width: 100%;
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
-  padding: 6px 8px 0;
-  min-height: 22px;
+  justify-content: flex-end;
+  padding: 4px 0 0;
+  min-height: 0;
   flex-shrink: 0;
-  background: var(--surface2);
+  background: transparent;
 }
 
 #sketch-stage #scale-indicator {
@@ -687,6 +722,48 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
   border-top: 1px solid var(--border);
   overflow-x: hidden;
   overflow-y: auto;
+  min-height: 77px;
+}
+
+#sketch-stage .tool-toggles {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px 0;
+}
+
+#sketch-stage .tool-toggle {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Miniature', serif;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+  flex-shrink: 0;
+}
+
+#sketch-stage .tool-toggle.open {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: #fff;
+}
+
+#sketch-stage .tool-panel {
+  display: none;
+  border-top: 0.5px solid var(--border);
+}
+
+#sketch-stage .tool-panel.open {
+  display: block;
 }
 
 #sketch-stage .tool-row {
@@ -818,8 +895,8 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
 
 #sketch-stage .ls-btn,
 #sketch-stage .wt {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border: 1px solid transparent;
   background: var(--surface2);
   padding: 0;
@@ -853,8 +930,8 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
 #sketch-stage .wt[data-w="10"] span { height: 10px; }
 
 #sketch-stage .stroke-btn {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border: 1px solid transparent;
   background: var(--surface2);
   padding: 0;
@@ -893,6 +970,17 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
 .note { margin-top: 6px; }
 .sep { height: 1px; background: var(--border); margin: 28px 0; }
 
+@media (max-width: 767px) {
+  #sketch-top {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .identity-inline {
+    width: 100%;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -921,45 +1009,61 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
 
 <div class="workspace">
 
-  <div class="col-identity" id="identityCol">
-    <div class="identity-grid">
-      <div>
-        <span class="flabel">Author</span>
-        <input type="text" id="author" value="A. Halprin" readonly>
-      </div>
-      <div>
-        <span class="flabel">Lexicon Name</span>
-        <input type="text" id="lexiconName" placeholder="Name your mark…">
-      </div>
-    </div>
-  </div>
-
   <div class="col-centre" id="drawingCol">
     <div id="sketch-stage">
-      <div id="field-wrap">
-        <canvas id="canvas" width="600" height="800"></canvas>
-      </div>
-      <div id="scale-band">
-        <div id="scale-indicator">
-          <div id="scale-bar-line"></div>
-          <div id="scale-bar-label">&mdash; 10 ft</div>
+      <div id="sketch-top">
+        <div class="identity-inline">
+          <div class="identity-grid">
+            <div>
+              <span class="flabel">Author</span>
+              <input type="text" id="author" value="A. Halprin" readonly>
+            </div>
+            <div>
+              <span class="flabel">Lexicon Name</span>
+              <input type="text" id="lexiconName" placeholder="Name your mark…">
+            </div>
+          </div>
         </div>
-        <div id="scale-presets"></div>
+        <div id="canvas-frame">
+          <div id="canvas-col">
+            <div id="field-wrap">
+              <canvas id="canvas" width="600" height="800"></canvas>
+            </div>
+            <div id="scale-band">
+              <div id="scale-presets"></div>
+            </div>
+          </div>
+        </div>
+        <div class="identity-inline"></div>
       </div>
       <div id="toolbar">
-        <div class="tool-row" id="row-shapes">
-          <div id="shapes"></div>
+        <div class="tool-toggles">
+          <button type="button" class="tool-toggle" data-panel="panel-shape">Shape</button>
+          <button type="button" class="tool-toggle" data-panel="panel-color">Colour</button>
+          <button type="button" class="tool-toggle" data-panel="panel-fill">Fill</button>
+          <button type="button" class="tool-toggle" data-panel="panel-line">Line</button>
         </div>
-        <div class="tool-row" id="row-colors"></div>
-        <div class="tool-row" id="row-fill">
-          <div id="grp-fill"></div>
+        <div class="tool-panel" id="panel-shape">
+          <div class="tool-row" id="row-shapes">
+            <div id="shapes"></div>
+          </div>
         </div>
-        <div class="tool-row" id="row-line">
-          <div class="line-group" id="grp-line"></div>
-          <div class="line-divider" aria-hidden="true"></div>
-          <div class="line-group" id="grp-weight"></div>
-          <div class="line-divider" aria-hidden="true"></div>
-          <div class="line-group" id="grp-stroke"></div>
+        <div class="tool-panel" id="panel-color">
+          <div class="tool-row" id="row-colors"></div>
+        </div>
+        <div class="tool-panel" id="panel-fill">
+          <div class="tool-row" id="row-fill">
+            <div id="grp-fill"></div>
+          </div>
+        </div>
+        <div class="tool-panel" id="panel-line">
+          <div class="tool-row" id="row-line">
+            <div class="line-group" id="grp-line"></div>
+            <div class="line-divider" aria-hidden="true"></div>
+            <div class="line-group" id="grp-weight"></div>
+            <div class="line-divider" aria-hidden="true"></div>
+            <div class="line-group" id="grp-stroke"></div>
+          </div>
         </div>
       </div>
     </div>

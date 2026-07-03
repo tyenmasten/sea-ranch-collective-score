@@ -123,6 +123,31 @@ body {
 
 .identity-grid .flabel { margin-top: 0; }
 
+header {
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  background: #d0d0d0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.h-title { font-family: 'Miniature', serif; font-size: 26px; font-weight: normal; font-style: normal; color: var(--ink); letter-spacing: normal; line-height: 1.1; }
+.h-sub { font-family: 'Media77', sans-serif; font-size: 11px; color: var(--dim); letter-spacing: 0.1em; margin-top: 2px; }
+.h-right { display: flex; flex-direction: column; align-items: flex-end; }
+.h-app-name { font-family: 'Media77', sans-serif; font-size: 13px; color: var(--ink); letter-spacing: 0.04em; line-height: 1.2; margin-bottom: 4px; }
+.h-user { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); border: 1px solid var(--border); padding: 4px 10px; font-family: 'Miniature', serif; background: var(--surface2); }
+
+nav {
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  padding: 0 24px;
+  background: var(--surface);
+}
+
+.nav-item { font-family: 'Miniature', serif; font-size: 13px; letter-spacing: 0.1em; padding: 10px 16px; color: var(--dim); cursor: pointer; border-bottom: 2px solid transparent; text-decoration: none; display: block; }
+.nav-item.active { color: var(--ink); border-bottom-color: var(--ink); }
+
 /* Desktop: identity · drawing · metadata */
 @media (min-width: 768px) {
   body {
@@ -480,31 +505,6 @@ body {
     font-size: 10px;
   }
 }
-
-header {
-  padding: 14px 24px;
-  border-bottom: 1px solid var(--border);
-  background: #d0d0d0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.h-title { font-family: 'Miniature', serif; font-size: 26px; font-weight: normal; font-style: normal; color: var(--ink); letter-spacing: normal; line-height: 1.1; }
-.h-sub { font-family: 'Media77', sans-serif; font-size: 11px; color: var(--dim); letter-spacing: 0.1em; margin-top: 2px; }
-.h-right { display: flex; flex-direction: column; align-items: flex-end; }
-.h-app-name { font-family: 'Media77', sans-serif; font-size: 13px; color: var(--ink); letter-spacing: 0.04em; line-height: 1.2; margin-bottom: 4px; }
-.h-user { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); border: 1px solid var(--border); padding: 4px 10px; font-family: 'Miniature', serif; background: var(--surface2); }
-
-nav {
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  padding: 0 24px;
-  background: var(--surface);
-}
-
-.nav-item { font-family: 'Miniature', serif; font-size: 13px; letter-spacing: 0.1em; padding: 10px 16px; color: var(--dim); cursor: pointer; border-bottom: 2px solid transparent; text-decoration: none; display: block; }
-.nav-item.active { color: var(--ink); border-bottom-color: var(--ink); }
 
 .section {
   margin-bottom: 24px;

@@ -1051,6 +1051,28 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
   }
 }
 
+@media (max-width: 767px) {
+  #sketch-stage {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+    padding: 0;
+  }
+
+  #sketch-stage #field-wrap {
+    aspect-ratio: auto;
+    height: auto;
+    flex: none;
+  }
+
+  #sketch-stage #canvas {
+    height: auto;
+    aspect-ratio: 3 / 4;
+    max-width: 100%;
+    max-height: none;
+  }
+}
+
 </style>
 </head>
 <body>

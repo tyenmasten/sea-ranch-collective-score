@@ -269,6 +269,65 @@ nav {
   flex-shrink: 0;
 }
 
+.fill-layer-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fill-expand-toggle {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--dim);
+  transition: transform 0.15s ease;
+}
+
+.fill-expand-toggle.open {
+  transform: rotate(180deg);
+}
+
+.fill-category-list {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0 4px 4px;
+}
+
+.fill-category-list.open {
+  display: flex;
+}
+
+.fill-category-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fill-category-name {
+  font-size: 10px;
+  color: var(--dim);
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fill-char-input {
+  width: 24px;
+  height: 24px;
+  text-align: center;
+  font-family: 'Media77', sans-serif;
+  font-size: 12px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
 .layer-toggle.on {
   background: var(--ink);
   border-color: var(--ink);
@@ -725,6 +784,15 @@ nav {
     min-height: 320px;
   }
 }
+
+.section-block input.fill-char-input {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin-bottom: 0;
+  font-size: 12px;
+  text-align: center;
+}
 </style>
 </head>
 <body>
@@ -766,13 +834,36 @@ nav {
                 <span class="layer-name">Streets</span>
                 <button type="button" class="layer-toggle on" id="toggleStreets" aria-pressed="true" aria-label="Toggle streets"></button>
               </div>
-              <div class="layer-row">
-                <span class="layer-name">Buildings</span>
-                <button type="button" class="layer-toggle on" id="toggleBuildings" aria-pressed="true" aria-label="Toggle buildings"></button>
+
+              <div class="fill-layer-block">
+                <div class="layer-row">
+                  <span class="layer-name">Buildings</span>
+                  <div class="fill-layer-controls">
+                    <button type="button" class="fill-expand-toggle" id="expandBuildings" aria-label="Expand building fill symbols">▾</button>
+                    <button type="button" class="layer-toggle on" id="toggleBuildings" aria-pressed="true" aria-label="Toggle buildings"></button>
+                  </div>
+                </div>
+                <div class="fill-category-list" id="buildingsFillList"></div>
               </div>
+
+              <div class="fill-layer-block">
+                <div class="layer-row">
+                  <span class="layer-name">Vegetation</span>
+                  <div class="fill-layer-controls">
+                    <button type="button" class="fill-expand-toggle" id="expandVegetation" aria-label="Expand vegetation fill symbols">▾</button>
+                    <button type="button" class="layer-toggle" id="toggleVegetation" aria-pressed="false" aria-label="Toggle vegetation"></button>
+                  </div>
+                </div>
+                <div class="fill-category-list" id="vegetationFillList"></div>
+              </div>
+
               <div class="layer-row">
                 <span class="layer-name">Contours</span>
                 <button type="button" class="layer-toggle" id="toggleContours" aria-pressed="false" aria-label="Toggle contours"></button>
+              </div>
+              <div class="layer-row">
+                <span class="layer-name">Outlines</span>
+                <button type="button" class="layer-toggle" id="toggleOutlines" aria-pressed="false" aria-label="Toggle polygon outlines"></button>
               </div>
             </div>
 
@@ -830,6 +921,9 @@ nav {
                 <option value="1:1000">1:1000</option>
                 <option value="1:2000">1:2000</option>
                 <option value="1:5000">1:5000</option>
+                <option value="1:10000">1:10000</option>
+                <option value="1:25000">1:25000</option>
+                <option value="1:50000">1:50000</option>
               </select>
               <p class="note" id="scaleFitStatus" style="margin-top:6px;"></p>
               <button type="button" class="btn primary" id="btnExport" style="margin-top:8px;">Export SVG →</button>
@@ -1091,6 +1185,7 @@ const state = {
   layers: {
     streets: true,
     buildings: true,
+    vegetation: false,
     contours: false,
     parcels: false,
     coastalEdge: false,
@@ -1766,6 +1861,7 @@ function bindEvents() {
     els.toggleStreets.classList.toggle('on', state.layers.streets);
     els.toggleStreets.setAttribute('aria-pressed', state.layers.streets);
     applyLayerVisibility();
+    if (window.redraw) redraw();
   });
 
   els.toggleBuildings.addEventListener('click', () => {
@@ -1773,7 +1869,98 @@ function bindEvents() {
     els.toggleBuildings.classList.toggle('on', state.layers.buildings);
     els.toggleBuildings.setAttribute('aria-pressed', state.layers.buildings);
     applyLayerVisibility();
+    if (window.redraw) redraw();
   });
+
+  els.toggleVegetation = document.getElementById('toggleVegetation');
+  if (els.toggleVegetation) {
+    els.toggleVegetation.addEventListener('click', () => {
+      state.layers.vegetation = !state.layers.vegetation;
+      els.toggleVegetation.classList.toggle('on', state.layers.vegetation);
+      els.toggleVegetation.setAttribute('aria-pressed', state.layers.vegetation);
+      if (state.layers.vegetation && window.loadVegetationLayer) {
+        window.loadVegetationLayer();
+      }
+      if (window.redraw) redraw();
+    });
+  }
+
+  const BUILDING_FILL_CATEGORIES = [
+    'Single Family Residence', 'Commercial', 'Industrial',
+    'Park Building', 'Out Building', 'Agriculture', 'Other',
+  ];
+  const VEGETATION_FILL_CATEGORIES = [
+    'Native Forest', 'Non-native Forest & Woodland', 'Forest Sliver',
+    'Shrub', 'Non-native Shrub', 'Herbaceous',
+    'Nursery or Ornamental Horticultural Area', 'Barren & Sparsely Vegetated',
+    'Developed', 'Major Roads', 'Water',
+  ];
+  const DEFAULT_BUILDING_FILLS = {
+    'Single Family Residence': 's', 'Commercial': 'c', 'Industrial': 'i',
+    'Park Building': 'p', 'Out Building': 'o', 'Agriculture': 'a', 'Other': 'x',
+  };
+  const DEFAULT_VEGETATION_FILLS = {
+    'Native Forest': 'n', 'Non-native Forest & Woodland': 'w', 'Forest Sliver': 'f',
+    'Shrub': 's', 'Non-native Shrub': 'u', 'Herbaceous': 'h',
+    'Nursery or Ornamental Horticultural Area': 'y', 'Barren & Sparsely Vegetated': 'b',
+    'Developed': 'd', 'Major Roads': 'r', 'Water': 't',
+  };
+
+  window.categoryFills = {
+    buildings: { ...DEFAULT_BUILDING_FILLS },
+    vegetation: { ...DEFAULT_VEGETATION_FILLS },
+  };
+
+  function buildFillCategoryRows(containerId, categories, groupKey) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    categories.forEach((cat) => {
+      const row = document.createElement('div');
+      row.className = 'fill-category-row';
+
+      const label = document.createElement('span');
+      label.className = 'fill-category-name';
+      label.textContent = cat;
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'fill-char-input';
+      input.maxLength = 1;
+      input.value = window.categoryFills[groupKey][cat] || '';
+
+      input.addEventListener('input', () => {
+        const val = input.value.slice(0, 1);
+        input.value = val;
+        window.categoryFills[groupKey][cat] = val || DEFAULT_BUILDING_FILLS[cat] || '.';
+        if (window.redraw) redraw();
+      });
+
+      row.appendChild(label);
+      row.appendChild(input);
+      container.appendChild(row);
+    });
+  }
+
+  buildFillCategoryRows('buildingsFillList', BUILDING_FILL_CATEGORIES, 'buildings');
+  buildFillCategoryRows('vegetationFillList', VEGETATION_FILL_CATEGORIES, 'vegetation');
+
+  function bindFillExpandToggle(btnId, listId, otherBtnId, otherListId) {
+    const btn = document.getElementById(btnId);
+    const list = document.getElementById(listId);
+    if (!btn || !list) return;
+    btn.addEventListener('click', () => {
+      const isOpen = list.classList.contains('open');
+      const otherBtn = document.getElementById(otherBtnId);
+      const otherList = document.getElementById(otherListId);
+      if (otherList) otherList.classList.remove('open');
+      if (otherBtn) otherBtn.classList.remove('open');
+      list.classList.toggle('open', !isOpen);
+      btn.classList.toggle('open', !isOpen);
+    });
+  }
+
+  bindFillExpandToggle('expandBuildings', 'buildingsFillList', 'expandVegetation', 'vegetationFillList');
+  bindFillExpandToggle('expandVegetation', 'vegetationFillList', 'expandBuildings', 'buildingsFillList');
 
   els.toggleParcels.addEventListener('click', () => {
     state.layers.parcels = !state.layers.parcels;
@@ -1808,7 +1995,18 @@ function bindEvents() {
     els.toggleContours.classList.toggle('on', state.layers.contours);
     els.toggleContours.setAttribute('aria-pressed', state.layers.contours);
     applyLayerVisibility();
+    if (window.redraw) redraw();
   });
+
+  els.toggleOutlines = document.getElementById('toggleOutlines');
+  if (els.toggleOutlines) {
+    els.toggleOutlines.addEventListener('click', () => {
+      state.mapView.showOutlines = !state.mapView.showOutlines;
+      els.toggleOutlines.classList.toggle('on', state.mapView.showOutlines);
+      els.toggleOutlines.setAttribute('aria-pressed', state.mapView.showOutlines);
+      if (window.redraw) redraw();
+    });
+  }
 
   els.btnExport.addEventListener('click', () => {
     console.log('Export SVG (stub):', {

@@ -1,32 +1,34 @@
 // Collective Score base layer rendering in p5.js
 // Reuses prepareSiteGeoJSON, featuresNeedStatePlaneTransform, fitStatePlaneToWgs84,
 // and transformStatePlaneWithFit, all defined globally in collective-score.html's
-// inline script, which loads before this file.
+// inline script, which loads before this file. Also reads window.categoryFills,
+// defined in that same script, which holds the current fill character chosen
+// for each building type and vegetation type.
 //
 // Two modes:
 // - View: freely pannable and zoomable, the everyday working view of the
 //   whole composition, not tied to any page size.
 // - Print: a fixed 11x17 portrait page at a chosen architectural scale
 //   (1:500 to 1:5000), centred on wherever you have panned to in View mode.
-//   This is only meant to be switched to right before checking or exporting
-//   a specific crop and scale.
 //
 // The whole composition is rotated 42 degrees, applied in real-world feet
 // before anything is scaled to the screen or the page, so it stays correct
 // at any zoom level or print scale.
 //
-// Buildings are rendered as a field of repeated characters filling each shape,
-// after Frederick Hammersley's 1969 line-printer "computer drawings", where
-// tone and form came from character choice and density on a fixed grid rather
-// than from color or a flat fill. Streets and contours stay as fine drawn
+// Buildings and vegetation are both rendered as a field of repeated
+// characters filling each shape, after Frederick Hammersley's 1969
+// line-printer "computer drawings", where tone and form came from character
+// choice and density on a fixed grid rather than from color or a flat fill.
+// Each category (building type, vegetation lifeform) can carry its own
+// character, chosen in the sidebar. Streets and contours stay as fine drawn
 // lines, since they are not enclosed shapes.
 
-let scoreLayers = { streets: [], buildings: [], contours: [] };
+let scoreLayers = { streets: [], buildings: [], contours: [], vegetation: [] };
 let scoreCentroid = null;
 let scoreReady = false;
 
-const HATCH_CHAR = 'x';
 const HATCH_PITCH = 7;
+const DEFAULT_CHAR = '.';
 
 const ROTATION_DEG = 42;
 const FT_PER_DEG_LAT = 364000;
@@ -35,9 +37,6 @@ const PAGE_WIDTH_IN = 11;
 const PAGE_HEIGHT_IN = 17;
 const PAGE_MARGIN_PX = 40;
 
-// Mode and view state. panRX/panRY are in rotated feet from the site
-// centroid, and are shared between View and Print mode, since panning in
-// one is meant to carry over to the other.
 let scoreMode = 'view';
 let panRX = 0;
 let panRY = 0;
@@ -149,6 +148,40 @@ async function loadScoreLayers() {
   }
 }
 
+let vegetationLoaded = false;
+let vegetationLoading = false;
+
+// Only called when the Vegetation toggle is actually switched on, rather
+// than automatically after the page loads, since this file is large and
+// most visits will never turn this layer on at all.
+window.loadVegetationLayer = async function loadVegetationLayer() {
+  if (vegetationLoaded || vegetationLoading) return;
+  vegetationLoading = true;
+  const statusEl = document.getElementById('scoreLoadMsg');
+  if (statusEl) {
+    statusEl.textContent = 'Loading vegetation…';
+    statusEl.style.display = 'block';
+  }
+  try {
+    const vegRes = await fetch('geojson/SeaRanch_VegetationTypes.geojson');
+    if (vegRes.ok) {
+      const veg = await vegRes.json();
+      if (veg && veg.features) {
+        // This file is already in plain longitude/latitude, no state-plane
+        // correction needed, unlike contours.
+        scoreLayers.vegetation = veg.features;
+        vegetationLoaded = true;
+      }
+    }
+  } catch (err) {
+    console.error('Vegetation layer failed to load:', err);
+  } finally {
+    vegetationLoading = false;
+    if (statusEl) statusEl.style.display = 'none';
+    redraw();
+  }
+};
+
 function computeLngLatBounds(features) {
   let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
   function walk(coords) {
@@ -166,8 +199,6 @@ function computeLngLatBounds(features) {
   return { minLng, maxLng, minLat, maxLat };
 }
 
-// Works out a pixels-per-foot value that fits the whole rotated site inside
-// the canvas at zoom level 1, so View mode starts out showing everything.
 function computeBaseFitScale(bounds) {
   const corners = [
     [bounds.minLng, bounds.minLat], [bounds.maxLng, bounds.minLat],
@@ -208,17 +239,9 @@ function currentScaleDenominator() {
   return Number(parts[1]) || 500;
 }
 
-// In View mode, pixels-per-foot comes from the base fit scale times the
-// current zoom. In Print mode, it comes from the fixed page size and the
-// chosen architectural scale, ignoring zoom entirely.
 function getViewGeometry() {
   const pxPerFt = baseFitPxPerFt * viewZoom;
-  return {
-    mode: 'view',
-    pxPerFt,
-    centerX: width / 2,
-    centerY: height / 2,
-  };
+  return { mode: 'view', pxPerFt, centerX: width / 2, centerY: height / 2 };
 }
 
 function getPrintGeometry() {
@@ -233,15 +256,8 @@ function getPrintGeometry() {
   const ftPerPagePixel = (scaleDenom / 12) / pxPerInch;
   const pxPerFt = 1 / ftPerPagePixel;
   return {
-    mode: 'print',
-    scaleDenom,
-    pxPerFt,
-    pageW,
-    pageH,
-    pageX,
-    pageY,
-    centerX: pageX + pageW / 2,
-    centerY: pageY + pageH / 2,
+    mode: 'print', scaleDenom, pxPerFt, pageW, pageH, pageX, pageY,
+    centerX: pageX + pageW / 2, centerY: pageY + pageH / 2,
   };
 }
 
@@ -318,20 +334,31 @@ function drawContours(geo) {
   });
 }
 
-function drawBuildings(geo) {
-  if (!state.layers.buildings) return;
-  scoreLayers.buildings.forEach((f) => {
+// Shared by drawBuildings and drawVegetation, since both are now categorized
+// character fills, just reading a different property and a different
+// character map.
+function drawCategorizedFill(geo, features, categoryField, fillGroupKey) {
+  const fills = (window.categoryFills && window.categoryFills[fillGroupKey]) || {};
+
+  features.forEach((f) => {
     if (!f.geometry) return;
     const polys = f.geometry.type === 'MultiPolygon'
       ? f.geometry.coordinates
       : [f.geometry.coordinates];
 
+    const category = (f.properties && f.properties[categoryField]) || 'Other';
+    const ch = fills[category] || DEFAULT_CHAR;
+
     polys.forEach((poly) => {
       const outerRing = ringToScreen(poly[0], geo);
 
       noFill();
-      stroke('#999999');
-      strokeWeight(0.6);
+      if (window.state && state.mapView && state.mapView.showOutlines) {
+        stroke('#999999');
+        strokeWeight(0.5);
+      } else {
+        noStroke();
+      }
       beginShape();
       outerRing.forEach((p) => vertex(p.x, p.y));
       endShape(CLOSE);
@@ -344,23 +371,33 @@ function drawBuildings(geo) {
         if (p.y > maxY) maxY = p.y;
       });
 
-      // Skip character fill entirely for shapes that are off-screen or tiny
-      // at the current zoom, this matters more now that zoom is possible.
       if (maxX < 0 || minX > width || maxY < 0 || minY > height) return;
       if (maxX - minX < HATCH_PITCH && maxY - minY < HATCH_PITCH) return;
 
       noStroke();
       fill('#1a1a1a');
       textSize(HATCH_PITCH * 0.9);
-      for (let gy = minY; gy <= maxY; gy += HATCH_PITCH) {
-        for (let gx = minX; gx <= maxX; gx += HATCH_PITCH) {
+      const gridStartX = Math.floor(minX / HATCH_PITCH) * HATCH_PITCH;
+      const gridStartY = Math.floor(minY / HATCH_PITCH) * HATCH_PITCH;
+      for (let gy = gridStartY; gy <= maxY; gy += HATCH_PITCH) {
+        for (let gx = gridStartX; gx <= maxX; gx += HATCH_PITCH) {
           if (pointInPolygon(gx, gy, outerRing)) {
-            text(HATCH_CHAR, gx, gy);
+            text(ch, gx, gy);
           }
         }
       }
     });
   });
+}
+
+function drawBuildings(geo) {
+  if (!state.layers.buildings) return;
+  drawCategorizedFill(geo, scoreLayers.buildings, 'PropType', 'buildings');
+}
+
+function drawVegetation(geo) {
+  if (!state.layers.vegetation) return;
+  drawCategorizedFill(geo, scoreLayers.vegetation, 'LIFEFORM', 'vegetation');
 }
 
 function updateFitStatus(geo) {
@@ -421,6 +458,7 @@ function draw() {
   }
 
   drawContours(geo);
+  drawVegetation(geo);
   drawStreets(geo);
   drawBuildings(geo);
 

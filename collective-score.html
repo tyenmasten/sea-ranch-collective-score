@@ -6,6 +6,7 @@
 <title>Collective Score — Sea Ranch Collective Score</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
 <style>
 /* Mobile responsive — to be handled by Cursor in a separate pass */
 
@@ -171,6 +172,47 @@ nav {
 }
 
 .sidebar-panel.active { display: flex; }
+
+.accordion-section {
+  flex-shrink: 0;
+}
+
+.accordion-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 0;
+  font-family: 'Miniature', serif;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.accordion-chevron {
+  font-size: 10px;
+  color: var(--dim);
+  transition: transform 0.15s ease;
+}
+
+.accordion-header.open .accordion-chevron {
+  transform: rotate(180deg);
+}
+
+.accordion-content {
+  display: none;
+  padding-top: 10px;
+}
+
+.accordion-content.open {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
 
 .sidebar-panel::-webkit-scrollbar { width: 6px; }
 .sidebar-panel::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
@@ -712,74 +754,152 @@ nav {
     <aside class="sidebar">
       <div class="sidebar-panel active" id="panelDefault">
 
-        <div class="section-block">
-          <div class="slabel">Score</div>
-          <div class="stats-bar">
-            <div class="stat-box"><span class="stat-num">15</span><span class="stat-label">Students</span></div>
-            <div class="stat-box"><span class="stat-num">47</span><span class="stat-label">Notations</span></div>
-            <div class="stat-box"><span class="stat-num">8</span><span class="stat-label">Days</span></div>
+        <div class="accordion-section">
+          <button type="button" class="accordion-header" data-accordion="accDrawing">
+            <span>Base Drawing Layers</span>
+            <span class="accordion-chevron">▾</span>
+          </button>
+          <div class="accordion-content" id="accDrawing">
+            <div class="section-block">
+              <div class="slabel">Site Layers</div>
+              <div class="layer-row">
+                <span class="layer-name">Streets</span>
+                <button type="button" class="layer-toggle on" id="toggleStreets" aria-pressed="true" aria-label="Toggle streets"></button>
+              </div>
+              <div class="layer-row">
+                <span class="layer-name">Buildings</span>
+                <button type="button" class="layer-toggle on" id="toggleBuildings" aria-pressed="true" aria-label="Toggle buildings"></button>
+              </div>
+              <div class="layer-row">
+                <span class="layer-name">Contours</span>
+                <button type="button" class="layer-toggle" id="toggleContours" aria-pressed="false" aria-label="Toggle contours"></button>
+              </div>
+            </div>
+
+            <div class="sep"></div>
+
+            <div class="section-block">
+              <div class="slabel">Planned Layers</div>
+              <p class="note" style="margin-bottom:8px;">Ready for when the underlying GeoJSON is added, these do not yet affect the map.</p>
+              <div class="layer-row">
+                <span class="layer-name">Parcels</span>
+                <button type="button" class="layer-toggle" id="toggleParcels" aria-pressed="false" aria-label="Toggle parcels"></button>
+              </div>
+              <div class="layer-row">
+                <span class="layer-name">Coastal Edge</span>
+                <button type="button" class="layer-toggle" id="toggleCoastalEdge" aria-pressed="false" aria-label="Toggle coastal edge"></button>
+              </div>
+              <div class="layer-row">
+                <span class="layer-name">Public Land</span>
+                <button type="button" class="layer-toggle" id="togglePublicLand" aria-pressed="false" aria-label="Toggle public land"></button>
+              </div>
+            </div>
+
           </div>
         </div>
 
         <div class="sep"></div>
 
-        <div class="section-block">
-          <div class="slabel">Filter — Author</div>
-          <div class="filter-chips" id="filterAuthor" data-filter-key="author"></div>
-        </div>
+        <div class="accordion-section">
+          <button type="button" class="accordion-header" data-accordion="accOutput">
+            <span>Scale &amp; Viewing Output</span>
+            <span class="accordion-chevron">▾</span>
+          </button>
+          <div class="accordion-content" id="accOutput">
+            <div class="section-block">
+              <div class="slabel">Mode</div>
+              <div style="display:flex; gap:8px;">
+                <button type="button" class="btn primary" id="btnViewMode" style="flex:1;">View</button>
+                <button type="button" class="btn ghost" id="btnPrintMode" style="flex:1;">Print Preview</button>
+              </div>
+            </div>
 
-        <div class="section-block">
-          <div class="slabel">Filter — Element</div>
-          <div class="filter-chips" id="filterElement" data-filter-key="element"></div>
-        </div>
+            <div class="sep"></div>
 
-        <div class="section-block">
-          <div class="slabel">Filter — Meta Data</div>
-          <div class="filter-chips" id="filterMeta" data-filter-key="meta"></div>
-        </div>
+            <div class="section-block">
+              <div class="slabel">Export</div>
+              <span class="flabel" style="margin-top:0;">Layer Selection</span>
+              <select id="exportLayer">
+                <option value="all">All Layers</option>
+                <option value="marks">Lexicon Marks Only</option>
+                <option value="geometry">Site Geometry Only</option>
+              </select>
+              <span class="flabel">Scale</span>
+              <select id="exportScale">
+                <option value="1:500">1:500</option>
+                <option value="1:1000">1:1000</option>
+                <option value="1:2000">1:2000</option>
+                <option value="1:5000">1:5000</option>
+              </select>
+              <p class="note" id="scaleFitStatus" style="margin-top:6px;"></p>
+              <button type="button" class="btn primary" id="btnExport" style="margin-top:8px;">Export SVG →</button>
+            </div>
 
-        <div class="section-block">
-          <div class="slabel">Filter — Typology</div>
-          <div class="filter-chips" id="filterTypology" data-filter-key="typology"></div>
-        </div>
+            <div class="sep"></div>
 
-        <div class="section-block">
-          <div class="slabel">Filter — Status</div>
-          <div class="filter-chips" id="filterStatus" data-filter-key="status"></div>
-        </div>
+            <div class="section-block">
+              <div class="slabel">Map View</div>
+              <div class="layer-row">
+                <span class="layer-name">North Arrow</span>
+                <button type="button" class="layer-toggle on" id="toggleNorthArrow" aria-pressed="true" aria-label="Toggle north arrow"></button>
+              </div>
+            </div>
 
-        <div class="sep"></div>
+            <div class="sep"></div>
 
-        <div class="section-block">
-          <div class="slabel">Site Layers</div>
-          <div class="layer-row">
-            <span class="layer-name">Contours</span>
-            <button type="button" class="layer-toggle" id="toggleContours" aria-pressed="false" aria-label="Toggle contours"></button>
+            <div class="section-block">
+              <div class="slabel">Visibility</div>
+              <p class="note" style="margin-bottom:8px;">Control when students can view the collective score and lexicon overview.</p>
+              <button type="button" class="btn primary" id="btnScoreVisibility">Score — Unlocked ✓</button>
+              <button type="button" class="btn ghost" id="btnOverviewVisibility">Overview — Locked</button>
+            </div>
           </div>
         </div>
 
         <div class="sep"></div>
 
-        <div class="section-block">
-          <div class="slabel">Export</div>
-          <span class="flabel" style="margin-top:0;">Layer Selection</span>
-          <select id="exportLayer">
-            <option value="all">All Layers</option>
-            <option value="marks">Lexicon Marks Only</option>
-            <option value="geometry">Site Geometry Only</option>
-          </select>
-          <span class="flabel">Scale</span>
-          <input type="text" id="exportScale" value="1:500">
-          <button type="button" class="btn primary" id="btnExport" style="margin-top:8px;">Export SVG →</button>
-        </div>
+        <div class="accordion-section">
+          <button type="button" class="accordion-header open" data-accordion="accStudent">
+            <span>Student Data</span>
+            <span class="accordion-chevron">▾</span>
+          </button>
+          <div class="accordion-content open" id="accStudent">
+            <div class="section-block">
+              <div class="slabel">Score</div>
+              <div class="stats-bar">
+                <div class="stat-box"><span class="stat-num">15</span><span class="stat-label">Students</span></div>
+                <div class="stat-box"><span class="stat-num">47</span><span class="stat-label">Notations</span></div>
+                <div class="stat-box"><span class="stat-num">8</span><span class="stat-label">Days</span></div>
+              </div>
+            </div>
 
-        <div class="sep"></div>
+            <div class="sep"></div>
 
-        <div class="section-block">
-          <div class="slabel">Visibility</div>
-          <p class="note" style="margin-bottom:8px;">Control when students can view the collective score and lexicon overview.</p>
-          <button type="button" class="btn primary" id="btnScoreVisibility">Score — Unlocked ✓</button>
-          <button type="button" class="btn ghost" id="btnOverviewVisibility">Overview — Locked</button>
+            <div class="section-block">
+              <div class="slabel">Filter — Author</div>
+              <div class="filter-chips" id="filterAuthor" data-filter-key="author"></div>
+            </div>
+
+            <div class="section-block">
+              <div class="slabel">Filter — Element</div>
+              <div class="filter-chips" id="filterElement" data-filter-key="element"></div>
+            </div>
+
+            <div class="section-block">
+              <div class="slabel">Filter — Meta Data</div>
+              <div class="filter-chips" id="filterMeta" data-filter-key="meta"></div>
+            </div>
+
+            <div class="section-block">
+              <div class="slabel">Filter — Typology</div>
+              <div class="filter-chips" id="filterTypology" data-filter-key="typology"></div>
+            </div>
+
+            <div class="section-block">
+              <div class="slabel">Filter — Status</div>
+              <div class="filter-chips" id="filterStatus" data-filter-key="status"></div>
+            </div>
+          </div>
         </div>
 
       </div>
@@ -828,10 +948,10 @@ nav {
     </aside>
 
     <div class="map-viewer">
-      <div class="map-load-msg" id="mapLoadMsg">Loading site layers…</div>
-      <div class="map-area" id="mapArea"></div>
+      <div class="map-load-msg" id="scoreLoadMsg">Loading site layers…</div>
+      <div class="map-area" id="scoreCanvasWrap"></div>
 
-      <div class="compass" aria-hidden="true">
+      <div class="compass" id="scoreCompass" aria-hidden="true">
         <svg width="32" height="32" viewBox="0 0 32 32">
           <line x1="16" y1="4" x2="16" y2="28" stroke="#aaa" stroke-width="0.5"/>
           <line x1="4" y1="16" x2="28" y2="16" stroke="#aaa" stroke-width="0.5"/>
@@ -839,12 +959,6 @@ nav {
           <polygon points="16,28 18,18 16,20 14,18" fill="#ccc"/>
           <text x="16" y="3" text-anchor="middle" font-family="Miniature" font-size="6" fill="#1a1a1a">N</text>
         </svg>
-      </div>
-
-      <div class="map-controls">
-        <button type="button" class="map-btn" id="zoomIn" title="Zoom in">+</button>
-        <button type="button" class="map-btn" id="zoomOut" title="Zoom out">−</button>
-        <button type="button" class="map-btn" id="zoomFit" title="Fit to frame">⊡</button>
       </div>
     </div>
 
@@ -975,7 +1089,16 @@ const state = {
     overviewLocked: true,
   },
   layers: {
+    streets: true,
+    buildings: true,
     contours: false,
+    parcels: false,
+    coastalEdge: false,
+    publicLand: false,
+  },
+  mapView: {
+    rotation: 0,
+    northArrow: true,
   },
 };
 
@@ -1015,6 +1138,13 @@ const ELEMENT_IDS = {
   zoomOut: 'zoomOut',
   zoomFit: 'zoomFit',
   toggleContours: 'toggleContours',
+  toggleStreets: 'toggleStreets',
+  toggleBuildings: 'toggleBuildings',
+  toggleParcels: 'toggleParcels',
+  toggleCoastalEdge: 'toggleCoastalEdge',
+  togglePublicLand: 'togglePublicLand',
+  mapRotation: 'mapRotation',
+  toggleNorthArrow: 'toggleNorthArrow',
 };
 
 function cacheElements() {
@@ -1539,11 +1669,27 @@ function applySiteMapConstraints() {
 }
 
 function applyLayerVisibility() {
-  if (!map || !contoursLayer) return;
-  if (state.layers.contours) {
-    if (!map.hasLayer(contoursLayer)) contoursLayer.addTo(map);
-  } else if (map.hasLayer(contoursLayer)) {
-    map.removeLayer(contoursLayer);
+  if (!map) return;
+  if (streetsLayer) {
+    if (state.layers.streets) {
+      if (!map.hasLayer(streetsLayer)) streetsLayer.addTo(map);
+    } else if (map.hasLayer(streetsLayer)) {
+      map.removeLayer(streetsLayer);
+    }
+  }
+  if (buildingsLayer) {
+    if (state.layers.buildings) {
+      if (!map.hasLayer(buildingsLayer)) buildingsLayer.addTo(map);
+    } else if (map.hasLayer(buildingsLayer)) {
+      map.removeLayer(buildingsLayer);
+    }
+  }
+  if (contoursLayer) {
+    if (state.layers.contours) {
+      if (!map.hasLayer(contoursLayer)) contoursLayer.addTo(map);
+    } else if (map.hasLayer(contoursLayer)) {
+      map.removeLayer(contoursLayer);
+    }
   }
 }
 
@@ -1601,9 +1747,61 @@ async function loadGeoLayers() {
 function bindEvents() {
   els.btnBack.addEventListener('click', deselectNotation);
 
-  els.zoomIn.addEventListener('click', () => map && map.zoomIn());
-  els.zoomOut.addEventListener('click', () => map && map.zoomOut());
-  els.zoomFit.addEventListener('click', fitSiteBounds);
+  document.querySelectorAll('.accordion-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const id = header.dataset.accordion;
+      const content = document.getElementById(id);
+      const isOpen = header.classList.contains('open');
+      document.querySelectorAll('.accordion-header').forEach(h => h.classList.remove('open'));
+      document.querySelectorAll('.accordion-content').forEach(c => c.classList.remove('open'));
+      if (!isOpen) {
+        header.classList.add('open');
+        content.classList.add('open');
+      }
+    });
+  });
+
+  els.toggleStreets.addEventListener('click', () => {
+    state.layers.streets = !state.layers.streets;
+    els.toggleStreets.classList.toggle('on', state.layers.streets);
+    els.toggleStreets.setAttribute('aria-pressed', state.layers.streets);
+    applyLayerVisibility();
+  });
+
+  els.toggleBuildings.addEventListener('click', () => {
+    state.layers.buildings = !state.layers.buildings;
+    els.toggleBuildings.classList.toggle('on', state.layers.buildings);
+    els.toggleBuildings.setAttribute('aria-pressed', state.layers.buildings);
+    applyLayerVisibility();
+  });
+
+  els.toggleParcels.addEventListener('click', () => {
+    state.layers.parcels = !state.layers.parcels;
+    els.toggleParcels.classList.toggle('on', state.layers.parcels);
+    els.toggleParcels.setAttribute('aria-pressed', state.layers.parcels);
+    console.log('Parcels toggle (no layer data yet):', state.layers.parcels);
+  });
+
+  els.toggleCoastalEdge.addEventListener('click', () => {
+    state.layers.coastalEdge = !state.layers.coastalEdge;
+    els.toggleCoastalEdge.classList.toggle('on', state.layers.coastalEdge);
+    els.toggleCoastalEdge.setAttribute('aria-pressed', state.layers.coastalEdge);
+    console.log('Coastal edge toggle (no layer data yet):', state.layers.coastalEdge);
+  });
+
+  els.togglePublicLand.addEventListener('click', () => {
+    state.layers.publicLand = !state.layers.publicLand;
+    els.togglePublicLand.classList.toggle('on', state.layers.publicLand);
+    els.togglePublicLand.setAttribute('aria-pressed', state.layers.publicLand);
+    console.log('Public land toggle (no layer data yet):', state.layers.publicLand);
+  });
+
+  els.toggleNorthArrow.addEventListener('click', () => {
+    state.mapView.northArrow = !state.mapView.northArrow;
+    els.toggleNorthArrow.classList.toggle('on', state.mapView.northArrow);
+    els.toggleNorthArrow.setAttribute('aria-pressed', state.mapView.northArrow);
+    syncCompass();
+  });
 
   els.toggleContours.addEventListener('click', () => {
     state.layers.contours = !state.layers.contours;
@@ -1636,13 +1834,19 @@ function bindEvents() {
   });
 }
 
+function syncCompass() {
+  const compass = document.getElementById('scoreCompass');
+  if (!compass) return;
+  compass.style.display = state.mapView.northArrow ? 'block' : 'none';
+  compass.style.transform = 'rotate(42deg)';
+}
+
 function init() {
   cacheElements();
   buildFilterChips();
   updateVisibilityButtons();
-  initMap();
   bindEvents();
-  loadGeoLayers();
+  syncCompass();
 }
 
 if (document.readyState === 'loading') {
@@ -1651,5 +1855,6 @@ if (document.readyState === 'loading') {
   init();
 }
 </script>
+<script src="js/collective-p5.js"></script>
 </body>
 </html>

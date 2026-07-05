@@ -304,9 +304,8 @@ function nearestOffsetGridPoint(x, y, offset) {
 }
 
 function drawStreets(geo) {
-  if (!state.layers.streets) return;
+  if (!window.state || !state.layers.streets) return;
   noStroke();
-  fill('#ff0000');
   textSize(HATCH_PITCH * 0.9);
 
   const offset = HATCH_PITCH / 2;
@@ -318,7 +317,9 @@ function drawStreets(geo) {
   scoreLayers.streets.forEach((f) => {
     if (!f.geometry) return;
     const category = (f.properties && f.properties.Class) || 'Local';
-    const ch = roadFills[category] || DEFAULT_CHAR;
+    const entry = roadFills[category] || { char: DEFAULT_CHAR, color: '#1a1a1a' };
+    const ch = entry.char || DEFAULT_CHAR;
+    fill(entry.color || '#1a1a1a');
     const lines = f.geometry.type === 'MultiLineString'
       ? f.geometry.coordinates
       : [f.geometry.coordinates];
@@ -377,7 +378,8 @@ function drawCategorizedFill(geo, features, categoryField, fillGroupKey) {
       : [f.geometry.coordinates];
 
     const category = (f.properties && f.properties[categoryField]) || 'Other';
-    const ch = fills[category] || DEFAULT_CHAR;
+    const entry = fills[category] || { char: DEFAULT_CHAR, color: '#1a1a1a' };
+    const ch = entry.char || DEFAULT_CHAR;
 
     polys.forEach((poly) => {
       const outerRing = ringToScreen(poly[0], geo);
@@ -405,7 +407,7 @@ function drawCategorizedFill(geo, features, categoryField, fillGroupKey) {
       if (maxX - minX < HATCH_PITCH && maxY - minY < HATCH_PITCH) return;
 
       noStroke();
-      fill('#1a1a1a');
+      fill(entry.color || '#1a1a1a');
       textSize(HATCH_PITCH * 0.9);
       const gridStartX = Math.floor(minX / HATCH_PITCH) * HATCH_PITCH;
       const gridStartY = Math.floor(minY / HATCH_PITCH) * HATCH_PITCH;

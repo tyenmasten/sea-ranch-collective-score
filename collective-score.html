@@ -830,9 +830,15 @@ nav {
           <div class="accordion-content" id="accDrawing">
             <div class="section-block">
               <div class="slabel">Site Layers</div>
-              <div class="layer-row">
-                <span class="layer-name">Streets</span>
-                <button type="button" class="layer-toggle on" id="toggleStreets" aria-pressed="true" aria-label="Toggle streets"></button>
+              <div class="fill-layer-block">
+                <div class="layer-row">
+                  <span class="layer-name">Streets</span>
+                  <div class="fill-layer-controls">
+                    <button type="button" class="fill-expand-toggle" id="expandStreets" aria-label="Expand road symbols">▾</button>
+                    <button type="button" class="layer-toggle on" id="toggleStreets" aria-pressed="true" aria-label="Toggle streets"></button>
+                  </div>
+                </div>
+                <div class="fill-category-list" id="streetsFillList"></div>
               </div>
 
               <div class="fill-layer-block">
@@ -1885,6 +1891,16 @@ function bindEvents() {
     });
   }
 
+  const ROAD_FILL_CATEGORIES = [
+    'Highway', 'Major Collector', 'Minor Collector', 'Local',
+    'Path Pedestrian Only', 'Path Multi-Use', 'Fire Road',
+  ];
+  const DEFAULT_ROAD_FILLS = {
+    'Highway': '=', 'Major Collector': '+', 'Minor Collector': '-',
+    'Local': '.', 'Path Pedestrian Only': ':', 'Path Multi-Use': ';',
+    'Fire Road': '*',
+  };
+
   const BUILDING_FILL_CATEGORIES = [
     'Single Family Residence', 'Commercial', 'Industrial',
     'Park Building', 'Out Building', 'Agriculture', 'Other',
@@ -1907,6 +1923,7 @@ function bindEvents() {
   };
 
   window.categoryFills = {
+    streets: { ...DEFAULT_ROAD_FILLS },
     buildings: { ...DEFAULT_BUILDING_FILLS },
     vegetation: { ...DEFAULT_VEGETATION_FILLS },
   };
@@ -1941,26 +1958,34 @@ function bindEvents() {
     });
   }
 
+  buildFillCategoryRows('streetsFillList', ROAD_FILL_CATEGORIES, 'streets');
   buildFillCategoryRows('buildingsFillList', BUILDING_FILL_CATEGORIES, 'buildings');
   buildFillCategoryRows('vegetationFillList', VEGETATION_FILL_CATEGORIES, 'vegetation');
 
-  function bindFillExpandToggle(btnId, listId, otherBtnId, otherListId) {
-    const btn = document.getElementById(btnId);
-    const list = document.getElementById(listId);
+  const FILL_EXPAND_GROUPS = [
+    { btnId: 'expandStreets', listId: 'streetsFillList' },
+    { btnId: 'expandBuildings', listId: 'buildingsFillList' },
+    { btnId: 'expandVegetation', listId: 'vegetationFillList' },
+  ];
+
+  FILL_EXPAND_GROUPS.forEach((group) => {
+    const btn = document.getElementById(group.btnId);
+    const list = document.getElementById(group.listId);
     if (!btn || !list) return;
     btn.addEventListener('click', () => {
       const isOpen = list.classList.contains('open');
-      const otherBtn = document.getElementById(otherBtnId);
-      const otherList = document.getElementById(otherListId);
-      if (otherList) otherList.classList.remove('open');
-      if (otherBtn) otherBtn.classList.remove('open');
-      list.classList.toggle('open', !isOpen);
-      btn.classList.toggle('open', !isOpen);
+      FILL_EXPAND_GROUPS.forEach((g) => {
+        const b = document.getElementById(g.btnId);
+        const l = document.getElementById(g.listId);
+        if (b) b.classList.remove('open');
+        if (l) l.classList.remove('open');
+      });
+      if (!isOpen) {
+        btn.classList.add('open');
+        list.classList.add('open');
+      }
     });
-  }
-
-  bindFillExpandToggle('expandBuildings', 'buildingsFillList', 'expandVegetation', 'vegetationFillList');
-  bindFillExpandToggle('expandVegetation', 'vegetationFillList', 'expandBuildings', 'buildingsFillList');
+  });
 
   els.toggleParcels.addEventListener('click', () => {
     state.layers.parcels = !state.layers.parcels;

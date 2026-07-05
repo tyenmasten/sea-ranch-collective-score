@@ -296,21 +296,51 @@ function drawPageFrame(geo) {
   pop();
 }
 
+
+function nearestOffsetGridPoint(x, y, offset) {
+  const gx = Math.round((x - offset) / HATCH_PITCH) * HATCH_PITCH + offset;
+  const gy = Math.round((y - offset) / HATCH_PITCH) * HATCH_PITCH + offset;
+  return { gx, gy };
+}
+
 function drawStreets(geo) {
   if (!state.layers.streets) return;
-  stroke('#bbbbbb');
-  strokeWeight(0.75);
-  noFill();
+  noStroke();
+  fill('#ff0000');
+  textSize(HATCH_PITCH * 0.9);
+
+  const offset = HATCH_PITCH / 2;
+  const stepPx = HATCH_PITCH * 0.5;
+  const drawnPoints = new Set();
+
+  const roadFills = (window.categoryFills && window.categoryFills.streets) || {};
+
   scoreLayers.streets.forEach((f) => {
     if (!f.geometry) return;
+    const category = (f.properties && f.properties.Class) || 'Local';
+    const ch = roadFills[category] || DEFAULT_CHAR;
     const lines = f.geometry.type === 'MultiLineString'
       ? f.geometry.coordinates
       : [f.geometry.coordinates];
     lines.forEach((line) => {
       const pts = ringToScreen(line, geo);
-      beginShape();
-      pts.forEach((p) => vertex(p.x, p.y));
-      endShape();
+      for (let i = 0; i < pts.length - 1; i++) {
+        const x1 = pts[i].x, y1 = pts[i].y, x2 = pts[i + 1].x, y2 = pts[i + 1].y;
+        const segLen = Math.hypot(x2 - x1, y2 - y1);
+        const steps = Math.max(1, Math.ceil(segLen / stepPx));
+        for (let s = 0; s <= steps; s++) {
+          const t = s / steps;
+          const x = x1 + (x2 - x1) * t;
+          const y = y1 + (y2 - y1) * t;
+          if (x < -HATCH_PITCH || x > width + HATCH_PITCH || y < -HATCH_PITCH || y > height + HATCH_PITCH) continue;
+          const { gx, gy } = nearestOffsetGridPoint(x, y, offset);
+          const key = gx + ',' + gy;
+          if (!drawnPoints.has(key)) {
+            drawnPoints.add(key);
+            text(ch, gx, gy);
+          }
+        }
+      }
     });
   });
 }

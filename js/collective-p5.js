@@ -30,6 +30,15 @@ let scoreReady = false;
 const HATCH_PITCH = 7;
 const DEFAULT_CHAR = '.';
 
+function normalizeFillEntry(entry) {
+  if (!entry) return { char: DEFAULT_CHAR, color: '#1a1a1a' };
+  if (typeof entry === 'string') return { char: entry || DEFAULT_CHAR, color: '#1a1a1a' };
+  return {
+    char: entry.char || DEFAULT_CHAR,
+    color: entry.color || '#1a1a1a',
+  };
+}
+
 const ROTATION_DEG = 42;
 const FT_PER_DEG_LAT = 364000;
 
@@ -304,7 +313,7 @@ function nearestOffsetGridPoint(x, y, offset) {
 }
 
 function drawStreets(geo) {
-  if (!window.state || !state.layers.streets) return;
+  if (!state.layers.streets) return;
   noStroke();
   textSize(HATCH_PITCH * 0.9);
 
@@ -317,9 +326,8 @@ function drawStreets(geo) {
   scoreLayers.streets.forEach((f) => {
     if (!f.geometry) return;
     const category = (f.properties && f.properties.Class) || 'Local';
-    const entry = roadFills[category] || { char: DEFAULT_CHAR, color: '#1a1a1a' };
-    const ch = entry.char || DEFAULT_CHAR;
-    fill(entry.color || '#1a1a1a');
+    const { char: ch, color } = normalizeFillEntry(roadFills[category]);
+    fill(color);
     const lines = f.geometry.type === 'MultiLineString'
       ? f.geometry.coordinates
       : [f.geometry.coordinates];
@@ -378,8 +386,7 @@ function drawCategorizedFill(geo, features, categoryField, fillGroupKey) {
       : [f.geometry.coordinates];
 
     const category = (f.properties && f.properties[categoryField]) || 'Other';
-    const entry = fills[category] || { char: DEFAULT_CHAR, color: '#1a1a1a' };
-    const ch = entry.char || DEFAULT_CHAR;
+    const { char: ch, color } = normalizeFillEntry(fills[category]);
 
     polys.forEach((poly) => {
       const outerRing = ringToScreen(poly[0], geo);
@@ -404,11 +411,16 @@ function drawCategorizedFill(geo, features, categoryField, fillGroupKey) {
       });
 
       if (maxX < 0 || minX > width || maxY < 0 || minY > height) return;
-      if (maxX - minX < HATCH_PITCH && maxY - minY < HATCH_PITCH) return;
 
       noStroke();
-      fill(entry.color || '#1a1a1a');
+      fill(color);
       textSize(HATCH_PITCH * 0.9);
+
+      if (maxX - minX < HATCH_PITCH && maxY - minY < HATCH_PITCH) {
+        text(ch, (minX + maxX) / 2, (minY + maxY) / 2);
+        return;
+      }
+
       const gridStartX = Math.floor(minX / HATCH_PITCH) * HATCH_PITCH;
       const gridStartY = Math.floor(minY / HATCH_PITCH) * HATCH_PITCH;
       for (let gy = gridStartY; gy <= maxY; gy += HATCH_PITCH) {

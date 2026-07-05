@@ -11,8 +11,9 @@ const FIELD_H = 800;
       '#E8547A', '#00A0C1', '#3D8C2F', '#E8A020', '#1A3A8A', '#C13A2A'
     ];
     const COLORS = ['#000000', '#FFFFFF', ...PALETTE];
-    const SHAPES = ['line', 'semicircle', 'circle', 'triangle', 'rightTriangle', 'rectangle', 'diamond', 'dot'];
+    const SHAPES = ['select', 'line', 'semicircle', 'circle', 'triangle', 'rightTriangle', 'rectangle', 'diamond', 'dot'];
     const ICONS = {
+      select: '<path d="M6 3 L6 19 L10 15 L13 21 L15 20 L12 14 L17 14 Z"/>',
       line: '<line x1="4" y1="14" x2="20" y2="14"/>',
       semicircle: '<path d="M4 18 A8 8 0 0 1 20 18"/>',
       circle: '<circle cx="12" cy="12" r="8"/>',
@@ -29,7 +30,7 @@ const FIELD_H = 800;
     const S = {
       marks: [],
       selected: null,
-      tool: 'rectangle',
+      tool: 'select',
       color: '#000000',
       weight: 5,
       fill: 'solid',
@@ -37,7 +38,8 @@ const FIELD_H = 800;
       stroke: true,
       scaleFt: 10,
       pointer: null,
-      undo: []
+      undo: [],
+      multi: []
     };
 
     const canvas = document.getElementById('canvas');
@@ -66,6 +68,16 @@ const FIELD_H = 800;
       const rot = m.rot || 0;
       if (!rot) return b;
       return rotatedBounds(b, center(m), rot);
+    }
+
+    function clampToField(m) {
+      const b = bounds(m);
+      let dx = 0, dy = 0;
+      if (b.x < 0) dx = -b.x;
+      else if (b.x + b.w > FIELD_W) dx = FIELD_W - (b.x + b.w);
+      if (b.y < 0) dy = -b.y;
+      else if (b.y + b.h > FIELD_H) dy = FIELD_H - (b.y + b.h);
+      if (dx || dy) translateGeom(m.geom, m.type, dx, dy);
     }
 
     function localBounds(m) {
@@ -303,6 +315,15 @@ const FIELD_H = 800;
     }
 
     function deleteSelected() {
+      if (S.multi.length > 1) {
+        pushUndo();
+        S.marks = S.marks.filter(m => !S.multi.includes(m.id));
+        S.multi = [];
+        S.selected = S.marks.length ? S.marks[S.marks.length - 1].id : null;
+        syncUI();
+        draw();
+        return;
+      }
       if (!S.selected) return;
       pushUndo();
       S.marks = S.marks.filter(m => m.id !== S.selected);
@@ -336,8 +357,33 @@ const FIELD_H = 800;
 
     function endPointer() {
       if (S.pointer) {
-        const m = markById(S.pointer.id);
-        if (m && S.pointer.kind !== 'rotate') snapMark(m);
+        if (S.pointer.kind === 'marquee') {
+          const x0 = Math.min(S.pointer.x0, S.pointer.x1);
+          const y0 = Math.min(S.pointer.y0, S.pointer.y1);
+          const x1 = Math.max(S.pointer.x0, S.pointer.x1);
+          const y1 = Math.max(S.pointer.y0, S.pointer.y1);
+          const w = x1 - x0, h = y1 - y0;
+          if (w < 4 && h < 4) {
+            S.selected = null;
+            S.multi = [];
+          } else {
+            const hits = S.marks.filter(mk => {
+              const b = bounds(mk);
+              return b.x >= x0 && b.y >= y0 && (b.x + b.w) <= x1 && (b.y + b.h) <= y1;
+            });
+            S.multi = hits.map(mk => mk.id);
+            S.selected = hits.length ? hits[hits.length - 1].id : null;
+          }
+          syncUI();
+        } else if (S.pointer.kind === 'groupMove') {
+          S.pointer.ids.forEach(id => {
+            const mk = markById(id);
+            if (mk) { snapMark(mk); clampToField(mk); }
+          });
+        } else {
+          const m = markById(S.pointer.id);
+          if (m && S.pointer.kind !== 'rotate') snapMark(m);
+        }
         draw();
       }
       resetPointer();
@@ -350,7 +396,7 @@ const FIELD_H = 800;
       if (p.x < 0 || p.y < 0 || p.x > FIELD_W || p.y > FIELD_H) return;
 
       const sel = S.selected ? markById(S.selected) : null;
-      if (sel) {
+      if (sel && S.multi.length <= 1) {
         if (pickRotateHandle(p.x, p.y, sel)) {
           S.pointer = {
             kind: 'rotate',
@@ -373,14 +419,29 @@ const FIELD_H = 800;
             x0: p.x,
             y0: p.y
           };
-          canvas.style.cursor = 'nwse-resize';
+          canvas.style.cursor = (handle === 'tl' || handle === 'br') ? 'nwse-resize' : 'nesw-resize';
           return;
         }
       }
 
       const hit = pickMark(p.x, p.y);
       if (hit) {
+        if (S.multi.includes(hit.id) && S.multi.length > 1) {
+          S.selected = hit.id;
+          S.pointer = {
+            kind: 'groupMove',
+            ids: [...S.multi],
+            geoms: S.multi.map(id => cloneGeom(markById(id).geom)),
+            types: S.multi.map(id => markById(id).type),
+            x0: p.x,
+            y0: p.y
+          };
+          canvas.style.cursor = 'move';
+          syncUI();
+          return;
+        }
         S.selected = hit.id;
+        S.multi = [];
         S.pointer = {
           kind: 'move',
           id: hit.id,
@@ -393,12 +454,56 @@ const FIELD_H = 800;
         return;
       }
 
+      if (S.tool === 'select') {
+        S.pointer = { kind: 'marquee', x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+        return;
+      }
+
       addMark(S.tool, p.x, p.y);
+      S.tool = 'select';
+      syncUI();
     });
 
     canvas.addEventListener('mousemove', e => {
-      if (!S.pointer) return;
       const p = canvasPos(e);
+
+      if (!S.pointer) {
+        const sel = S.selected ? markById(S.selected) : null;
+        if (sel && S.multi.length <= 1 && pickRotateHandle(p.x, p.y, sel)) {
+          canvas.style.cursor = 'grab';
+        } else {
+          const handle = (sel && S.multi.length <= 1) ? pickHandle(p.x, p.y, sel) : null;
+          if (handle) {
+            canvas.style.cursor = (handle === 'tl' || handle === 'br') ? 'nwse-resize' : 'nesw-resize';
+          } else if (pickMark(p.x, p.y)) {
+            canvas.style.cursor = 'move';
+          } else {
+            canvas.style.cursor = S.tool === 'select' ? 'default' : 'crosshair';
+          }
+        }
+        return;
+      }
+
+      if (S.pointer.kind === 'marquee') {
+        S.pointer.x1 = p.x;
+        S.pointer.y1 = p.y;
+        draw();
+        return;
+      }
+
+      if (S.pointer.kind === 'groupMove') {
+        const dx = p.x - S.pointer.x0;
+        const dy = p.y - S.pointer.y0;
+        S.pointer.ids.forEach((id, i) => {
+          const mk = markById(id);
+          if (!mk) return;
+          mk.geom = cloneGeom(S.pointer.geoms[i]);
+          translateGeom(mk.geom, S.pointer.types[i], dx, dy);
+        });
+        draw();
+        return;
+      }
+
       const m = markById(S.pointer.id);
       if (!m) return;
 
@@ -406,6 +511,7 @@ const FIELD_H = 800;
         m.geom = cloneGeom(S.pointer.geom);
         translateGeom(m.geom, m.type, p.x - S.pointer.x0, p.y - S.pointer.y0);
         snapMark(m);
+        clampToField(m);
         draw();
         return;
       }
@@ -416,7 +522,24 @@ const FIELD_H = 800;
         m.geom = resizeGeom(
           S.pointer.geom, m.type, S.pointer.bounds, S.pointer.handle, rp
         );
+
+        const opp = { tl: 'br', tr: 'bl', br: 'tl', bl: 'tr' };
+        const b0 = S.pointer.bounds;
+        const corners = {
+          tl: { x: b0.x, y: b0.y }, tr: { x: b0.x + b0.w, y: b0.y },
+          br: { x: b0.x + b0.w, y: b0.y + b0.h }, bl: { x: b0.x, y: b0.y + b0.h }
+        };
+        const anchor = corners[opp[S.pointer.handle]];
+        const rawBounds = localBounds(m);
+        const targetW = Math.max(GRID, Math.round(rawBounds.w / GRID) * GRID);
+        const targetH = Math.max(GRID, Math.round(rawBounds.h / GRID) * GRID);
+        const signX = corners[S.pointer.handle].x >= anchor.x ? 1 : -1;
+        const signY = corners[S.pointer.handle].y >= anchor.y ? 1 : -1;
+        const gridPoint = { x: anchor.x + signX * targetW, y: anchor.y + signY * targetH };
+        m.geom = resizeGeom(S.pointer.geom, m.type, S.pointer.bounds, S.pointer.handle, gridPoint);
+
         snapMark(m);
+        clampToField(m);
         draw();
         return;
       }
@@ -449,7 +572,7 @@ const FIELD_H = 800;
           (t.matches && t.matches('input, textarea, select')))) return;
       if (e.key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undo(); }
       else if (e.key === 'Delete') { e.preventDefault(); deleteSelected(); }
-      else if (e.key === 'Escape') { e.preventDefault(); S.selected = null; syncUI(); draw(); }
+      else if (e.key === 'Escape') { e.preventDefault(); S.selected = null; S.multi = []; syncUI(); draw(); }
     });
 
     // --- draw ---
@@ -607,6 +730,21 @@ const FIELD_H = 800;
     }
 
     function drawSelection() {
+      if (S.multi.length > 1) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 4]);
+        S.multi.forEach(id => {
+          const mk = markById(id);
+          if (!mk) return;
+          const b = bounds(mk);
+          ctx.strokeRect(b.x - 3, b.y - 3, b.w + 6, b.h + 6);
+        });
+        ctx.setLineDash([]);
+        ctx.restore();
+        return;
+      }
       const m = S.selected ? markById(S.selected) : null;
       if (!m) return;
       const b = bounds(m);
@@ -632,12 +770,30 @@ const FIELD_H = 800;
       ctx.restore();
     }
 
+    function drawMarquee() {
+      if (!S.pointer || S.pointer.kind !== 'marquee') return;
+      const x0 = Math.min(S.pointer.x0, S.pointer.x1);
+      const y0 = Math.min(S.pointer.y0, S.pointer.y1);
+      const w = Math.abs(S.pointer.x1 - S.pointer.x0);
+      const h = Math.abs(S.pointer.y1 - S.pointer.y0);
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.06)';
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.fillRect(x0, y0, w, h);
+      ctx.strokeRect(x0, y0, w, h);
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
     function draw(showGrid = true) {
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, FIELD_W, FIELD_H);
       if (showGrid) drawGrid();
       S.marks.forEach(drawMark);
       drawSelection();
+      drawMarquee();
     }
 
     // --- UI ---

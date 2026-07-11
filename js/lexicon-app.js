@@ -145,10 +145,39 @@ function collectLexiconEntry() {
 }
 
 function saveLexiconEntry() {
-  const entry = collectLexiconEntry();
-  console.log('Lexicon entry saved (local preview — Firebase not connected):');
-  console.log(entry);
-  console.log(JSON.stringify(entry, null, 2));
+  requireLogin((user) => {
+    const entry = collectLexiconEntry();
+    entry.author = user.fullName;
+    entry.authorRole = user.role;
+
+    const entryId = crypto.randomUUID();
+    const saveBtn = document.getElementById('saveBtn');
+    const originalText = saveBtn ? saveBtn.textContent : '';
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+    }
+
+    window.db.collection('lexiconEntries').doc(entryId).set(entry)
+      .then(() => {
+        console.log('Lexicon entry saved to Firestore:', entryId, entry);
+        if (saveBtn) saveBtn.textContent = 'Saved \u2713';
+        setTimeout(() => {
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = originalText;
+          }
+        }, 1500);
+      })
+      .catch((err) => {
+        console.error('Failed to save lexicon entry:', err);
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = originalText;
+        }
+        alert('Could not save, check your connection and try again.');
+      });
+  });
 }
 
 init();

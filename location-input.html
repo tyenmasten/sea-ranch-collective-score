@@ -6,6 +6,9 @@
 <title>Location Input — Sea Ranch Collective Score</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
 <style>
 /* Mobile responsive — to be handled by Cursor in a separate pass */
 
@@ -1570,27 +1573,36 @@ function closeConfirmOverlay() {
 
 function saveObservation() {
   if (!pendingPlacement) return;
-  const obs = {
-    id: crypto.randomUUID(),
-    author: state.author,
-    lexiconName: state.lexiconComplete ? state.lexiconName : '',
-    lexiconComplete: state.lexiconComplete,
-    lat: pendingPlacement.lat,
-    lng: pendingPlacement.lng,
-    method: pendingPlacement.method,
-    timestamp: new Date().toISOString(),
-    status: state.lexiconComplete ? 'lexicon-mark' : 'name-label',
-    markIndex: state.lexiconComplete ? state.selectedMarkIndex : null,
-  };
-  state.observations.push(obs);
-  state.selectedObservation = obs.id;
-  // TODO: Firebase — save observation to Firestore
-  // Collection: observations / document: obs.id
-  // Project: sea-ranch-collective-score (us-west1)
-  console.log('Observation saved (local — Firebase not connected):', obs);
-  closeConfirmOverlay();
-  renderNotationList();
-  syncObservationMarkers();
+  requireLogin((user) => {
+    const obs = {
+      id: crypto.randomUUID(),
+      author: user.fullName,
+      authorRole: user.role,
+      lexiconName: state.lexiconComplete ? state.lexiconName : '',
+      lexiconComplete: state.lexiconComplete,
+      lat: pendingPlacement.lat,
+      lng: pendingPlacement.lng,
+      method: pendingPlacement.method,
+      timestamp: new Date().toISOString(),
+      status: state.lexiconComplete ? 'lexicon-mark' : 'name-label',
+      markIndex: state.lexiconComplete ? state.selectedMarkIndex : null,
+    };
+    state.observations.push(obs);
+    state.selectedObservation = obs.id;
+
+    window.db.collection('observations').doc(obs.id).set(obs)
+      .then(() => {
+        console.log('Observation saved to Firestore:', obs.id, obs);
+      })
+      .catch((err) => {
+        console.error('Failed to save observation:', err);
+        alert('Could not save this notation, check your connection and try again.');
+      });
+
+    closeConfirmOverlay();
+    renderNotationList();
+    syncObservationMarkers();
+  });
 }
 
 function requestGpsPlacement() {
@@ -1737,5 +1749,6 @@ if (domReady()) {
   document.addEventListener('DOMContentLoaded', init);
 }
 </script>
+<script src="js/auth-gate.js"></script>
 </body>
 </html>

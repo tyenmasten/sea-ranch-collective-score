@@ -423,6 +423,43 @@ select.lexicon-empty {
   font-size: 8px;
 }
 
+.notation-marker-popup .leaflet-popup-content-wrapper {
+  border-radius: 0;
+  border: 1px solid var(--border);
+  box-shadow: none;
+  padding: 0;
+}
+
+.notation-marker-popup .leaflet-popup-content {
+  margin: 10px 12px;
+  min-width: 140px;
+}
+
+.notation-marker-popup .leaflet-popup-tip {
+  border: none;
+  box-shadow: none;
+}
+
+.marker-popout-title {
+  font-family: 'Miniature', serif;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.marker-popout-readonly {
+  font-family: 'Media77', sans-serif;
+  font-size: 10px;
+  color: var(--dim);
+  line-height: 1.4;
+}
+
+.marker-popout .notation-item-actions {
+  margin-top: 8px;
+}
+
 .move-mode-banner {
   display: none;
   position: absolute;
@@ -1798,7 +1835,16 @@ function renderObservationMarkersNow() {
   state.observations.forEach((obs) => {
     const isSelected = state.selectedObservation === obs.id;
     const icon = createNotationIcon(obs, isSelected);
-    L.marker([obs.lat, obs.lng], { icon }).addTo(observationsLayer);
+    const marker = L.marker([obs.lat, obs.lng], { icon }).addTo(observationsLayer);
+    marker.on('click', (e) => {
+      if (state.pendingMoveId) {
+        L.DomEvent.stopPropagation(e);
+        completeMoveObservation(e.latlng.lat, e.latlng.lng);
+        return;
+      }
+      L.DomEvent.stopPropagation(e);
+      openObservationMarkerPopup(obs, marker);
+    });
   });
 }
 
@@ -1824,6 +1870,100 @@ function statusLabel(obs) {
 
 function canEditObservation(obs) {
   return !!(window.currentUser && window.currentUser.fullName && obs.author === window.currentUser.fullName);
+}
+
+function closeObservationMarkerPopup() {
+  if (map) map.closePopup();
+}
+
+function buildObservationActions(obsId, afterAction) {
+  const after = typeof afterAction === 'function' ? afterAction : function () {};
+  const actions = document.createElement('div');
+  actions.className = 'notation-item-actions';
+
+  const moveBtn = document.createElement('button');
+  moveBtn.type = 'button';
+  moveBtn.className = 'btn' + (state.pendingMoveId === obsId ? ' sel' : '');
+  moveBtn.textContent = state.pendingMoveId === obsId ? 'Moving…' : 'Move';
+  moveBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    after();
+    if (state.pendingMoveId === obsId) cancelMoveObservation();
+    else startMoveObservation(obsId);
+  });
+
+  const dupBtn = document.createElement('button');
+  dupBtn.type = 'button';
+  dupBtn.className = 'btn';
+  dupBtn.textContent = 'Duplicate';
+  dupBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    after();
+    duplicateObservation(obsId);
+  });
+
+  const changeLexBtn = document.createElement('button');
+  changeLexBtn.type = 'button';
+  changeLexBtn.className = 'btn';
+  changeLexBtn.textContent = 'Change Lexicon';
+  changeLexBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    after();
+    openChangeLexiconOverlay(obsId);
+  });
+
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'btn';
+  delBtn.textContent = 'Delete';
+  delBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    after();
+    deleteObservation(obsId);
+  });
+
+  actions.appendChild(moveBtn);
+  actions.appendChild(dupBtn);
+  actions.appendChild(changeLexBtn);
+  actions.appendChild(delBtn);
+  return actions;
+}
+
+function openObservationMarkerPopup(obs, marker) {
+  if (!obs || !marker || state.pendingMoveId) return;
+
+  state.selectedObservation = obs.id;
+  renderNotationList();
+
+  const wrap = document.createElement('div');
+  wrap.className = 'marker-popout';
+
+  const title = document.createElement('div');
+  title.className = 'marker-popout-title';
+  title.textContent = obs.lexiconName || 'Notation';
+  wrap.appendChild(title);
+
+  if (canEditObservation(obs)) {
+    wrap.appendChild(buildObservationActions(obs.id, closeObservationMarkerPopup));
+  } else {
+    const info = document.createElement('div');
+    info.className = 'marker-popout-readonly';
+    const authorLine = document.createElement('div');
+    authorLine.textContent = 'Author: ' + (obs.author || '—');
+    const lexiconLine = document.createElement('div');
+    lexiconLine.textContent = 'Lexicon: ' + (obs.lexiconName || 'No lexicon built');
+    info.appendChild(authorLine);
+    info.appendChild(lexiconLine);
+    wrap.appendChild(info);
+  }
+
+  marker.bindPopup(wrap, {
+    className: 'notation-marker-popup',
+    closeButton: true,
+    offset: L.point(0, -8),
+    maxWidth: 240,
+    autoPan: true,
+  }).openPopup();
 }
 
 function updateMoveModeUI() {
@@ -2101,51 +2241,7 @@ function renderNotationList() {
     item.appendChild(status);
 
     if (canEditObservation(obs)) {
-      const actions = document.createElement('div');
-      actions.className = 'notation-item-actions';
-
-      const moveBtn = document.createElement('button');
-      moveBtn.type = 'button';
-      moveBtn.className = 'btn' + (state.pendingMoveId === obs.id ? ' sel' : '');
-      moveBtn.textContent = state.pendingMoveId === obs.id ? 'Moving…' : 'Move';
-      moveBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (state.pendingMoveId === obs.id) cancelMoveObservation();
-        else startMoveObservation(obs.id);
-      });
-
-      const dupBtn = document.createElement('button');
-      dupBtn.type = 'button';
-      dupBtn.className = 'btn';
-      dupBtn.textContent = 'Duplicate';
-      dupBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        duplicateObservation(obs.id);
-      });
-
-      const changeLexBtn = document.createElement('button');
-      changeLexBtn.type = 'button';
-      changeLexBtn.className = 'btn';
-      changeLexBtn.textContent = 'Change Lexicon';
-      changeLexBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openChangeLexiconOverlay(obs.id);
-      });
-
-      const delBtn = document.createElement('button');
-      delBtn.type = 'button';
-      delBtn.className = 'btn';
-      delBtn.textContent = 'Delete';
-      delBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        deleteObservation(obs.id);
-      });
-
-      actions.appendChild(moveBtn);
-      actions.appendChild(dupBtn);
-      actions.appendChild(changeLexBtn);
-      actions.appendChild(delBtn);
-      item.appendChild(actions);
+      item.appendChild(buildObservationActions(obs.id));
     }
 
     item.addEventListener('click', () => {

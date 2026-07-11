@@ -668,6 +668,44 @@ select.lexicon-empty {
   outline-offset: 2px;
 }
 
+.notation-sketch-icon.selected {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 2px;
+}
+
+.notation-plain-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #1a1a1a;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.notation-dot-label {
+  display: inline-flex;
+  align-items: center;
+  font-family: 'Media77', sans-serif;
+  font-size: 9px;
+  color: var(--ink);
+  white-space: nowrap;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid var(--border);
+  padding: 2px 5px;
+}
+
+.notation-dot-label.selected {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 2px;
+}
+
+.mark-preview-inner img {
+  display: block;
+  width: 48px;
+  height: 48px;
+}
+
 .mark-selector-block {
   margin-top: 12px;
 }
@@ -1010,6 +1048,15 @@ const SITE_MAX_BOUNDS = L.latLngBounds(
   [38.82, -123.30]
 );
 const NOTATION_MARK_SIZE = 16;
+const SKETCH_FIELD_W = 600;
+const SKETCH_FIELD_H = 800;
+const SKETCH_PREVIEW_SIZE = 48;
+const SKETCH_MAP_SIZE = 28;
+const HATCH_LINE_STEP = 8;
+const HATCH_DOT_STEP = 10;
+
+/** Cache: lexiconEntryId -> { ready, sketch, previewUrl, mapUrl, promise } */
+const sketchCache = {};
 
 /** DEV: remove before launch */
 const DEV_TEST_MARKS = [
@@ -1482,14 +1529,320 @@ function buildNameLabelHtml(name, selected) {
   return `<span class="${cls}">${escapeHtml(name)}</span>`;
 }
 
+function buildDotLabelHtml(name, selected) {
+  const cls = 'notation-dot-label' + (selected ? ' selected' : '');
+  return (
+    `<span class="${cls}">` +
+    `<span class="notation-plain-dot" aria-hidden="true"></span>` +
+    escapeHtml(name || 'Notation') +
+    `</span>`
+  );
+}
+
 function estimateNameLabelSize(name) {
   const text = String(name || 'Author');
   return [Math.max(32, Math.ceil(text.length * 5.5) + 10), 14];
 }
 
-function createNotationDivIcon(lexiconComplete, authorName, selected, markIndex) {
-  if (lexiconComplete) {
-    const markDef = getMarkDefinition(markIndex);
+function estimateDotLabelSize(name) {
+  const text = String(name || 'Notation');
+  return [Math.max(40, Math.ceil(text.length * 5.5) + 22), 18];
+}
+
+/* --- Lightweight sketch replay (scoped copy of sketch-composer draw logic) --- */
+
+function sketchBoxFromPts(pts) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  pts.forEach((p) => {
+    x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y);
+    x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
+  });
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+function sketchLocalBounds(m) {
+  const g = m.geom || {};
+  if (m.type === 'line') return sketchBoxFromPts([{ x: g.x1, y: g.y1 }, { x: g.x2, y: g.y2 }]);
+  if (m.type === 'circle' || m.type === 'dot') {
+    return { x: g.cx - g.r, y: g.cy - g.r, w: g.r * 2, h: g.r * 2 };
+  }
+  if (m.type === 'semicircle') {
+    const r = g.r;
+    if (g.orient === 1) return { x: g.cx - r, y: g.cy - r, w: r, h: r * 2 };
+    if (g.orient === 2) return { x: g.cx - r, y: g.cy, w: r * 2, h: r };
+    if (g.orient === 3) return { x: g.cx, y: g.cy - r, w: r, h: r * 2 };
+    return { x: g.cx - r, y: g.cy - r, w: r * 2, h: r };
+  }
+  return sketchBoxFromPts(g.pts || [{ x: 0, y: 0 }]);
+}
+
+function sketchCenter(m) {
+  const b = sketchLocalBounds(m);
+  return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+}
+
+function sketchRotatePt(p, c, rot) {
+  const cos = Math.cos(rot), sin = Math.sin(rot);
+  const dx = p.x - c.x, dy = p.y - c.y;
+  return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos };
+}
+
+function sketchRotatedBounds(b, c, rot) {
+  const pts = [
+    { x: b.x, y: b.y }, { x: b.x + b.w, y: b.y },
+    { x: b.x + b.w, y: b.y + b.h }, { x: b.x, y: b.y + b.h },
+  ].map((p) => sketchRotatePt(p, c, rot));
+  return sketchBoxFromPts(pts);
+}
+
+function sketchBounds(m) {
+  const b = sketchLocalBounds(m);
+  const rot = m.rot || 0;
+  if (!rot) return b;
+  return sketchRotatedBounds(b, sketchCenter(m), rot);
+}
+
+function sketchUnionBounds(marks) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  marks.forEach((m) => {
+    const b = sketchBounds(m);
+    const pad = (m.weight || 0) / 2 + 2;
+    x0 = Math.min(x0, b.x - pad);
+    y0 = Math.min(y0, b.y - pad);
+    x1 = Math.max(x1, b.x + b.w + pad);
+    y1 = Math.max(y1, b.y + b.h + pad);
+  });
+  if (!isFinite(x0)) return { x: 0, y: 0, w: SKETCH_FIELD_W, h: SKETCH_FIELD_H };
+  return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
+}
+
+function rasterizeSketchMarks(marks, size) {
+  if (!marks || !marks.length) return null;
+
+  const field = document.createElement('canvas');
+  field.width = SKETCH_FIELD_W;
+  field.height = SKETCH_FIELD_H;
+  const ctx = field.getContext('2d');
+
+  function setDash(style, w) {
+    if (style === 'dashed') ctx.setLineDash([Math.max(w * 3, 8), Math.max(w * 2, 5)]);
+    else if (style === 'dotted') ctx.setLineDash([Math.max(w * 0.2, 1), Math.max(w * 2, 4)]);
+    else ctx.setLineDash([]);
+  }
+
+  function tracePts(pts, close) {
+    if (!pts || !pts.length) return;
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    if (close) ctx.closePath();
+  }
+
+  function hatchFill(pts, color, fill, b) {
+    ctx.save();
+    ctx.beginPath();
+    tracePts(pts, true);
+    ctx.clip();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 1.5;
+    if (fill === 'h' || fill === 'cross') {
+      for (let y = b.y; y <= b.y + b.h; y += HATCH_LINE_STEP) {
+        ctx.beginPath(); ctx.moveTo(b.x, y); ctx.lineTo(b.x + b.w, y); ctx.stroke();
+      }
+    }
+    if (fill === 'd' || fill === 'cross') {
+      const span = Math.max(b.w, b.h) * 2;
+      for (let d = -span; d <= span; d += HATCH_LINE_STEP) {
+        ctx.beginPath(); ctx.moveTo(b.x + d, b.y); ctx.lineTo(b.x + d + span, b.y + b.h); ctx.stroke();
+      }
+    }
+    if (fill === 'dots') {
+      for (let y = b.y; y <= b.y + b.h; y += HATCH_DOT_STEP) {
+        for (let x = b.x; x <= b.x + b.w; x += HATCH_DOT_STEP) {
+          ctx.beginPath(); ctx.arc(x, y, 1.3, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawClosed(m) {
+    const g = m.geom;
+    const b = sketchLocalBounds(m);
+    const pts = g.pts;
+    if (m.fill === 'solid') {
+      ctx.beginPath(); tracePts(pts, true); ctx.fill();
+    } else if (m.fill !== 'none') {
+      hatchFill(pts, m.color, m.fill, b);
+    }
+    if (m.stroke) {
+      ctx.beginPath(); tracePts(pts, true); ctx.stroke();
+    }
+  }
+
+  function semiArc(g) {
+    const o = g.orient || 0;
+    if (o === 1) return { start: Math.PI / 2, end: -Math.PI / 2, ccw: true };
+    if (o === 2) return { start: 0, end: Math.PI, ccw: false };
+    if (o === 3) return { start: -Math.PI / 2, end: Math.PI / 2, ccw: false };
+    return { start: Math.PI, end: 0, ccw: true };
+  }
+
+  function drawMarkLocal(m) {
+    ctx.strokeStyle = m.color;
+    ctx.fillStyle = m.color;
+    ctx.lineWidth = m.weight;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.setLineDash([]);
+    const g = m.geom;
+    if (!g) return;
+
+    if (m.type === 'dot') {
+      ctx.beginPath();
+      ctx.arc(g.cx, g.cy, g.r, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    if (m.type === 'line') {
+      if (!m.stroke) return;
+      ctx.beginPath();
+      ctx.moveTo(g.x1, g.y1);
+      ctx.lineTo(g.x2, g.y2);
+      setDash(m.lineStyle, m.weight);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      return;
+    }
+    if (m.type === 'semicircle') {
+      if (!m.stroke) return;
+      const a = semiArc(g);
+      ctx.beginPath();
+      ctx.arc(g.cx, g.cy, g.r, a.start, a.end, a.ccw);
+      setDash(m.lineStyle, m.weight);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      return;
+    }
+    if (m.type === 'circle') {
+      if (m.fill === 'solid') {
+        ctx.beginPath(); ctx.arc(g.cx, g.cy, g.r, 0, Math.PI * 2); ctx.fill();
+      } else if (m.fill !== 'none') {
+        const b = sketchLocalBounds(m);
+        const pts = [];
+        for (let i = 0; i <= 32; i++) {
+          const t = (i / 32) * Math.PI * 2;
+          pts.push({ x: g.cx + g.r * Math.cos(t), y: g.cy + g.r * Math.sin(t) });
+        }
+        pts.push(pts[0]);
+        hatchFill(pts, m.color, m.fill, b);
+      }
+      if (m.stroke) {
+        ctx.beginPath(); ctx.arc(g.cx, g.cy, g.r, 0, Math.PI * 2); ctx.stroke();
+      }
+      return;
+    }
+    drawClosed(m);
+  }
+
+  function drawMark(m) {
+    const rot = m.rot || 0;
+    if (!rot) {
+      drawMarkLocal(m);
+      return;
+    }
+    const c = sketchCenter(m);
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(rot);
+    ctx.translate(-c.x, -c.y);
+    drawMarkLocal(m);
+    ctx.restore();
+  }
+
+  ctx.clearRect(0, 0, SKETCH_FIELD_W, SKETCH_FIELD_H);
+  marks.forEach(drawMark);
+
+  const bounds = sketchUnionBounds(marks);
+  const side = Math.max(bounds.w, bounds.h);
+  const out = document.createElement('canvas');
+  out.width = size;
+  out.height = size;
+  const octx = out.getContext('2d');
+  octx.clearRect(0, 0, size, size);
+  const pad = size * 0.08;
+  const scale = (size - pad * 2) / side;
+  const dx = pad + (size - pad * 2 - bounds.w * scale) / 2;
+  const dy = pad + (size - pad * 2 - bounds.h * scale) / 2;
+  octx.drawImage(
+    field,
+    bounds.x, bounds.y, bounds.w, bounds.h,
+    dx, dy, bounds.w * scale, bounds.h * scale
+  );
+  return out.toDataURL('image/png');
+}
+
+function ensureLexiconSketch(lexiconEntryId) {
+  if (!lexiconEntryId || !window.db) return Promise.resolve(null);
+
+  const existing = sketchCache[lexiconEntryId];
+  if (existing && existing.ready) return Promise.resolve(existing);
+  if (existing && existing.promise) return existing.promise;
+
+  const entry = {
+    ready: false,
+    sketch: null,
+    previewUrl: null,
+    mapUrl: null,
+    promise: null,
+  };
+
+  entry.promise = window.db.collection('lexiconEntries').doc(lexiconEntryId).get()
+    .then((doc) => {
+      const sketch = doc.exists ? (doc.data().sketch || null) : null;
+      const marks = sketch && Array.isArray(sketch.marks) ? sketch.marks : [];
+      entry.sketch = sketch;
+      if (marks.length) {
+        entry.previewUrl = rasterizeSketchMarks(marks, SKETCH_PREVIEW_SIZE);
+        entry.mapUrl = rasterizeSketchMarks(marks, SKETCH_MAP_SIZE);
+      }
+      entry.ready = true;
+      return entry;
+    })
+    .catch((err) => {
+      console.error('Failed to load lexicon sketch:', lexiconEntryId, err);
+      entry.ready = true;
+      return entry;
+    });
+
+  sketchCache[lexiconEntryId] = entry;
+  return entry.promise;
+}
+
+function createNotationIcon(obs, selected) {
+  if (obs.lexiconEntryId) {
+    const cached = sketchCache[obs.lexiconEntryId];
+    if (cached && cached.mapUrl) {
+      const size = SKETCH_MAP_SIZE;
+      return L.icon({
+        iconUrl: cached.mapUrl,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+        className: 'notation-sketch-icon' + (selected ? ' selected' : ''),
+      });
+    }
+    const label = obs.lexiconName || obs.author || 'Notation';
+    const iconSize = estimateDotLabelSize(label);
+    return L.divIcon({
+      className: 'notation-leaflet-icon',
+      html: buildDotLabelHtml(label, selected),
+      iconSize,
+      iconAnchor: [iconSize[0] / 2, iconSize[1] / 2],
+    });
+  }
+
+  if (obs.markIndex != null) {
+    const markDef = getMarkDefinition(obs.markIndex);
     return L.divIcon({
       className: 'notation-leaflet-icon',
       html: buildLexiconMarkHtml(markDef, selected),
@@ -1498,23 +1851,34 @@ function createNotationDivIcon(lexiconComplete, authorName, selected, markIndex)
     });
   }
 
-  const iconSize = estimateNameLabelSize(authorName);
+  const iconSize = estimateNameLabelSize(obs.author);
   return L.divIcon({
     className: 'notation-leaflet-icon',
-    html: buildNameLabelHtml(authorName, selected),
+    html: buildNameLabelHtml(obs.author, selected),
     iconSize,
     iconAnchor: [iconSize[0] / 2, iconSize[1] / 2],
   });
 }
 
-function updateMarkPreview(lexiconComplete, authorName) {
-  const inner = els.markPreview.querySelector('.mark-preview-inner');
+function updateMarkPreview() {
+  const inner = els.markPreview && els.markPreview.querySelector('.mark-preview-inner');
   if (!inner) return;
-  if (lexiconComplete) {
-    inner.innerHTML = buildLexiconMarkHtml(getMarkDefinition(state.selectedMarkIndex), false);
-  } else {
-    inner.innerHTML = buildNameLabelHtml(authorName || state.author, false);
+
+  if (state.lexiconEntryId) {
+    const entryId = state.lexiconEntryId;
+    inner.innerHTML = '<span style="font-size:9px;color:var(--dim);">Loading…</span>';
+    ensureLexiconSketch(entryId).then((entry) => {
+      if (state.lexiconEntryId !== entryId) return;
+      if (entry && entry.previewUrl) {
+        inner.innerHTML = `<img src="${entry.previewUrl}" alt="Lexicon mark preview" width="${SKETCH_PREVIEW_SIZE}" height="${SKETCH_PREVIEW_SIZE}">`;
+      } else {
+        inner.innerHTML = buildDotLabelHtml(state.lexiconName || 'Notation', false);
+      }
+    });
+    return;
   }
+
+  inner.innerHTML = buildLexiconMarkHtml(getMarkDefinition(state.selectedMarkIndex), false);
 }
 
 function renderMarkSelector() {
@@ -1540,18 +1904,30 @@ function selectMarkIndex(index) {
       tile.classList.toggle('sel', i === index);
     });
   }
-  if (state.lexiconComplete) {
-    updateMarkPreview(true, state.author);
+  if (!state.lexiconEntryId) {
+    updateMarkPreview();
   }
 }
 
-function syncObservationMarkers() {
+function renderObservationMarkersNow() {
   if (!observationsLayer) return;
   observationsLayer.clearLayers();
   state.observations.forEach((obs) => {
     const isSelected = state.selectedObservation === obs.id;
-    const icon = createNotationDivIcon(obs.lexiconComplete, obs.author, isSelected, obs.markIndex);
+    const icon = createNotationIcon(obs, isSelected);
     L.marker([obs.lat, obs.lng], { icon }).addTo(observationsLayer);
+  });
+}
+
+function syncObservationMarkers() {
+  if (!observationsLayer) return;
+  renderObservationMarkersNow();
+  const ids = [...new Set(
+    state.observations.map((o) => o.lexiconEntryId).filter(Boolean)
+  )];
+  if (!ids.length) return;
+  Promise.all(ids.map(ensureLexiconSketch)).then(() => {
+    renderObservationMarkersNow();
   });
 }
 
@@ -1871,13 +2247,15 @@ function openConfirmOverlay(lng, lat, method) {
   }
   els.confirmCoords.textContent = lat.toFixed(5) + ', ' + lng.toFixed(5);
   els.confirmMethod.textContent = method === 'gps' ? 'GPS' : 'Picker';
+
+  // Show six-icon picker only when no lexicon is linked; otherwise preview real sketch.
   if (els.markSelectorBlock) {
-    els.markSelectorBlock.style.display = state.lexiconComplete ? 'block' : 'none';
+    els.markSelectorBlock.style.display = state.lexiconEntryId ? 'none' : 'block';
   }
-  if (state.lexiconComplete) {
+  if (!state.lexiconEntryId) {
     renderMarkSelector();
   }
-  updateMarkPreview(state.lexiconComplete, state.author);
+  updateMarkPreview();
   els.confirmOverlay.classList.add('open');
 }
 
@@ -1901,7 +2279,7 @@ function saveObservation() {
       method: pendingPlacement.method,
       timestamp: new Date().toISOString(),
       status: state.lexiconComplete ? 'lexicon-mark' : 'name-label',
-      markIndex: state.lexiconComplete ? state.selectedMarkIndex : null,
+      markIndex: state.lexiconEntryId ? null : state.selectedMarkIndex,
     };
     state.observations.push(obs);
     state.selectedObservation = obs.id;
@@ -1952,7 +2330,17 @@ function loadMyObservations() {
       loaded.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
       state.observations = loaded;
       renderNotationList();
-      syncObservationMarkers();
+
+      const lexiconIds = [...new Set(
+        loaded.map((o) => o.lexiconEntryId).filter(Boolean)
+      )];
+      const warm = lexiconIds.length
+        ? Promise.all(lexiconIds.map(ensureLexiconSketch))
+        : Promise.resolve();
+
+      warm.then(() => {
+        renderObservationMarkersNow();
+      });
     })
     .catch((err) => {
       console.error('Failed to load observations:', err);

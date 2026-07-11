@@ -1783,11 +1783,17 @@ function rasterizeSketchMarks(marks, size) {
 }
 
 function ensureLexiconSketch(lexiconEntryId) {
-  if (!lexiconEntryId || !window.db) return Promise.resolve(null);
+  if (!lexiconEntryId || !window.db) {
+    return Promise.resolve(null);
+  }
 
   const existing = sketchCache[lexiconEntryId];
-  if (existing && existing.ready) return Promise.resolve(existing);
-  if (existing && existing.promise) return existing.promise;
+  if (existing && existing.ready) {
+    return Promise.resolve(existing);
+  }
+  if (existing && existing.promise) {
+    return existing.promise;
+  }
 
   const entry = {
     ready: false,
@@ -2182,22 +2188,14 @@ function updateLexiconField() {
 
   const user = window.currentUser;
   if (!user || !user.fullName) {
-    console.log('[updateLexiconField] No logged-in user; skipping query.', user);
     syncLexiconFromField();
     return;
   }
-
-  console.log('[updateLexiconField] Querying lexiconEntries for author:', user.fullName);
 
   window.db.collection('lexiconEntries')
     .where('author', '==', user.fullName)
     .get()
     .then((snapshot) => {
-      console.log('[updateLexiconField] Raw query size:', snapshot.size);
-      snapshot.forEach((doc) => {
-        console.log('[updateLexiconField] Doc:', doc.id, doc.data());
-      });
-
       const entries = [];
       snapshot.forEach((doc) => {
         entries.push({ id: doc.id, ...doc.data() });
@@ -2237,6 +2235,7 @@ function setMode(mode) {
 
 function openConfirmOverlay(lng, lat, method) {
   pendingPlacement = { lng, lat, method };
+
   els.confirmAuthor.textContent = state.author;
   if (state.lexiconComplete && state.lexiconName) {
     els.confirmLexicon.textContent = state.lexiconName;

@@ -611,6 +611,10 @@ select.lexicon-empty {
   font-size: 12px;
 }
 
+#changeLexiconSelect {
+  margin: 4px 0 12px;
+}
+
 #confirmCoords {
   font-family: 'Media77', sans-serif;
   font-style: normal;
@@ -704,45 +708,6 @@ select.lexicon-empty {
   display: block;
   width: 48px;
   height: 48px;
-}
-
-.mark-selector-block {
-  margin-top: 12px;
-}
-
-.mark-selector-block .flabel {
-  margin-top: 0;
-}
-
-.mark-selector {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-.mark-selector-tile {
-  width: 28px;
-  height: 28px;
-  padding: 5px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 0;
-  box-sizing: border-box;
-}
-
-.mark-selector-tile.sel {
-  border-color: var(--ink);
-}
-
-.mark-selector-tile svg {
-  width: 16px;
-  height: 16px;
-  display: block;
 }
 
 .notation-name-label {
@@ -1019,17 +984,26 @@ select.lexicon-empty {
             <span class="confirm-key">Method</span>
             <span class="confirm-val" id="confirmMethod"></span>
           </div>
-          <!-- DEV: remove before launch -->
-          <div class="mark-selector-block" id="markSelectorBlock">
-            <span class="flabel">Select Mark</span>
-            <div class="mark-selector" id="markSelector"></div>
-          </div>
           <div class="mark-preview" id="markPreview">
             <div class="mark-preview-inner"></div>
           </div>
           <div class="confirm-btns">
             <button type="button" class="btn primary" id="confirmBtn">Confirm</button>
             <button type="button" class="btn ghost" id="cancelBtn">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="overlay" id="changeLexiconOverlay" role="dialog" aria-modal="true" aria-labelledby="changeLexiconTitle">
+        <div class="confirm-panel">
+          <div class="confirm-title" id="changeLexiconTitle">Change Lexicon</div>
+          <span class="flabel">Lexicon</span>
+          <select id="changeLexiconSelect">
+            <option value="">No lexicon built</option>
+          </select>
+          <div class="confirm-btns">
+            <button type="button" class="btn primary" id="changeLexiconConfirm">Confirm</button>
+            <button type="button" class="btn ghost" id="changeLexiconCancel">Cancel</button>
           </div>
         </div>
       </div>
@@ -1047,7 +1021,6 @@ const SITE_MAX_BOUNDS = L.latLngBounds(
   [38.48, -123.58],
   [38.82, -123.30]
 );
-const NOTATION_MARK_SIZE = 16;
 const SKETCH_FIELD_W = 600;
 const SKETCH_FIELD_H = 800;
 const SKETCH_PREVIEW_SIZE = 48;
@@ -1058,40 +1031,11 @@ const HATCH_DOT_STEP = 10;
 /** Cache: lexiconEntryId -> { ready, sketch, previewUrl, mapUrl, promise } */
 const sketchCache = {};
 
-/** DEV: remove before launch */
-const DEV_TEST_MARKS = [
-  {
-    name: 'Solid black square',
-    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#1a1a1a"/></svg>',
-  },
-  {
-    name: 'Outlined square, no fill',
-    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="15" height="15" x="0.5" y="0.5" fill="none" stroke="#1a1a1a" stroke-width="1.5"/></svg>',
-  },
-  {
-    name: 'Solid black circle',
-    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#1a1a1a"/></svg>',
-  },
-  {
-    name: 'Triangle',
-    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><polygon points="8,1 15,15 1,15" fill="#1a1a1a"/></svg>',
-  },
-  {
-    name: 'Hatched square',
-    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><defs><pattern id="hatch-dev" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="#1a1a1a" stroke-width="1"/></pattern></defs><rect width="16" height="16" fill="url(#hatch-dev)"/></svg>',
-  },
-  {
-    name: 'Horizontal line',
-    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="0" y1="8" x2="16" y2="8" stroke="#1a1a1a" stroke-width="2"/></svg>',
-  },
-];
-
 const state = {
   author: '',
   lexiconEntryId: null,
   lexiconName: '',
   lexiconComplete: false,
-  selectedMarkIndex: 0,
   mode: 'picker',
   layers: {
     streets: true,
@@ -1101,6 +1045,7 @@ const state = {
   observations: [],
   selectedObservation: null,
   pendingMoveId: null,
+  pendingChangeLexiconId: null,
 };
 
 const mapData = {
@@ -1126,8 +1071,6 @@ const ELEMENT_IDS = {
   moveModeBanner: 'moveModeBanner',
   cancelMoveBtn: 'cancelMoveBtn',
   lexiconField: 'lexiconField',
-  markSelectorBlock: 'markSelectorBlock',
-  markSelector: 'markSelector',
   modeNote: 'modeNote',
   gpsError: 'gpsError',
   btnPicker: 'btnPicker',
@@ -1143,6 +1086,10 @@ const ELEMENT_IDS = {
   markPreview: 'markPreview',
   confirmBtn: 'confirmBtn',
   cancelBtn: 'cancelBtn',
+  changeLexiconOverlay: 'changeLexiconOverlay',
+  changeLexiconSelect: 'changeLexiconSelect',
+  changeLexiconConfirm: 'changeLexiconConfirm',
+  changeLexiconCancel: 'changeLexiconCancel',
   zoomIn: 'zoomIn',
   zoomOut: 'zoomOut',
   zoomFit: 'zoomFit',
@@ -1501,34 +1448,6 @@ function escapeHtml(text) {
     .replace(/"/g, '&quot;');
 }
 
-function getMarkDefinition(index) {
-  const i =
-    index != null && index >= 0 && index < DEV_TEST_MARKS.length
-      ? index
-      : state.selectedMarkIndex;
-  return DEV_TEST_MARKS[i] || DEV_TEST_MARKS[0];
-}
-
-function prepareMarkSvg(svg) {
-  let out = svg;
-  if (out.includes('hatch-dev')) {
-    const patternId = 'hatch-' + crypto.randomUUID().slice(0, 8);
-    out = out.replace(/id="hatch-dev"/g, `id="${patternId}"`).replace(/#hatch-dev/g, `#${patternId}`);
-  }
-  return out;
-}
-
-function buildLexiconMarkHtml(markDef, selected) {
-  const cls = 'notation-mark-svg' + (selected ? ' selected' : '');
-  const svg = prepareMarkSvg(markDef && markDef.svg ? markDef.svg : DEV_TEST_MARKS[0].svg);
-  return `<div class="${cls}">${svg}</div>`;
-}
-
-function buildNameLabelHtml(name, selected) {
-  const cls = 'notation-name-label' + (selected ? ' selected' : '');
-  return `<span class="${cls}">${escapeHtml(name)}</span>`;
-}
-
 function buildDotLabelHtml(name, selected) {
   const cls = 'notation-dot-label' + (selected ? ' selected' : '');
   return (
@@ -1537,11 +1456,6 @@ function buildDotLabelHtml(name, selected) {
     escapeHtml(name || 'Notation') +
     `</span>`
   );
-}
-
-function estimateNameLabelSize(name) {
-  const text = String(name || 'Author');
-  return [Math.max(32, Math.ceil(text.length * 5.5) + 10), 14];
 }
 
 function estimateDotLabelSize(name) {
@@ -1847,20 +1761,11 @@ function createNotationIcon(obs, selected) {
     });
   }
 
-  if (obs.markIndex != null) {
-    const markDef = getMarkDefinition(obs.markIndex);
-    return L.divIcon({
-      className: 'notation-leaflet-icon',
-      html: buildLexiconMarkHtml(markDef, selected),
-      iconSize: [NOTATION_MARK_SIZE, NOTATION_MARK_SIZE],
-      iconAnchor: [NOTATION_MARK_SIZE / 2, NOTATION_MARK_SIZE / 2],
-    });
-  }
-
-  const iconSize = estimateNameLabelSize(obs.author);
+  const label = obs.author || 'Author';
+  const iconSize = estimateDotLabelSize(label);
   return L.divIcon({
     className: 'notation-leaflet-icon',
-    html: buildNameLabelHtml(obs.author, selected),
+    html: buildDotLabelHtml(label, selected),
     iconSize,
     iconAnchor: [iconSize[0] / 2, iconSize[1] / 2],
   });
@@ -1878,41 +1783,13 @@ function updateMarkPreview() {
       if (entry && entry.previewUrl) {
         inner.innerHTML = `<img src="${entry.previewUrl}" alt="Lexicon mark preview" width="${SKETCH_PREVIEW_SIZE}" height="${SKETCH_PREVIEW_SIZE}">`;
       } else {
-        inner.innerHTML = buildDotLabelHtml(state.lexiconName || 'Notation', false);
+        inner.innerHTML = buildDotLabelHtml(state.lexiconName || state.author || 'Notation', false);
       }
     });
     return;
   }
 
-  inner.innerHTML = buildLexiconMarkHtml(getMarkDefinition(state.selectedMarkIndex), false);
-}
-
-function renderMarkSelector() {
-  if (!els.markSelector) return;
-  els.markSelector.innerHTML = '';
-  DEV_TEST_MARKS.forEach((mark, index) => {
-    const tile = document.createElement('button');
-    tile.type = 'button';
-    tile.className = 'mark-selector-tile' + (index === state.selectedMarkIndex ? ' sel' : '');
-    tile.dataset.index = String(index);
-    tile.setAttribute('aria-label', mark.name);
-    tile.innerHTML = prepareMarkSvg(mark.svg);
-    tile.addEventListener('click', () => selectMarkIndex(index));
-    els.markSelector.appendChild(tile);
-  });
-}
-
-function selectMarkIndex(index) {
-  state.selectedMarkIndex = index;
-  if (els.markSelector) {
-    els.markSelector.querySelectorAll('.mark-selector-tile').forEach((tile) => {
-      const i = Number(tile.dataset.index);
-      tile.classList.toggle('sel', i === index);
-    });
-  }
-  if (!state.lexiconEntryId) {
-    updateMarkPreview();
-  }
+  inner.innerHTML = buildDotLabelHtml(state.author || 'Author', false);
 }
 
 function renderObservationMarkersNow() {
@@ -2056,7 +1933,6 @@ function duplicateObservation(obsId) {
       method: source.method || 'picker',
       timestamp: new Date().toISOString(),
       status: source.status || (source.lexiconComplete ? 'lexicon-mark' : 'name-label'),
-      markIndex: source.markIndex != null ? source.markIndex : null,
     };
 
     state.observations.push(copy);
@@ -2074,6 +1950,125 @@ function duplicateObservation(obsId) {
       .catch((err) => {
         console.error('Failed to duplicate observation:', err);
         alert('Could not duplicate this notation, check your connection and try again.');
+      });
+  });
+}
+
+function populateChangeLexiconSelect(selectedId) {
+  const sel = els.changeLexiconSelect;
+  if (!sel) return;
+
+  sel.innerHTML = '';
+  const empty = document.createElement('option');
+  empty.value = '';
+  empty.textContent = 'No lexicon built';
+  sel.appendChild(empty);
+
+  function finish() {
+    sel.value = selectedId || '';
+    if (selectedId && sel.value !== selectedId) {
+      sel.value = '';
+    }
+  }
+
+  if (els.lexiconField && els.lexiconField.options.length > 1) {
+    Array.from(els.lexiconField.options).forEach((opt) => {
+      if (!opt.value) return;
+      const o = document.createElement('option');
+      o.value = opt.value;
+      o.textContent = opt.textContent;
+      sel.appendChild(o);
+    });
+    finish();
+    return;
+  }
+
+  const user = window.currentUser;
+  if (!user || !user.fullName || !window.db) {
+    finish();
+    return;
+  }
+
+  window.db.collection('lexiconEntries')
+    .where('author', '==', user.fullName)
+    .get()
+    .then((snapshot) => {
+      const entries = [];
+      snapshot.forEach((doc) => {
+        entries.push({ id: doc.id, ...doc.data() });
+      });
+      entries.sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')));
+      entries.forEach((entry) => {
+        const o = document.createElement('option');
+        o.value = entry.id;
+        o.textContent = entry.lexiconName || '(untitled)';
+        sel.appendChild(o);
+      });
+      finish();
+    })
+    .catch((err) => {
+      console.error('Failed to load lexicon entries for change dialog:', err);
+      finish();
+    });
+}
+
+function openChangeLexiconOverlay(obsId) {
+  requireLogin(() => {
+    const obs = state.observations.find((o) => o.id === obsId);
+    if (!obs || !canEditObservation(obs)) return;
+    state.pendingChangeLexiconId = obsId;
+    populateChangeLexiconSelect(obs.lexiconEntryId || '');
+    if (els.changeLexiconOverlay) els.changeLexiconOverlay.classList.add('open');
+  });
+}
+
+function closeChangeLexiconOverlay() {
+  state.pendingChangeLexiconId = null;
+  if (els.changeLexiconOverlay) els.changeLexiconOverlay.classList.remove('open');
+}
+
+function confirmChangeLexicon() {
+  const obsId = state.pendingChangeLexiconId;
+  if (!obsId) return;
+
+  const obs = state.observations.find((o) => o.id === obsId);
+  if (!obs || !canEditObservation(obs)) {
+    closeChangeLexiconOverlay();
+    return;
+  }
+
+  const sel = els.changeLexiconSelect;
+  const lexiconEntryId = sel && sel.value ? sel.value : null;
+  const lexiconName = lexiconEntryId && sel.options[sel.selectedIndex]
+    ? sel.options[sel.selectedIndex].textContent
+    : '';
+  const lexiconComplete = !!lexiconEntryId;
+  const status = lexiconComplete ? 'lexicon-mark' : 'name-label';
+
+  requireLogin(() => {
+    window.db.collection('observations').doc(obsId).update({
+      lexiconEntryId,
+      lexiconName,
+      lexiconComplete,
+      status,
+    })
+      .then(() => {
+        obs.lexiconEntryId = lexiconEntryId;
+        obs.lexiconName = lexiconName;
+        obs.lexiconComplete = lexiconComplete;
+        obs.status = status;
+        closeChangeLexiconOverlay();
+        renderNotationList();
+        const warm = lexiconEntryId
+          ? ensureLexiconSketch(lexiconEntryId)
+          : Promise.resolve();
+        warm.then(() => {
+          syncObservationMarkers();
+        });
+      })
+      .catch((err) => {
+        console.error('Failed to change lexicon:', err);
+        alert('Could not update this notation\'s lexicon, check your connection and try again.');
       });
   });
 }
@@ -2128,6 +2123,15 @@ function renderNotationList() {
         duplicateObservation(obs.id);
       });
 
+      const changeLexBtn = document.createElement('button');
+      changeLexBtn.type = 'button';
+      changeLexBtn.className = 'btn';
+      changeLexBtn.textContent = 'Change Lexicon';
+      changeLexBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openChangeLexiconOverlay(obs.id);
+      });
+
       const delBtn = document.createElement('button');
       delBtn.type = 'button';
       delBtn.className = 'btn';
@@ -2139,6 +2143,7 @@ function renderNotationList() {
 
       actions.appendChild(moveBtn);
       actions.appendChild(dupBtn);
+      actions.appendChild(changeLexBtn);
       actions.appendChild(delBtn);
       item.appendChild(actions);
     }
@@ -2247,13 +2252,6 @@ function openConfirmOverlay(lng, lat, method) {
   els.confirmCoords.textContent = lat.toFixed(5) + ', ' + lng.toFixed(5);
   els.confirmMethod.textContent = method === 'gps' ? 'GPS' : 'Picker';
 
-  // Show six-icon picker only when no lexicon is linked; otherwise preview real sketch.
-  if (els.markSelectorBlock) {
-    els.markSelectorBlock.style.display = state.lexiconEntryId ? 'none' : 'block';
-  }
-  if (!state.lexiconEntryId) {
-    renderMarkSelector();
-  }
   updateMarkPreview();
   els.confirmOverlay.classList.add('open');
 }
@@ -2278,7 +2276,6 @@ function saveObservation() {
       method: pendingPlacement.method,
       timestamp: new Date().toISOString(),
       status: state.lexiconComplete ? 'lexicon-mark' : 'name-label',
-      markIndex: state.lexiconEntryId ? null : state.selectedMarkIndex,
     };
     state.observations.push(obs);
     state.selectedObservation = obs.id;
@@ -2323,7 +2320,6 @@ function loadMyObservations() {
           method: data.method,
           timestamp: data.timestamp,
           status: data.status,
-          markIndex: data.markIndex != null ? data.markIndex : null,
         });
       });
       loaded.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
@@ -2470,6 +2466,17 @@ function bindEvents() {
   els.confirmOverlay.addEventListener('click', (e) => {
     if (e.target === els.confirmOverlay) closeConfirmOverlay();
   });
+  if (els.changeLexiconConfirm) {
+    els.changeLexiconConfirm.addEventListener('click', confirmChangeLexicon);
+  }
+  if (els.changeLexiconCancel) {
+    els.changeLexiconCancel.addEventListener('click', closeChangeLexiconOverlay);
+  }
+  if (els.changeLexiconOverlay) {
+    els.changeLexiconOverlay.addEventListener('click', (e) => {
+      if (e.target === els.changeLexiconOverlay) closeChangeLexiconOverlay();
+    });
+  }
 
   window.addEventListener('resize', () => {
     if (map) map.invalidateSize();

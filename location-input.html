@@ -405,6 +405,59 @@ select.lexicon-empty {
 
 .notation-item-status.pending { color: var(--dim); }
 
+.notation-item.moving {
+  border-color: var(--ink);
+  background: #e8e8e8;
+  box-shadow: inset 3px 0 0 var(--ink);
+}
+
+.notation-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.notation-item-actions .btn {
+  padding: 3px 6px;
+  font-size: 8px;
+}
+
+.move-mode-banner {
+  display: none;
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: var(--ink);
+  color: #f0f0f0;
+  font-family: 'Miniature', serif;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  max-width: calc(100% - 80px);
+  text-align: center;
+  pointer-events: auto;
+}
+
+.move-mode-banner.visible { display: block; }
+
+.move-mode-banner button {
+  margin-left: 10px;
+  background: none;
+  border: none;
+  color: #f0f0f0;
+  text-decoration: underline;
+  font-family: 'Media77', sans-serif;
+  font-size: 10px;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
+  padding: 0;
+}
+
 .sep {
   height: 1px;
   background: var(--border);
@@ -429,6 +482,7 @@ select.lexicon-empty {
 
 .map-viewer.mode-picker .leaflet-container { cursor: crosshair; }
 .map-viewer.mode-gps .leaflet-container { cursor: default; }
+.map-viewer.move-mode .leaflet-container { cursor: crosshair; }
 
 .leaflet-container {
   background: #ffffff;
@@ -897,6 +951,10 @@ select.lexicon-empty {
     <div class="map-viewer mode-picker" id="mapViewer">
       <div class="map-load-msg" id="mapLoadMsg">Loading site layers…</div>
       <div class="map-area" id="mapArea"></div>
+      <div class="move-mode-banner" id="moveModeBanner" role="status">
+        Tap the map to place this notation
+        <button type="button" id="cancelMoveBtn">Cancel</button>
+      </div>
 
       <div class="map-controls">
         <button type="button" class="map-btn" id="zoomIn" title="Zoom in">+</button>
@@ -995,6 +1053,7 @@ const state = {
   },
   observations: [],
   selectedObservation: null,
+  pendingMoveId: null,
 };
 
 const mapData = {
@@ -1017,6 +1076,8 @@ const ELEMENT_IDS = {
   mapArea: 'mapArea',
   mapLoadMsg: 'mapLoadMsg',
   notationList: 'notationList',
+  moveModeBanner: 'moveModeBanner',
+  cancelMoveBtn: 'cancelMoveBtn',
   lexiconField: 'lexiconField',
   markSelectorBlock: 'markSelectorBlock',
   markSelector: 'markSelector',
@@ -1339,7 +1400,14 @@ function initMap() {
 }
 
 function onMapClick(e) {
-  if (!mapData.ready || state.mode !== 'picker') return;
+  if (!mapData.ready) return;
+
+  if (state.pendingMoveId) {
+    completeMoveObservation(e.latlng.lat, e.latlng.lng);
+    return;
+  }
+
+  if (state.mode !== 'picker') return;
   openConfirmOverlay(e.latlng.lng, e.latlng.lat, 'picker');
 }
 
@@ -1495,24 +1563,204 @@ function statusLabel(obs) {
   return obs.lexiconComplete ? 'Lexicon mark' : 'Name label';
 }
 
+function canEditObservation(obs) {
+  return !!(window.currentUser && window.currentUser.fullName && obs.author === window.currentUser.fullName);
+}
+
+function updateMoveModeUI() {
+  const banner = els.moveModeBanner;
+  if (banner) banner.classList.toggle('visible', !!state.pendingMoveId);
+  if (els.mapViewer) {
+    els.mapViewer.classList.toggle('move-mode', !!state.pendingMoveId);
+  }
+}
+
+function startMoveObservation(obsId) {
+  requireLogin(() => {
+    const obs = state.observations.find((o) => o.id === obsId);
+    if (!obs || !canEditObservation(obs)) return;
+    state.pendingMoveId = obsId;
+    state.selectedObservation = obsId;
+    closeConfirmOverlay();
+    updateMoveModeUI();
+    renderNotationList();
+    syncObservationMarkers();
+  });
+}
+
+function cancelMoveObservation() {
+  state.pendingMoveId = null;
+  updateMoveModeUI();
+  renderNotationList();
+}
+
+function completeMoveObservation(lat, lng) {
+  const obsId = state.pendingMoveId;
+  if (!obsId) return;
+
+  const obs = state.observations.find((o) => o.id === obsId);
+  if (!obs || !canEditObservation(obs)) {
+    cancelMoveObservation();
+    return;
+  }
+
+  requireLogin(() => {
+    const prevLat = obs.lat;
+    const prevLng = obs.lng;
+
+    window.db.collection('observations').doc(obsId).update({ lat, lng })
+      .then(() => {
+        obs.lat = lat;
+        obs.lng = lng;
+        state.pendingMoveId = null;
+        updateMoveModeUI();
+        renderNotationList();
+        syncObservationMarkers();
+        focusObservation(obs);
+        console.log('Observation moved:', obsId, lat, lng);
+      })
+      .catch((err) => {
+        console.error('Failed to move observation:', err);
+        obs.lat = prevLat;
+        obs.lng = prevLng;
+        state.pendingMoveId = null;
+        updateMoveModeUI();
+        renderNotationList();
+        syncObservationMarkers();
+        alert('Could not update this notation position, check your connection and try again.');
+      });
+  });
+}
+
+function deleteObservation(obsId) {
+  requireLogin(() => {
+    const obs = state.observations.find((o) => o.id === obsId);
+    if (!obs || !canEditObservation(obs)) return;
+    if (!window.confirm('Delete this notation?')) return;
+
+    window.db.collection('observations').doc(obsId).delete()
+      .then(() => {
+        if (state.pendingMoveId === obsId) {
+          state.pendingMoveId = null;
+          updateMoveModeUI();
+        }
+        state.observations = state.observations.filter((o) => o.id !== obsId);
+        if (state.selectedObservation === obsId) state.selectedObservation = null;
+        renderNotationList();
+        syncObservationMarkers();
+        console.log('Observation deleted:', obsId);
+      })
+      .catch((err) => {
+        console.error('Failed to delete observation:', err);
+        alert('Could not delete this notation, check your connection and try again.');
+      });
+  });
+}
+
+function duplicateObservation(obsId) {
+  requireLogin((user) => {
+    const source = state.observations.find((o) => o.id === obsId);
+    if (!source || !canEditObservation(source)) return;
+
+    const copy = {
+      id: crypto.randomUUID(),
+      author: user.fullName,
+      authorRole: user.role,
+      lexiconEntryId: source.lexiconEntryId || null,
+      lexiconName: source.lexiconName || '',
+      lexiconComplete: !!source.lexiconComplete,
+      lat: source.lat,
+      lng: source.lng,
+      method: source.method || 'picker',
+      timestamp: new Date().toISOString(),
+      status: source.status || (source.lexiconComplete ? 'lexicon-mark' : 'name-label'),
+      markIndex: source.markIndex != null ? source.markIndex : null,
+    };
+
+    state.observations.push(copy);
+    state.selectedObservation = copy.id;
+    state.pendingMoveId = copy.id;
+    closeConfirmOverlay();
+    updateMoveModeUI();
+    renderNotationList();
+    syncObservationMarkers();
+
+    window.db.collection('observations').doc(copy.id).set(copy)
+      .then(() => {
+        console.log('Observation duplicated:', copy.id, copy);
+      })
+      .catch((err) => {
+        console.error('Failed to duplicate observation:', err);
+        alert('Could not duplicate this notation, check your connection and try again.');
+      });
+  });
+}
+
 function renderNotationList() {
   els.notationList.innerHTML = '';
   state.observations.forEach((obs, index) => {
     const item = document.createElement('div');
-    item.className = 'notation-item' + (state.selectedObservation === obs.id ? ' selected' : '');
+    item.className = 'notation-item'
+      + (state.selectedObservation === obs.id ? ' selected' : '')
+      + (state.pendingMoveId === obs.id ? ' moving' : '');
     item.dataset.id = obs.id;
+
     const name = document.createElement('div');
     name.className = 'notation-item-name';
     name.textContent = (obs.lexiconName || 'Notation') + ' — ' + (index + 1);
+
     const coord = document.createElement('div');
     coord.className = 'notation-item-coord';
     coord.textContent = formatCoord(obs.lat, obs.lng);
+
     const status = document.createElement('div');
     status.className = 'notation-item-status' + (obs.lexiconComplete ? '' : ' pending');
-    status.textContent = statusLabel(obs);
+    status.textContent = state.pendingMoveId === obs.id
+      ? 'Tap map to place…'
+      : statusLabel(obs);
+
     item.appendChild(name);
     item.appendChild(coord);
     item.appendChild(status);
+
+    if (canEditObservation(obs)) {
+      const actions = document.createElement('div');
+      actions.className = 'notation-item-actions';
+
+      const moveBtn = document.createElement('button');
+      moveBtn.type = 'button';
+      moveBtn.className = 'btn' + (state.pendingMoveId === obs.id ? ' sel' : '');
+      moveBtn.textContent = state.pendingMoveId === obs.id ? 'Moving…' : 'Move';
+      moveBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (state.pendingMoveId === obs.id) cancelMoveObservation();
+        else startMoveObservation(obs.id);
+      });
+
+      const dupBtn = document.createElement('button');
+      dupBtn.type = 'button';
+      dupBtn.className = 'btn';
+      dupBtn.textContent = 'Duplicate';
+      dupBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        duplicateObservation(obs.id);
+      });
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'btn';
+      delBtn.textContent = 'Delete';
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteObservation(obs.id);
+      });
+
+      actions.appendChild(moveBtn);
+      actions.appendChild(dupBtn);
+      actions.appendChild(delBtn);
+      item.appendChild(actions);
+    }
+
     item.addEventListener('click', () => {
       state.selectedObservation = obs.id;
       renderNotationList();
@@ -1829,6 +2077,9 @@ function bindEvents() {
 
   els.confirmBtn.addEventListener('click', saveObservation);
   els.cancelBtn.addEventListener('click', closeConfirmOverlay);
+  if (els.cancelMoveBtn) {
+    els.cancelMoveBtn.addEventListener('click', cancelMoveObservation);
+  }
   els.confirmOverlay.addEventListener('click', (e) => {
     if (e.target === els.confirmOverlay) closeConfirmOverlay();
   });

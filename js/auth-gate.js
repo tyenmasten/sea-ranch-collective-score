@@ -182,6 +182,7 @@ function updateHeaderBadge() {
   if (window.currentUser && window.currentUser.role) {
     if (typeof loadMyLexiconEntries === 'function') loadMyLexiconEntries();
     if (typeof loadMyObservations === 'function') loadMyObservations();
+    if (typeof updateLexiconField === 'function') updateLexiconField();
   }
 
   const badge = document.getElementById('headerUser');

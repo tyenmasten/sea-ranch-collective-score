@@ -1558,14 +1558,22 @@ function updateLexiconField() {
 
   const user = window.currentUser;
   if (!user || !user.fullName) {
+    console.log('[updateLexiconField] No logged-in user; skipping query.', user);
     syncLexiconFromField();
     return;
   }
+
+  console.log('[updateLexiconField] Querying lexiconEntries for author:', user.fullName);
 
   window.db.collection('lexiconEntries')
     .where('author', '==', user.fullName)
     .get()
     .then((snapshot) => {
+      console.log('[updateLexiconField] Raw query size:', snapshot.size);
+      snapshot.forEach((doc) => {
+        console.log('[updateLexiconField] Doc:', doc.id, doc.data());
+      });
+
       const entries = [];
       snapshot.forEach((doc) => {
         entries.push({ id: doc.id, ...doc.data() });

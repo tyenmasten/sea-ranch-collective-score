@@ -195,7 +195,8 @@ nav {
 
 .flabel:first-child { margin-top: 0; }
 
-input[type="text"] {
+input[type="text"],
+select {
   width: 100%;
   background: var(--surface2);
   border: 1px solid var(--border);
@@ -206,14 +207,16 @@ input[type="text"] {
   outline: none;
 }
 
-input[type="text"]:focus { border-color: var(--ink); }
+input[type="text"]:focus,
+select:focus { border-color: var(--ink); }
 
 input[type="text"][readonly] {
   color: var(--dim);
   background: var(--hi);
 }
 
-input.lexicon-empty {
+input.lexicon-empty,
+select.lexicon-empty {
   font-family: 'Media77', sans-serif;
   font-style: italic;
   color: var(--dim);
@@ -781,7 +784,8 @@ input.lexicon-empty {
     overflow: visible;
   }
 
-  .sidebar input[type="text"] {
+  .sidebar input[type="text"],
+  .sidebar select {
     font-size: 16px;
     padding: 10px 12px;
     min-height: 44px;
@@ -830,9 +834,11 @@ input.lexicon-empty {
       <div class="section-block">
         <div class="slabel">Identity</div>
         <span class="flabel">Author</span>
-        <input type="text" id="authorField" value="A. Halprin" readonly>
+        <input type="text" id="authorField" value="" readonly>
         <span class="flabel">Lexicon</span>
-        <input type="text" id="lexiconField" readonly>
+        <select id="lexiconField">
+          <option value="">No lexicon built</option>
+        </select>
       </div>
 
       <div class="sep"></div>
@@ -976,9 +982,10 @@ const DEV_TEST_MARKS = [
 ];
 
 const state = {
-  author: 'A. Halprin',
-  lexiconName: 'Coastal Edge Mark',
-  lexiconComplete: true,
+  author: '',
+  lexiconEntryId: null,
+  lexiconName: '',
+  lexiconComplete: false,
   selectedMarkIndex: 0,
   mode: 'picker',
   layers: {
@@ -1521,15 +1528,67 @@ function focusObservation(obs) {
   map.panTo([obs.lat, obs.lng], { animate: false });
 }
 
+function syncLexiconFromField() {
+  const field = els.lexiconField;
+  if (!field) return;
+  const id = field.value;
+  if (!id) {
+    state.lexiconEntryId = null;
+    state.lexiconName = '';
+    state.lexiconComplete = false;
+    field.classList.add('lexicon-empty');
+    return;
+  }
+  const opt = field.options[field.selectedIndex];
+  state.lexiconEntryId = id;
+  state.lexiconName = opt ? opt.textContent : '';
+  state.lexiconComplete = true;
+  field.classList.remove('lexicon-empty');
+}
+
 function updateLexiconField() {
   const field = els.lexiconField;
-  if (state.lexiconComplete && state.lexiconName) {
-    field.value = state.lexiconName;
-    field.classList.remove('lexicon-empty');
-  } else {
-    field.value = 'No lexicon built';
-    field.classList.add('lexicon-empty');
+  if (!field || !window.db) return;
+
+  field.innerHTML = '';
+  const empty = document.createElement('option');
+  empty.value = '';
+  empty.textContent = 'No lexicon built';
+  field.appendChild(empty);
+
+  const user = window.currentUser;
+  if (!user || !user.fullName) {
+    syncLexiconFromField();
+    return;
   }
+
+  window.db.collection('lexiconEntries')
+    .where('author', '==', user.fullName)
+    .get()
+    .then((snapshot) => {
+      const entries = [];
+      snapshot.forEach((doc) => {
+        entries.push({ id: doc.id, ...doc.data() });
+      });
+      entries.sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')));
+
+      const previousId = state.lexiconEntryId;
+      entries.forEach((entry) => {
+        const opt = document.createElement('option');
+        opt.value = entry.id;
+        opt.textContent = entry.lexiconName || '(untitled)';
+        field.appendChild(opt);
+      });
+
+      if (previousId && entries.some((e) => e.id === previousId)) {
+        field.value = previousId;
+      }
+      syncLexiconFromField();
+    })
+    .catch((err) => {
+      console.error('Failed to load lexicon entries:', err);
+      syncLexiconFromField();
+    });
 }
 
 function setMode(mode) {
@@ -1578,6 +1637,7 @@ function saveObservation() {
       id: crypto.randomUUID(),
       author: user.fullName,
       authorRole: user.role,
+      lexiconEntryId: state.lexiconComplete ? state.lexiconEntryId : null,
       lexiconName: state.lexiconComplete ? state.lexiconName : '',
       lexiconComplete: state.lexiconComplete,
       lat: pendingPlacement.lat,
@@ -1603,6 +1663,44 @@ function saveObservation() {
     renderNotationList();
     syncObservationMarkers();
   });
+}
+
+function loadMyObservations() {
+  if (!window.db) return;
+
+  const user = window.currentUser;
+  if (!user || !user.fullName) return;
+
+  window.db.collection('observations')
+    .where('author', '==', user.fullName)
+    .get()
+    .then((snapshot) => {
+      const loaded = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        loaded.push({
+          id: data.id || doc.id,
+          author: data.author,
+          authorRole: data.authorRole,
+          lexiconEntryId: data.lexiconEntryId || null,
+          lexiconName: data.lexiconName || '',
+          lexiconComplete: !!data.lexiconComplete,
+          lat: data.lat,
+          lng: data.lng,
+          method: data.method,
+          timestamp: data.timestamp,
+          status: data.status,
+          markIndex: data.markIndex != null ? data.markIndex : null,
+        });
+      });
+      loaded.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
+      state.observations = loaded;
+      renderNotationList();
+      syncObservationMarkers();
+    })
+    .catch((err) => {
+      console.error('Failed to load observations:', err);
+    });
 }
 
 function requestGpsPlacement() {
@@ -1686,6 +1784,10 @@ function bindEvents() {
     requestGpsPlacement();
   });
 
+  if (els.lexiconField) {
+    els.lexiconField.addEventListener('change', syncLexiconFromField);
+  }
+
   els.toggleStreets.addEventListener('click', () => {
     state.layers.streets = !state.layers.streets;
     els.toggleStreets.classList.toggle('on', state.layers.streets);
@@ -1736,11 +1838,14 @@ function init() {
   }
 
   initMap();
-  updateLexiconField();
   setMode('picker');
   renderNotationList();
   bindEvents();
   loadGeoLayers();
+  setTimeout(() => {
+    updateLexiconField();
+    loadMyObservations();
+  }, 0);
 }
 
 if (domReady()) {

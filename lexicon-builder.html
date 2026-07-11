@@ -639,6 +639,59 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
   padding: 3px 6px;
 }
 
+.editing-indicator {
+  margin-top: 6px;
+  font-family: 'Media77', sans-serif;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--dim);
+}
+
+#newEntryBtn {
+  margin-top: 6px;
+  width: 100%;
+}
+
+#myLexiconList {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.my-lexicon-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  cursor: pointer;
+  font-family: 'Media77', sans-serif;
+  color: var(--ink);
+}
+
+.my-lexicon-item:hover { border-color: var(--ink); }
+
+.my-lexicon-item.sel {
+  border-color: var(--ink);
+  background: var(--hi);
+}
+
+.my-lexicon-name { font-size: 11px; }
+.my-lexicon-time {
+  font-size: 8px;
+  color: var(--dim);
+  letter-spacing: 0.04em;
+}
+
 #sketch-stage #canvas {
   display: block;
   width: 100%;
@@ -1108,13 +1161,16 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
           <div class="identity-grid">
             <div>
               <span class="flabel">Author</span>
-              <input type="text" id="author" value="A. Halprin" readonly>
+              <input type="text" id="author" value="" readonly>
             </div>
             <div>
               <span class="flabel">Lexicon Name</span>
               <input type="text" id="lexiconName" placeholder="Name your mark…">
+              <div id="editingIndicator" class="editing-indicator" hidden>Editing: <span id="editingEntryName"></span></div>
+              <button type="button" class="btn sm" id="newEntryBtn" hidden>New Entry</button>
             </div>
           </div>
+          <div id="myLexiconList"></div>
         </div>
         <div id="canvas-frame">
           <div id="canvas-col">

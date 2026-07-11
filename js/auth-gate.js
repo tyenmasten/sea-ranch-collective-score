@@ -165,12 +165,25 @@ function showGate(onSuccess) {
   }
 }
 
-// The corner box that already exists on every page (currently showing
-// placeholder text like "Student: A. Halprin") doubles as the login
+// The corner box that already exists on every page doubles as the login
 // control. Logged out, it reads "Log In" and opening the login screen.
 // Logged in, it shows the real name and role, with a small log out link
 // underneath.
 function updateHeaderBadge() {
+  const authorName = (window.currentUser && window.currentUser.fullName) ? window.currentUser.fullName : '';
+  const authorInput = document.getElementById('author');
+  if (authorInput) authorInput.value = authorName;
+  const authorField = document.getElementById('authorField');
+  if (authorField) authorField.value = authorName;
+  if (typeof state !== 'undefined' && state && 'author' in state) {
+    state.author = authorName;
+  }
+
+  if (window.currentUser && window.currentUser.role) {
+    if (typeof loadMyLexiconEntries === 'function') loadMyLexiconEntries();
+    if (typeof loadMyObservations === 'function') loadMyObservations();
+  }
+
   const badge = document.getElementById('headerUser');
   if (!badge) return;
 

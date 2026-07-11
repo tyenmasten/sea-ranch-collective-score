@@ -1084,3 +1084,44 @@ const FIELD_H = 800;
     if (drawingCol && typeof ResizeObserver !== 'undefined') {
       new ResizeObserver(() => layoutStage()).observe(drawingCol);
     }
+
+    // Expose sketch state for lexicon save/load (lexicon-app.js).
+    window.SketchComposer = {
+      getSketch() {
+        return {
+          marks: JSON.parse(JSON.stringify(S.marks)),
+          color: S.color,
+          weight: S.weight,
+          fill: S.fill,
+          lineStyle: S.lineStyle,
+          stroke: S.stroke,
+          scaleFt: S.scaleFt,
+        };
+      },
+      setSketch(sketch) {
+        if (sketch) {
+          S.marks = JSON.parse(JSON.stringify(sketch.marks || []));
+          S.color = sketch.color || '#000000';
+          S.weight = sketch.weight != null ? sketch.weight : 5;
+          S.fill = sketch.fill || 'solid';
+          S.lineStyle = sketch.lineStyle || 'solid';
+          S.stroke = sketch.stroke != null ? sketch.stroke : true;
+          S.scaleFt = sketch.scaleFt != null ? sketch.scaleFt : 10;
+        } else {
+          S.marks = [];
+          S.color = '#000000';
+          S.weight = 5;
+          S.fill = 'solid';
+          S.lineStyle = 'solid';
+          S.stroke = true;
+          S.scaleFt = 10;
+        }
+        S.selected = null;
+        S.multi = [];
+        S.undo = [];
+        S.tool = 'select';
+        S.pointer = null;
+        syncUI();
+        draw();
+      },
+    };

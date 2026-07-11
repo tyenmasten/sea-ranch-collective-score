@@ -7,6 +7,9 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
 <style>
 /* Mobile responsive — to be handled by Cursor in a separate pass */
 
@@ -1160,22 +1163,8 @@ const DEV_TEST_MARKS = [
   },
 ];
 
-// TODO: Firebase — replace with real observations from Firestore
 const state = {
-  notations: [
-    { id: 'n1', lat: 38.6578, lng: -123.515, author: 'A. Halprin', lexicon: 'Coastal Edge Mark', markIndex: 0, element: 'landscape', meta: 'form', typology: 'single', status: 'lexicon-mark', description: 'The bluff edge reads as a threshold.' },
-    { id: 'n2', lat: 38.6703, lng: -123.4977, author: 'L. Moore', lexicon: 'Meadow Section', markIndex: 1, element: 'architecture', meta: 'context', typology: 'multi', status: 'lexicon-mark', description: 'Roof pitch follows the ridgeline.' },
-    { id: 'n3', lat: 38.6828, lng: -123.4805, author: 'J. Esherick', lexicon: 'Timber Grain', markIndex: 2, element: 'architecture', meta: 'form', typology: 'single', status: 'lexicon-mark', description: 'Siding grain runs horizontal with the wind.' },
-    { id: 'n4', lat: 38.6953, lng: -123.4632, author: 'B. Solomon', lexicon: 'Supergraphic Field', markIndex: 3, element: 'people', meta: 'culture', typology: 'public', status: 'lexicon-mark', description: 'Colour as spatial instruction.' },
-    { id: 'n5', lat: 38.7078, lng: -123.4459, author: 'H. Eckbo', lexicon: 'Ground Plane', markIndex: 4, element: 'landscape', meta: 'context', typology: 'single', status: 'dot-placeholder', description: '' },
-    { id: 'n6', lat: 38.7203, lng: -123.4286, author: 'A. Halprin', lexicon: 'Coastal Edge Mark', markIndex: 0, element: 'landscape', meta: 'form', typology: 'single', status: 'lexicon-mark', description: 'Wind loads the grasses horizontally.' },
-    { id: 'n7', lat: 38.7328, lng: -123.4114, author: 'L. Moore', lexicon: 'Meadow Section', markIndex: 1, element: 'people', meta: 'culture', typology: 'multi', status: 'lexicon-mark', description: 'Gathering at the commons.' },
-    { id: 'n8', lat: 38.7453, lng: -123.3941, author: 'J. Esherick', lexicon: 'Timber Grain', markIndex: 2, element: 'architecture', meta: 'form', typology: 'public', status: 'dot-placeholder', description: '' },
-    { id: 'n9', lat: 38.7578, lng: -123.3768, author: 'B. Solomon', lexicon: 'Supergraphic Field', markIndex: 3, element: 'landscape', meta: 'context', typology: 'single', status: 'lexicon-mark', description: 'The meadow as canvas.' },
-    { id: 'n10', lat: 38.7703, lng: -123.3595, author: 'H. Eckbo', lexicon: 'Ground Plane', markIndex: 4, element: 'architecture', meta: 'form', typology: 'single', status: 'lexicon-mark', description: 'Steps negotiate the bluff section.' },
-    { id: 'n11', lat: 38.7828, lng: -123.3423, author: 'A. Halprin', lexicon: 'Coastal Edge Mark', markIndex: 5, element: 'people', meta: 'culture', typology: 'multi', status: 'lexicon-mark', description: 'The path as score.' },
-    { id: 'n12', lat: 38.7953, lng: -123.325, author: 'L. Moore', lexicon: 'Meadow Section', markIndex: 1, element: 'landscape', meta: 'form', typology: 'single', status: 'dot-placeholder', description: '' },
-  ],
+  notations: [],
   selectedId: null,
   filters: {
     author: 'all',
@@ -2064,12 +2053,175 @@ function syncCompass() {
   compass.style.transform = 'rotate(42deg)';
 }
 
+/** Map lexicon-builder Title Case values onto collective-score filter slugs. */
+const META_SLUG_BY_LABEL = {
+  form: 'form',
+  context: 'context',
+  culture: 'culture',
+  landscape: 'landscape',
+  people: 'people',
+  architecture: 'architecture',
+  'single family': 'single',
+  'multi unit': 'multi',
+  'public facility': 'public',
+  single: 'single',
+  multi: 'multi',
+  public: 'public',
+};
+
+function toMetaSlug(value) {
+  if (value == null || value === '') return '';
+  const key = String(value).trim().toLowerCase();
+  return META_SLUG_BY_LABEL[key] || key;
+}
+
+function firstMetaSlug(value) {
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      const slug = toMetaSlug(value[i]);
+      if (slug) return slug;
+    }
+    return '';
+  }
+  return toMetaSlug(value);
+}
+
+function allMetaSlugs(value) {
+  if (Array.isArray(value)) {
+    return value.map(toMetaSlug).filter(Boolean);
+  }
+  const slug = toMetaSlug(value);
+  return slug ? [slug] : [];
+}
+
+function mapObservationToNotation(obs, lexiconEntry) {
+  const meta = (lexiconEntry && lexiconEntry.metadata) || {};
+  const lexiconName =
+    (obs.lexiconName && String(obs.lexiconName)) ||
+    (lexiconEntry && lexiconEntry.lexiconName) ||
+    '';
+
+  let status = obs.status;
+  if (!status) {
+    status = obs.lexiconComplete ? 'lexicon-mark' : 'name-label';
+  }
+
+  // Existing UI/filters still know demo's "dot-placeholder"; treat name-label as that.
+  const statusForUi = status === 'name-label' ? 'dot-placeholder' : status;
+
+  return {
+    id: obs.id,
+    lat: obs.lat,
+    lng: obs.lng,
+    author: obs.author || '',
+    authorRole: obs.authorRole || '',
+    lexicon: lexiconName,
+    lexiconName,
+    lexiconEntryId: obs.lexiconEntryId || null,
+    lexiconComplete: !!obs.lexiconComplete,
+    // Keep markIndex for existing DEV_TEST drawing path until p5 sketch drawing lands.
+    markIndex: 0,
+    element: firstMetaSlug(meta.element),
+    meta: firstMetaSlug(meta.metaData),
+    typology: firstMetaSlug(meta.typology),
+    // Full multi-select sets (slug form) for later filter improvements.
+    elements: allMetaSlugs(meta.element),
+    metas: allMetaSlugs(meta.metaData),
+    status: statusForUi,
+    statusRaw: status,
+    description: (lexiconEntry && lexiconEntry.description) || '',
+    sketch: (lexiconEntry && lexiconEntry.sketch) || null,
+    method: obs.method || '',
+    timestamp: obs.timestamp || '',
+  };
+}
+
+function loadAllObservations() {
+  if (!window.db) {
+    console.warn('[collective-score] Firestore not available (window.db missing).');
+    return Promise.resolve();
+  }
+
+  return window.db.collection('observations').get()
+    .then((snapshot) => {
+      const observations = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        observations.push({
+          id: data.id || doc.id,
+          author: data.author,
+          authorRole: data.authorRole,
+          lexiconEntryId: data.lexiconEntryId || null,
+          lexiconName: data.lexiconName || '',
+          lexiconComplete: !!data.lexiconComplete,
+          lat: data.lat,
+          lng: data.lng,
+          method: data.method,
+          timestamp: data.timestamp,
+          status: data.status,
+        });
+      });
+      observations.sort((a, b) =>
+        String(a.timestamp || '').localeCompare(String(b.timestamp || ''))
+      );
+
+      console.log('[collective-score] Raw observations from Firestore:', observations);
+
+      const lexiconIds = [...new Set(
+        observations.map((o) => o.lexiconEntryId).filter(Boolean)
+      )];
+
+      const lexiconFetches = lexiconIds.map((id) =>
+        window.db.collection('lexiconEntries').doc(id).get()
+          .then((docSnap) => {
+            if (!docSnap.exists) {
+              console.warn('[collective-score] Missing lexiconEntries doc:', id);
+              return { id, data: null };
+            }
+            return { id, data: docSnap.data() };
+          })
+          .catch((err) => {
+            console.error('[collective-score] Failed to load lexiconEntries/' + id, err);
+            return { id, data: null };
+          })
+      );
+
+      return Promise.all(lexiconFetches).then((lexiconResults) => {
+        const lexiconById = new Map();
+        lexiconResults.forEach((result) => {
+          lexiconById.set(result.id, result.data);
+        });
+
+        console.log(
+          '[collective-score] Linked lexiconEntries loaded:',
+          lexiconIds.length,
+          Object.fromEntries(lexiconById)
+        );
+
+        const mapped = observations.map((obs) => {
+          const entry = obs.lexiconEntryId
+            ? lexiconById.get(obs.lexiconEntryId) || null
+            : null;
+          return mapObservationToNotation(obs, entry);
+        });
+
+        state.notations = mapped;
+        console.log('[collective-score] Mapped state.notations:', mapped);
+        return mapped;
+      });
+    })
+    .catch((err) => {
+      console.error('[collective-score] Failed to load observations:', err);
+    });
+}
+
 function init() {
   cacheElements();
   buildFilterChips();
   updateVisibilityButtons();
   bindEvents();
   syncCompass();
+  loadAllObservations();
 }
 
 if (document.readyState === 'loading') {

@@ -5,11 +5,13 @@
 // defined in that same script, which holds the current fill character chosen
 // for each building type and vegetation type.
 //
-// Two modes:
-// - View: freely pannable and zoomable, with an optional print-atlas sheet
-//   grid overlay so faculty can pick which A3 sheet to preview.
-// - Print: a fixed A3 portrait page at a chosen architectural scale
-//   (1:500 to 1:5000), centred on the selected atlas sheet (not free pan).
+// Modes (scoreMode):
+// - View: freely pannable/zoomable working view (notations + site layers).
+// - Grid: atlas scales only — whole site fixed to fit, atlas sheet overlay;
+//   click a sheet cell to select it and switch to Sheet.
+// - Sheet: atlas scales only — one selected A3 sheet, fixed, export-accurate,
+//   with overlap guides on edges that adjoin neighbors.
+// - Print: free-pan single A3 Preview (primary path below 1:1000; unchanged).
 //
 // The whole composition is rotated 42 degrees, applied in real-world feet
 // before anything is scaled to the screen or the page, so it stays correct
@@ -85,34 +87,69 @@ function windowResized() {
   redraw();
 }
 
+function setScoreMode(mode) {
+  const atlas = isAtlasScale();
+  if ((mode === 'grid' || mode === 'sheet') && !atlas) mode = 'view';
+  if (mode !== 'view' && mode !== 'print' && mode !== 'grid' && mode !== 'sheet') {
+    mode = 'view';
+  }
+  scoreMode = mode;
+  syncModeButtons();
+  redraw();
+}
+
+function syncModeButtons() {
+  const atlas = isAtlasScale();
+  const gridBtn = document.getElementById('btnGridMode');
+  const sheetBtn = document.getElementById('btnSheetMode');
+  if (gridBtn) {
+    gridBtn.style.display = atlas ? '' : 'none';
+    gridBtn.disabled = !atlas;
+  }
+  if (sheetBtn) {
+    sheetBtn.style.display = atlas ? '' : 'none';
+    sheetBtn.disabled = !atlas;
+  }
+  if (!atlas && (scoreMode === 'grid' || scoreMode === 'sheet')) {
+    scoreMode = 'view';
+  }
+  const modes = [
+    ['view', document.getElementById('btnViewMode')],
+    ['grid', gridBtn],
+    ['sheet', sheetBtn],
+    ['print', document.getElementById('btnPrintMode')],
+  ];
+  modes.forEach(([mode, btn]) => {
+    if (!btn) return;
+    const active = scoreMode === mode;
+    btn.classList.toggle('primary', active);
+    btn.classList.toggle('ghost', !active);
+  });
+}
+
 function bindModeControls() {
   const viewBtn = document.getElementById('btnViewMode');
+  const gridBtn = document.getElementById('btnGridMode');
+  const sheetBtn = document.getElementById('btnSheetMode');
   const printBtn = document.getElementById('btnPrintMode');
-  if (viewBtn) {
-    viewBtn.addEventListener('click', () => {
-      scoreMode = 'view';
-      viewBtn.classList.add('primary');
-      viewBtn.classList.remove('ghost');
-      if (printBtn) { printBtn.classList.add('ghost'); printBtn.classList.remove('primary'); }
-      redraw();
+  if (viewBtn) viewBtn.addEventListener('click', () => setScoreMode('view'));
+  if (gridBtn) gridBtn.addEventListener('click', () => setScoreMode('grid'));
+  if (sheetBtn) {
+    sheetBtn.addEventListener('click', () => {
+      refreshAtlasSelection();
+      setScoreMode('sheet');
     });
   }
-  if (printBtn) {
-    printBtn.addEventListener('click', () => {
-      scoreMode = 'print';
-      printBtn.classList.add('primary');
-      printBtn.classList.remove('ghost');
-      if (viewBtn) { viewBtn.classList.add('ghost'); viewBtn.classList.remove('primary'); }
-      redraw();
-    });
-  }
+  if (printBtn) printBtn.addEventListener('click', () => setScoreMode('print'));
   const scaleEl = document.getElementById('exportScale');
   if (scaleEl) {
     scaleEl.addEventListener('change', () => {
       refreshAtlasSelection();
+      syncModeButtons();
       redraw();
     });
   }
+  syncModeButtons();
 }
 
 async function loadScoreLayers() {
@@ -277,6 +314,7 @@ function getViewGeometry() {
   };
 }
 
+/** Free-pan single A3 page (Print Preview). Never atlas-locked. */
 function getPrintGeometry() {
   const scaleDenom = currentScaleDenominator();
   const availW = width - PAGE_MARGIN_PX * 2;
@@ -288,8 +326,6 @@ function getPrintGeometry() {
   const pageY = (height - pageH) / 2;
   const ftPerPagePixel = (scaleDenom / 12) / pxPerInch;
   const pxPerFt = 1 / ftPerPagePixel;
-  const useAtlas = isAtlasScale(scaleDenom);
-  const sheet = useAtlas ? getSelectedSheet() : null;
   return {
     mode: 'print',
     scaleDenom,
@@ -301,10 +337,82 @@ function getPrintGeometry() {
     pageY,
     centerX: pageX + pageW / 2,
     centerY: pageY + pageH / 2,
+    originRx: panRX,
+    originRy: panRY,
+    atlasMode: false,
+  };
+}
+
+/** One selected atlas sheet at true print scale (Sheet mode). */
+function getSheetGeometry() {
+  const scaleDenom = currentScaleDenominator();
+  const availW = width - PAGE_MARGIN_PX * 2;
+  const availH = height - PAGE_MARGIN_PX * 2;
+  const pxPerInch = Math.min(availW / PAGE_WIDTH_IN, availH / PAGE_HEIGHT_IN);
+  const pageW = PAGE_WIDTH_IN * pxPerInch;
+  const pageH = PAGE_HEIGHT_IN * pxPerInch;
+  const pageX = (width - pageW) / 2;
+  const pageY = (height - pageH) / 2;
+  const ftPerPagePixel = (scaleDenom / 12) / pxPerInch;
+  const pxPerFt = 1 / ftPerPagePixel;
+  const sheet = getSelectedSheet();
+  return {
+    mode: 'sheet',
+    scaleDenom,
+    pxPerFt,
+    pxPerInch,
+    pageW,
+    pageH,
+    pageX,
+    pageY,
+    centerX: pageX + pageW / 2,
+    centerY: pageY + pageH / 2,
     originRx: sheet ? sheet.centerRx : panRX,
     originRy: sheet ? sheet.centerRy : panRY,
-    atlasMode: useAtlas,
+    atlasMode: true,
   };
+}
+
+/** Whole atlas extent fitted to the canvas (Grid mode). Fixed; no pan. */
+function getGridGeometry() {
+  const scaleDenom = currentScaleDenominator();
+  const atlas = getCurrentAtlas();
+  const site = (atlas && atlas.site) ? atlas.site : computeSiteBoundsFt();
+  let minX = site.minRx;
+  let maxX = site.maxRx;
+  let minY = site.minRy;
+  let maxY = site.maxRy;
+  if (atlas && atlas.sheets.length) {
+    atlas.sheets.forEach((s) => {
+      const b = s.boundsFt;
+      if (b.minX < minX) minX = b.minX;
+      if (b.maxX > maxX) maxX = b.maxX;
+      if (b.minY < minY) minY = b.minY;
+      if (b.maxY > maxY) maxY = b.maxY;
+    });
+  }
+  const widthFt = Math.max(maxX - minX, 1);
+  const heightFt = Math.max(maxY - minY, 1);
+  const pad = PAGE_MARGIN_PX;
+  const availW = Math.max(width - pad * 2, 1);
+  const availH = Math.max(height - pad * 2, 1);
+  const pxPerFt = Math.min(availW / widthFt, availH / heightFt);
+  return {
+    mode: 'grid',
+    scaleDenom,
+    pxPerFt,
+    centerX: width / 2,
+    centerY: height / 2,
+    originRx: (minX + maxX) / 2,
+    originRy: (minY + maxY) / 2,
+  };
+}
+
+function getActiveGeometry() {
+  if (scoreMode === 'print') return getPrintGeometry();
+  if (scoreMode === 'sheet') return getSheetGeometry();
+  if (scoreMode === 'grid') return getGridGeometry();
+  return getViewGeometry();
 }
 
 function project(lng, lat, geo) {
@@ -484,11 +592,15 @@ function refreshAtlasSelection() {
   return atlas;
 }
 
-function selectAtlasSheet(sheet) {
+function selectAtlasSheet(sheet, switchToSheet) {
   if (!sheet) return;
   selectedSheetId = sheet.id;
   selectedSheetCol = sheet.col;
   selectedSheetRow = sheet.row;
+  if (switchToSheet) {
+    setScoreMode('sheet');
+    return;
+  }
   redraw();
 }
 
@@ -497,6 +609,9 @@ function drawAtlasOverlay(geo) {
   const atlas = getCurrentAtlas();
   if (!atlas || !atlas.sheets.length) return;
   const selected = getSelectedSheet();
+  // Grid mode is fitted to the whole atlas — size labels for legibility.
+  const labelSize = scoreMode === 'grid' ? 16 : 11;
+  const selectedSize = scoreMode === 'grid' ? 18 : 13;
 
   atlas.sheets.forEach((sheet) => {
     const b = sheet.boundsFt;
@@ -521,7 +636,7 @@ function drawAtlasOverlay(geo) {
     noStroke();
     fill(isSelected ? '#1a1a1a' : '#666666');
     textAlign(CENTER, CENTER);
-    textSize(isSelected ? 13 : 11);
+    textSize(isSelected ? selectedSize : labelSize);
     textFont('Miniature, serif');
     text(sheet.label, cx, cy);
   });
@@ -530,7 +645,7 @@ function drawAtlasOverlay(geo) {
   textAlign(CENTER, CENTER);
 }
 
-/** 0.5" overlap strips on sheet edges that adjoin a neighbor (Print Preview, atlas only). */
+/** 0.5" overlap strips on sheet edges that adjoin a neighbor (Sheet mode). */
 function drawPrintOverlapGuides(geo) {
   if (!geo || !geo.atlasMode) return;
   const atlas = getCurrentAtlas();
@@ -583,10 +698,10 @@ function drawPrintOverlapGuides(geo) {
 }
 
 function hitTestSheetAt(mx, my) {
-  if (!scoreReady || scoreMode !== 'view' || !isAtlasScale()) return null;
+  if (!scoreReady || scoreMode !== 'grid' || !isAtlasScale()) return null;
   const atlas = getCurrentAtlas();
   if (!atlas) return null;
-  const geo = getViewGeometry();
+  const geo = getGridGeometry();
   // Prefer later sheets only if overlapping; walk reverse so SE sheets win ties.
   for (let i = atlas.sheets.length - 1; i >= 0; i--) {
     const sheet = atlas.sheets[i];
@@ -1321,14 +1436,11 @@ function updateFitStatus(geo) {
   const statusEl = document.getElementById('scaleFitStatus');
   if (!statusEl) return;
 
-  const denom = (geo && geo.scaleDenom) || currentScaleDenominator();
+  // Always resolve from the live dropdown — never trust geo.scaleDenom, which
+  // can lag if a caller passes a stale geometry object.
+  const denom = currentScaleDenominator();
 
-  if (!isAtlasScale(denom)) {
-    if (scoreMode !== 'print') {
-      statusEl.textContent =
-        'Scale 1:' + denom + ' — free pan. Pan in View mode to choose the Print Preview crop.';
-      return;
-    }
+  const freePanPrintStatus = () => {
     const site = computeSiteBoundsFt();
     const pageWidthFt = geo.pageW / geo.pxPerFt;
     const pageHeightFt = geo.pageH / geo.pxPerFt;
@@ -1340,6 +1452,21 @@ function updateFitStatus(geo) {
         ' by ' + Math.round(site.heightFt) + ' ft site at 1:' + denom +
         '. Pan in View mode to choose a different area, then switch back to Print.';
     }
+  };
+
+  if (!isAtlasScale(denom)) {
+    if (scoreMode !== 'print') {
+      statusEl.textContent =
+        'Scale 1:' + denom + ' — free pan. Pan in View mode to choose the Print Preview crop.';
+      return;
+    }
+    freePanPrintStatus();
+    return;
+  }
+
+  // Atlas scales: Grid / Sheet messaging; Print Preview stays free-pan.
+  if (scoreMode === 'print') {
+    freePanPrintStatus();
     return;
   }
 
@@ -1350,9 +1477,24 @@ function updateFitStatus(geo) {
     return;
   }
 
+  if (scoreMode === 'grid') {
+    statusEl.textContent =
+      'Atlas grid ' + atlas.cols + '×' + atlas.rows +
+      ' at 1:' + denom + '. Click a sheet to open Sheet view.';
+    return;
+  }
+
+  if (scoreMode === 'sheet') {
+    statusEl.textContent =
+      'Sheet ' + sheet.label + ' of ' + atlas.cols + '×' + atlas.rows +
+      ' at 1:' + denom;
+    return;
+  }
+
+  // View at atlas scales — point toward Grid for sheet picking.
   statusEl.textContent =
-    'Sheet ' + sheet.label + ' of ' + atlas.cols + '×' + atlas.rows +
-    ' at 1:' + atlas.scaleDenom;
+    'Scale 1:' + denom + ' — atlas available. Open Grid to pick a sheet (' +
+    atlas.cols + '×' + atlas.rows + ').';
 }
 
 function draw() {
@@ -1361,9 +1503,10 @@ function draw() {
   if (!scoreReady) return;
 
   if (isAtlasScale()) refreshAtlasSelection();
-  const geo = scoreMode === 'print' ? getPrintGeometry() : getViewGeometry();
+  const geo = getActiveGeometry();
+  const pageModes = scoreMode === 'print' || scoreMode === 'sheet';
 
-  if (scoreMode === 'print') {
+  if (pageModes) {
     drawPageFrame(geo);
     drawingContext.save();
     drawingContext.beginPath();
@@ -1377,10 +1520,10 @@ function draw() {
   drawBuildings(geo);
   drawNotations(geo);
 
-  if (scoreMode === 'print') {
-    drawPrintOverlapGuides(geo);
+  if (pageModes) {
+    if (scoreMode === 'sheet') drawPrintOverlapGuides(geo);
     drawingContext.restore();
-  } else if (isAtlasScale()) {
+  } else if (scoreMode === 'grid' && isAtlasScale()) {
     drawAtlasOverlay(geo);
   }
 
@@ -1413,7 +1556,7 @@ function notationHitRadiusPx(notation, geo) {
 /** Hit-test filtered (visible) notations only. Prefers the closest mark within radius. */
 function hitTestNotationAt(mx, my) {
   if (!scoreReady) return null;
-  const geo = scoreMode === 'print' ? getPrintGeometry() : getViewGeometry();
+  const geo = getActiveGeometry();
   const list = getNotationsToDraw();
   let best = null;
   let bestDist = Infinity;
@@ -1443,9 +1586,9 @@ function mousePressed() {
 
 function mouseDragged() {
   if (!isDragging || !scoreReady) return;
-  // Atlas Print Preview is locked to the selected sheet; free-pan scales can pan in Print.
-  if (scoreMode === 'print' && isAtlasScale()) return;
-  const geo = scoreMode === 'print' ? getPrintGeometry() : getViewGeometry();
+  // Grid and Sheet are fixed; only View and free-pan Print Preview can pan.
+  if (scoreMode === 'grid' || scoreMode === 'sheet') return;
+  const geo = getActiveGeometry();
   const dxPx = mouseX - dragStartMouseX;
   const dyPx = mouseY - dragStartMouseY;
   if (Math.hypot(dxPx, dyPx) > CLICK_MOVE_THRESH_PX) pointerDidPan = true;
@@ -1467,9 +1610,9 @@ function mouseReleased() {
     return;
   }
 
-  if (scoreMode === 'view' && isAtlasScale()) {
+  if (scoreMode === 'grid' && isAtlasScale()) {
     const sheet = hitTestSheetAt(mouseX, mouseY);
-    if (sheet) selectAtlasSheet(sheet);
+    if (sheet) selectAtlasSheet(sheet, true);
   }
 }
 

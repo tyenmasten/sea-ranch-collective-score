@@ -331,6 +331,35 @@ nav {
   flex-shrink: 0;
 }
 
+.fill-color-input {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.fill-color-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.fill-category-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.layer-row-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .layer-toggle.on {
   background: var(--ink);
   border-color: var(--ink);
@@ -879,11 +908,17 @@ nav {
 
               <div class="layer-row">
                 <span class="layer-name">Contours</span>
-                <button type="button" class="layer-toggle" id="toggleContours" aria-pressed="false" aria-label="Toggle contours"></button>
+                <div class="layer-row-controls">
+                  <input type="color" class="fill-color-input" id="colorContours" value="#dddddd" aria-label="Contours color">
+                  <button type="button" class="layer-toggle" id="toggleContours" aria-pressed="false" aria-label="Toggle contours"></button>
+                </div>
               </div>
               <div class="layer-row">
                 <span class="layer-name">Outlines</span>
-                <button type="button" class="layer-toggle" id="toggleOutlines" aria-pressed="false" aria-label="Toggle polygon outlines"></button>
+                <div class="layer-row-controls">
+                  <input type="color" class="fill-color-input" id="colorOutlines" value="#999999" aria-label="Outlines color">
+                  <button type="button" class="layer-toggle" id="toggleOutlines" aria-pressed="false" aria-label="Toggle polygon outlines"></button>
+                </div>
               </div>
             </div>
 
@@ -1972,12 +2007,6 @@ function bindEvents() {
     'Highway', 'Major Collector', 'Minor Collector', 'Local',
     'Path Pedestrian Only', 'Path Multi-Use', 'Fire Road',
   ];
-  const DEFAULT_ROAD_FILLS = {
-    'Highway': '=', 'Major Collector': '+', 'Minor Collector': '-',
-    'Local': '.', 'Path Pedestrian Only': ':', 'Path Multi-Use': ';',
-    'Fire Road': '*',
-  };
-
   const BUILDING_FILL_CATEGORIES = [
     'Single Family Residence', 'Commercial', 'Industrial',
     'Park Building', 'Out Building', 'Agriculture', 'Other',
@@ -1988,21 +2017,68 @@ function bindEvents() {
     'Nursery or Ornamental Horticultural Area', 'Barren & Sparsely Vegetated',
     'Developed', 'Major Roads', 'Water',
   ];
-  const DEFAULT_BUILDING_FILLS = {
+  const DEFAULT_FILL_COLOR = '#1a1a1a';
+  const DEFAULT_ROAD_CHARS = {
+    'Highway': '=', 'Major Collector': '+', 'Minor Collector': '-',
+    'Local': '.', 'Path Pedestrian Only': ':', 'Path Multi-Use': ';',
+    'Fire Road': '*',
+  };
+  const DEFAULT_BUILDING_CHARS = {
     'Single Family Residence': 's', 'Commercial': 'c', 'Industrial': 'i',
     'Park Building': 'p', 'Out Building': 'o', 'Agriculture': 'a', 'Other': 'x',
   };
-  const DEFAULT_VEGETATION_FILLS = {
+  const DEFAULT_VEGETATION_CHARS = {
     'Native Forest': 'n', 'Non-native Forest & Woodland': 'w', 'Forest Sliver': 'f',
     'Shrub': 's', 'Non-native Shrub': 'u', 'Herbaceous': 'h',
     'Nursery or Ornamental Horticultural Area': 'y', 'Barren & Sparsely Vegetated': 'b',
     'Developed': 'd', 'Major Roads': 'r', 'Water': 't',
   };
 
+  function fillEntriesFromChars(charMap) {
+    const out = {};
+    Object.keys(charMap).forEach((key) => {
+      out[key] = { char: charMap[key], color: DEFAULT_FILL_COLOR };
+    });
+    return out;
+  }
+
+  function getFillChar(entry, fallback) {
+    if (entry == null) return fallback || '.';
+    if (typeof entry === 'string') return entry || fallback || '.';
+    return entry.char || fallback || '.';
+  }
+
+  function getFillColor(entry, fallback) {
+    if (entry && typeof entry === 'object' && entry.color) return entry.color;
+    return fallback || DEFAULT_FILL_COLOR;
+  }
+
+  function setFillChar(groupKey, cat, char, defaults) {
+    const prev = window.categoryFills[groupKey][cat];
+    const color = getFillColor(prev, DEFAULT_FILL_COLOR);
+    window.categoryFills[groupKey][cat] = {
+      char: char || defaults[cat] || '.',
+      color,
+    };
+  }
+
+  function setFillColor(groupKey, cat, color, defaults) {
+    const prev = window.categoryFills[groupKey][cat];
+    window.categoryFills[groupKey][cat] = {
+      char: getFillChar(prev, defaults[cat] || '.'),
+      color: color || DEFAULT_FILL_COLOR,
+    };
+  }
+
   window.categoryFills = {
-    streets: { ...DEFAULT_ROAD_FILLS },
-    buildings: { ...DEFAULT_BUILDING_FILLS },
-    vegetation: { ...DEFAULT_VEGETATION_FILLS },
+    streets: fillEntriesFromChars(DEFAULT_ROAD_CHARS),
+    buildings: fillEntriesFromChars(DEFAULT_BUILDING_CHARS),
+    vegetation: fillEntriesFromChars(DEFAULT_VEGETATION_CHARS),
+  };
+
+  window.layerColors = {
+    contours: '#dddddd',
+    outlines: '#999999',
   };
 
   function buildFillCategoryRows(containerId, categories, groupKey, defaults) {
@@ -2016,35 +2092,75 @@ function bindEvents() {
       label.className = 'fill-category-name';
       label.textContent = cat;
 
+      const controls = document.createElement('div');
+      controls.className = 'fill-category-controls';
+
       const input = document.createElement('input');
       input.type = 'text';
       input.className = 'fill-char-input';
       input.maxLength = 1;
       input.dataset.fillGroup = groupKey;
       input.dataset.fillCategory = cat;
-      input.value = window.categoryFills[groupKey][cat] || '';
+      input.value = getFillChar(window.categoryFills[groupKey][cat], defaults[cat]);
+
+      const colorInput = document.createElement('input');
+      colorInput.type = 'color';
+      colorInput.className = 'fill-color-input';
+      colorInput.dataset.fillGroup = groupKey;
+      colorInput.dataset.fillCategory = cat;
+      colorInput.value = getFillColor(window.categoryFills[groupKey][cat], DEFAULT_FILL_COLOR);
+      colorInput.setAttribute('aria-label', cat + ' color');
 
       input.addEventListener('input', () => {
         if (!isFacultyUser()) {
-          input.value = window.categoryFills[groupKey][cat] || '';
+          input.value = getFillChar(window.categoryFills[groupKey][cat], defaults[cat]);
           return;
         }
         const val = input.value.slice(0, 1);
         input.value = val;
-        window.categoryFills[groupKey][cat] = val || defaults[cat] || '.';
+        setFillChar(groupKey, cat, val, defaults);
         if (window.redraw) redraw();
         saveScoreSettings();
       });
 
+      colorInput.addEventListener('input', () => {
+        if (!isFacultyUser()) {
+          colorInput.value = getFillColor(window.categoryFills[groupKey][cat], DEFAULT_FILL_COLOR);
+          return;
+        }
+        setFillColor(groupKey, cat, colorInput.value, defaults);
+        if (window.redraw) redraw();
+        saveScoreSettings();
+      });
+
+      controls.appendChild(input);
+      controls.appendChild(colorInput);
       row.appendChild(label);
-      row.appendChild(input);
+      row.appendChild(controls);
       container.appendChild(row);
     });
   }
 
-  buildFillCategoryRows('streetsFillList', ROAD_FILL_CATEGORIES, 'streets', DEFAULT_ROAD_FILLS);
-  buildFillCategoryRows('buildingsFillList', BUILDING_FILL_CATEGORIES, 'buildings', DEFAULT_BUILDING_FILLS);
-  buildFillCategoryRows('vegetationFillList', VEGETATION_FILL_CATEGORIES, 'vegetation', DEFAULT_VEGETATION_FILLS);
+  buildFillCategoryRows('streetsFillList', ROAD_FILL_CATEGORIES, 'streets', DEFAULT_ROAD_CHARS);
+  buildFillCategoryRows('buildingsFillList', BUILDING_FILL_CATEGORIES, 'buildings', DEFAULT_BUILDING_CHARS);
+  buildFillCategoryRows('vegetationFillList', VEGETATION_FILL_CATEGORIES, 'vegetation', DEFAULT_VEGETATION_CHARS);
+
+  function bindLayerColorPicker(inputId, key) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    input.value = window.layerColors[key] || input.value;
+    input.addEventListener('input', () => {
+      if (!isFacultyUser()) {
+        input.value = window.layerColors[key];
+        return;
+      }
+      window.layerColors[key] = input.value;
+      if (window.redraw) redraw();
+      saveScoreSettings();
+    });
+  }
+  bindLayerColorPicker('colorContours', 'contours');
+  bindLayerColorPicker('colorOutlines', 'outlines');
 
   const FILL_EXPAND_GROUPS = [
     { btnId: 'expandStreets', listId: 'streetsFillList' },
@@ -2174,8 +2290,26 @@ function collectScoreSettingsPayload() {
       buildings: {},
       vegetation: {},
     })),
+    layerColors: {
+      contours: (window.layerColors && window.layerColors.contours) || '#dddddd',
+      outlines: (window.layerColors && window.layerColors.outlines) || '#999999',
+    },
     updatedAt: new Date().toISOString(),
   };
+}
+
+function normalizeIncomingFillEntry(val) {
+  if (val == null) return null;
+  if (typeof val === 'string') {
+    return { char: val || '.', color: '#1a1a1a' };
+  }
+  if (typeof val === 'object') {
+    return {
+      char: val.char || '.',
+      color: val.color || '#1a1a1a',
+    };
+  }
+  return null;
 }
 
 function applyScoreSettingsData(data) {
@@ -2193,15 +2327,19 @@ function applyScoreSettingsData(data) {
       if (!data.categoryFills[group] || typeof data.categoryFills[group] !== 'object') return;
       if (!window.categoryFills[group]) window.categoryFills[group] = {};
       Object.keys(data.categoryFills[group]).forEach((cat) => {
-        const val = data.categoryFills[group][cat];
-        if (val == null) return;
-        if (typeof val === 'string') {
-          window.categoryFills[group][cat] = val;
-        } else if (typeof val === 'object' && val.char != null) {
-          window.categoryFills[group][cat] = val;
-        }
+        const normalized = normalizeIncomingFillEntry(data.categoryFills[group][cat]);
+        if (normalized) window.categoryFills[group][cat] = normalized;
       });
     });
+  }
+  if (data.layerColors && typeof data.layerColors === 'object') {
+    if (!window.layerColors) window.layerColors = { contours: '#dddddd', outlines: '#999999' };
+    if (typeof data.layerColors.contours === 'string') {
+      window.layerColors.contours = data.layerColors.contours;
+    }
+    if (typeof data.layerColors.outlines === 'string') {
+      window.layerColors.outlines = data.layerColors.outlines;
+    }
   }
 }
 
@@ -2232,9 +2370,23 @@ function syncLayerControlsFromState() {
     const cat = input.dataset.fillCategory;
     const entry = window.categoryFills && window.categoryFills[group]
       ? window.categoryFills[group][cat]
-      : '';
+      : null;
     input.value = typeof entry === 'string' ? entry : (entry && entry.char) || '';
   });
+
+  document.querySelectorAll('.fill-color-input[data-fill-group]').forEach((input) => {
+    const group = input.dataset.fillGroup;
+    const cat = input.dataset.fillCategory;
+    const entry = window.categoryFills && window.categoryFills[group]
+      ? window.categoryFills[group][cat]
+      : null;
+    input.value = (entry && typeof entry === 'object' && entry.color) || '#1a1a1a';
+  });
+
+  const colorContours = document.getElementById('colorContours');
+  const colorOutlines = document.getElementById('colorOutlines');
+  if (colorContours && window.layerColors) colorContours.value = window.layerColors.contours || '#dddddd';
+  if (colorOutlines && window.layerColors) colorOutlines.value = window.layerColors.outlines || '#999999';
 }
 
 function applyLayerEditingGate() {
@@ -2254,9 +2406,9 @@ function applyLayerEditingGate() {
     el.disabled = !canEdit;
     el.title = canEdit ? '' : 'Only faculty can change shared layer settings';
   });
-  document.querySelectorAll('.fill-char-input').forEach((input) => {
+  document.querySelectorAll('.fill-char-input, .fill-color-input').forEach((input) => {
     input.disabled = !canEdit;
-    input.readOnly = !canEdit;
+    if (input.classList.contains('fill-char-input')) input.readOnly = !canEdit;
     input.title = canEdit ? '' : 'Only faculty can change shared layer settings';
   });
 }

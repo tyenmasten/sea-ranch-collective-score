@@ -356,7 +356,8 @@ function drawStreets(geo) {
 
 function drawContours(geo) {
   if (!state.layers.contours) return;
-  stroke('#dddddd');
+  const contourColor = (window.layerColors && window.layerColors.contours) || '#dddddd';
+  stroke(contourColor);
   strokeWeight(0.4);
   noFill();
   scoreLayers.contours.forEach((f) => {
@@ -393,7 +394,8 @@ function drawCategorizedFill(geo, features, categoryField, fillGroupKey) {
 
       noFill();
       if (window.state && state.mapView && state.mapView.showOutlines) {
-        stroke('#999999');
+        const outlineColor = (window.layerColors && window.layerColors.outlines) || '#999999';
+        stroke(outlineColor);
         strokeWeight(0.5);
       } else {
         noStroke();

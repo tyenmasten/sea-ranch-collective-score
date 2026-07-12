@@ -1,9 +1,8 @@
 // Collective Score base layer rendering in p5.js
 // Reuses prepareSiteGeoJSON, featuresNeedStatePlaneTransform, fitStatePlaneToWgs84,
 // and transformStatePlaneWithFit, all defined globally in collective-score.html's
-// inline script, which loads before this file. Also reads window.categoryFills,
-// defined in that same script, which holds the current fill character chosen
-// for each building type and vegetation type.
+// inline script, which loads before this file. Also reads window.categoryFills
+// and window.BASE_MARK_LIBRARY (markId + color per category; default vector marks).
 //
 // Modes (scoreMode):
 // - View: freely pannable/zoomable working view (notations + site layers).
@@ -17,28 +16,53 @@
 // before anything is scaled to the screen or the page, so it stays correct
 // at any zoom level or print scale.
 //
-// Buildings and vegetation are both rendered as a field of repeated
-// characters filling each shape, after Frederick Hammersley's 1969
-// line-printer "computer drawings", where tone and form came from character
-// choice and density on a fixed grid rather than from color or a flat fill.
-// Each category (building type, vegetation lifeform) can carry its own
-// character, chosen in the sidebar. Streets and contours stay as fine drawn
-// lines, since they are not enclosed shapes.
+// Buildings, vegetation, and streets are rendered as a field of repeated
+// vector marks (same geometry pipeline as lexicon notation marks), sampled
+// in rotated-feet space. View/Grid may also show building/vegetation outlines
+// and contours as reference; Sheet, Print Preview, and SVG export are marks
+// only (contours still draw when that layer is on).
 
 let scoreLayers = { streets: [], buildings: [], contours: [], vegetation: [] };
 let scoreCentroid = null;
 let scoreReady = false;
 
 const HATCH_PITCH = 7;
-const DEFAULT_CHAR = '.';
+const DEFAULT_MARK_ID = 'dot';
 
 function normalizeFillEntry(entry) {
-  if (!entry) return { char: DEFAULT_CHAR, color: '#1a1a1a' };
-  if (typeof entry === 'string') return { char: entry || DEFAULT_CHAR, color: '#1a1a1a' };
+  const legacyChar = {
+    '=': 'double-tick', '+': 'cross', '-': 'tick', '.': 'dot',
+    ':': 'diagonal-tick', ';': 'chevron', '*': 'circle',
+    's': 'tick', 'c': 'cross', 'i': 'double-tick', 'p': 'circle',
+    'o': 'dot', 'a': 'chevron', 'x': 'diagonal-tick',
+    'n': 'triangle', 'w': 'chevron', 'f': 'tick', 'u': 'diagonal-tick',
+    'h': 'circle', 'y': 'cross', 'b': 'double-tick', 'd': 'tick',
+    'r': 'diagonal-tick', 't': 'circle',
+  };
+  const known = (id) =>
+    !!(window.BASE_MARK_LIBRARY && window.BASE_MARK_LIBRARY.some((m) => m.id === id));
+  if (!entry) return { markId: DEFAULT_MARK_ID, color: '#1a1a1a' };
+  if (typeof entry === 'string') {
+    if (known(entry)) return { markId: entry, color: '#1a1a1a' };
+    return { markId: legacyChar[entry] || DEFAULT_MARK_ID, color: '#1a1a1a' };
+  }
+  let markId = DEFAULT_MARK_ID;
+  if (entry.markId && known(entry.markId)) markId = entry.markId;
+  else if (entry.char) markId = legacyChar[entry.char] || DEFAULT_MARK_ID;
   return {
-    char: entry.char || DEFAULT_CHAR,
+    markId: markId,
     color: entry.color || '#1a1a1a',
   };
+}
+
+function getBaseMarkDef(markId) {
+  const lib = window.BASE_MARK_LIBRARY || [];
+  return lib.find((m) => m.id === markId) || lib[0] || null;
+}
+
+/** True for Sheet / Print Preview — print surfaces (marks-only boundaries). */
+function isPrintSurfaceMode() {
+  return scoreMode === 'sheet' || scoreMode === 'print';
 }
 
 const ROTATION_DEG = 42;
@@ -286,6 +310,18 @@ function toRotatedFeet(lng, lat) {
   const rx = dx * Math.cos(rad) - dy * Math.sin(rad);
   const ry = dx * Math.sin(rad) + dy * Math.cos(rad);
   return { rx, ry };
+}
+
+function fromRotatedFeet(rx, ry) {
+  const rad = -ROTATION_DEG * Math.PI / 180;
+  const dx = rx * Math.cos(rad) + ry * Math.sin(rad);
+  const dy = -rx * Math.sin(rad) + ry * Math.cos(rad);
+  const midLatRad = scoreCentroid.lat * Math.PI / 180;
+  const ftPerDegLng = FT_PER_DEG_LAT * Math.cos(midLatRad);
+  return {
+    lng: scoreCentroid.lng + dx / ftPerDegLng,
+    lat: scoreCentroid.lat + dy / FT_PER_DEG_LAT,
+  };
 }
 
 function currentScaleDenominator() {
@@ -748,66 +784,192 @@ function drawPageFrame(geo) {
 }
 
 
-function nearestOffsetGridPoint(x, y, offset) {
-  const gx = Math.round((x - offset) / HATCH_PITCH) * HATCH_PITCH + offset;
-  const gy = Math.round((y - offset) / HATCH_PITCH) * HATCH_PITCH + offset;
+function nearestOffsetGridPoint(x, y, pitch, offset) {
+  const gx = Math.round((x - offset) / pitch) * pitch + offset;
+  const gy = Math.round((y - offset) / pitch) * pitch + offset;
   return { gx, gy };
 }
 
+/** Pitch in feet so page density ≈ former HATCH_PITCH screen spacing. */
+function texturePitchFt(geo) {
+  return HATCH_PITCH / Math.max(geo.pxPerFt, 1e-9);
+}
+
+/** Field px → feet scale so marks read ~same size as old character stamps. */
+function baseLayerFtPerFieldPx(geo) {
+  const desiredFt = (HATCH_PITCH * 0.85) / Math.max(geo.pxPerFt, 1e-9);
+  return desiredFt / 30;
+}
+
+function stampInClip(geo, lng, lat) {
+  if (geo.clipMinX == null) return true;
+  const p = project(lng, lat, geo);
+  const pad = HATCH_PITCH * 2;
+  return p.x >= geo.clipMinX - pad && p.x <= geo.clipMaxX + pad &&
+    p.y >= geo.clipMinY - pad && p.y <= geo.clipMaxY + pad;
+}
+
+function ringToRotatedFeet(ring) {
+  return ring.map(([lng, lat]) => {
+    const { rx, ry } = toRotatedFeet(lng, lat);
+    return { x: rx, y: ry };
+  });
+}
+
 /**
- * Shared street character-stamp positions (same grid/char logic as on-screen).
- * callback(ch, gx, gy, color) — gx/gy are in the same space as geo (screen px or export).
+ * Shared base-layer stamp positions in rotated-feet space.
+ * callback(markDef, color, lng, lat) — same path for screen draw and SVG export.
  */
-function forEachStreetStamp(geo, callback) {
+function forEachStreetMarkStamp(geo, features, callback) {
   if (!state.layers.streets) return;
-  const offset = HATCH_PITCH / 2;
-  const stepPx = HATCH_PITCH * 0.5;
+  const pitch = texturePitchFt(geo);
+  const offset = pitch / 2;
+  const stepFt = pitch * 0.5;
   const drawnPoints = new Set();
   const roadFills = (window.categoryFills && window.categoryFills.streets) || {};
-  const maxX = (geo.clipMaxX != null) ? geo.clipMaxX : width;
-  const maxY = (geo.clipMaxY != null) ? geo.clipMaxY : height;
-  const minX = (geo.clipMinX != null) ? geo.clipMinX : 0;
-  const minY = (geo.clipMinY != null) ? geo.clipMinY : 0;
+  const list = features || scoreLayers.streets;
 
-  scoreLayers.streets.forEach((f) => {
+  list.forEach((f) => {
     if (!f.geometry) return;
     const category = (f.properties && f.properties.Class) || 'Local';
-    const { char: ch, color } = normalizeFillEntry(roadFills[category]);
+    const { markId, color } = normalizeFillEntry(roadFills[category]);
+    const markDef = getBaseMarkDef(markId);
+    if (!markDef) return;
     const lines = f.geometry.type === 'MultiLineString'
       ? f.geometry.coordinates
       : [f.geometry.coordinates];
     lines.forEach((line) => {
-      const pts = ringToScreen(line, geo);
+      const pts = ringToRotatedFeet(line);
       for (let i = 0; i < pts.length - 1; i++) {
         const x1 = pts[i].x, y1 = pts[i].y, x2 = pts[i + 1].x, y2 = pts[i + 1].y;
         const segLen = Math.hypot(x2 - x1, y2 - y1);
-        const steps = Math.max(1, Math.ceil(segLen / stepPx));
+        const steps = Math.max(1, Math.ceil(segLen / stepFt));
         for (let s = 0; s <= steps; s++) {
           const t = s / steps;
           const x = x1 + (x2 - x1) * t;
           const y = y1 + (y2 - y1) * t;
-          if (x < minX - HATCH_PITCH || x > maxX + HATCH_PITCH ||
-              y < minY - HATCH_PITCH || y > maxY + HATCH_PITCH) continue;
-          const { gx, gy } = nearestOffsetGridPoint(x, y, offset);
-          const key = gx + ',' + gy;
-          if (!drawnPoints.has(key)) {
-            drawnPoints.add(key);
-            callback(ch, gx, gy, color);
-          }
+          const { gx, gy } = nearestOffsetGridPoint(x, y, pitch, offset);
+          const key = gx.toFixed(3) + ',' + gy.toFixed(3);
+          if (drawnPoints.has(key)) continue;
+          drawnPoints.add(key);
+          const { lng, lat } = fromRotatedFeet(gx, gy);
+          if (!stampInClip(geo, lng, lat)) continue;
+          callback(markDef, color, lng, lat);
         }
       }
     });
   });
 }
 
-function drawStreets(geo) {
-  if (!state.layers.streets) return;
-  noStroke();
-  textSize(HATCH_PITCH * 0.9);
-  forEachStreetStamp(geo, (ch, gx, gy, color) => {
-    fill(color);
-    text(ch, gx, gy);
+function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey, callback, outlineCallback) {
+  const fills = (window.categoryFills && window.categoryFills[fillGroupKey]) || {};
+  const pitch = texturePitchFt(geo);
+  const list = features || [];
+
+  list.forEach((f) => {
+    if (!f.geometry) return;
+    const polys = f.geometry.type === 'MultiPolygon'
+      ? f.geometry.coordinates
+      : [f.geometry.coordinates];
+
+    const category = (f.properties && f.properties[categoryField]) || 'Other';
+    const { markId, color } = normalizeFillEntry(fills[category]);
+    const markDef = getBaseMarkDef(markId);
+    if (!markDef) return;
+
+    polys.forEach((poly) => {
+      const outerFt = ringToRotatedFeet(poly[0]);
+      if (outlineCallback) outlineCallback(ringToScreen(poly[0], geo));
+
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      outerFt.forEach((p) => {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      });
+
+      if (maxX - minX < pitch && maxY - minY < pitch) {
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        const { lng, lat } = fromRotatedFeet(cx, cy);
+        if (stampInClip(geo, lng, lat)) callback(markDef, color, lng, lat);
+        return;
+      }
+
+      const gridStartX = Math.floor(minX / pitch) * pitch;
+      const gridStartY = Math.floor(minY / pitch) * pitch;
+      for (let gy = gridStartY; gy <= maxY; gy += pitch) {
+        for (let gx = gridStartX; gx <= maxX; gx += pitch) {
+          if (!pointInPolygon(gx, gy, outerFt)) continue;
+          const { lng, lat } = fromRotatedFeet(gx, gy);
+          if (!stampInClip(geo, lng, lat)) continue;
+          callback(markDef, color, lng, lat);
+        }
+      }
+    });
   });
+}
+
+/**
+ * Iterate every base-layer stamp (streets + buildings + vegetation).
+ * Shared by drawBaseLayerMarks and appendBaseLayerMarksSvg — one placement path.
+ */
+function forEachBaseLayerStamp(geo, callback, options) {
+  const opts = options || {};
+  const streets = opts.streets != null ? opts.streets : scoreLayers.streets;
+  const buildings = opts.buildings != null ? opts.buildings : scoreLayers.buildings;
+  const vegetation = opts.vegetation != null ? opts.vegetation : scoreLayers.vegetation;
+  const drawOutlines = !!opts.drawOutlines;
+
+  function outlineDrawer(outerRing) {
+    noFill();
+    if (window.state && state.mapView && state.mapView.showOutlines) {
+      const outlineColor = (window.layerColors && window.layerColors.outlines) || '#999999';
+      stroke(outlineColor);
+      strokeWeight(0.5);
+    } else {
+      noStroke();
+    }
+    beginShape();
+    outerRing.forEach((p) => vertex(p.x, p.y));
+    endShape(CLOSE);
+  }
+
+  // Match prior paint order: vegetation, streets, buildings.
+  if (state.layers.vegetation) {
+    forEachCategorizedMarkStamp(
+      geo, vegetation, 'LIFEFORM', 'vegetation', callback,
+      drawOutlines ? outlineDrawer : null
+    );
+  }
+
+  if (state.layers.streets) {
+    forEachStreetMarkStamp(geo, streets, callback);
+  }
+
+  if (state.layers.buildings) {
+    forEachCategorizedMarkStamp(
+      geo, buildings, 'PropType', 'buildings', callback,
+      drawOutlines ? outlineDrawer : null
+    );
+  }
+}
+
+function drawBaseLayerMarkAt(markDef, color, lng, lat, geo) {
+  if (!markDef || !Array.isArray(markDef.marks)) return;
+  const ftPerPx = baseLayerFtPerFieldPx(geo);
+  markDef.marks.forEach((m) => {
+    const colored = Object.assign({}, m, { color: color || m.color || '#1a1a1a' });
+    drawSketchMark(colored, lng, lat, ftPerPx, geo);
+  });
+}
+
+function drawBaseLayerMarks(geo) {
+  const drawOutlines = !isPrintSurfaceMode();
+  forEachBaseLayerStamp(geo, (markDef, color, lng, lat) => {
+    drawBaseLayerMarkAt(markDef, color, lng, lat, geo);
+  }, { drawOutlines: drawOutlines });
 }
 
 function drawContours(geo) {
@@ -828,99 +990,6 @@ function drawContours(geo) {
       endShape();
     });
   });
-}
-
-/**
- * Shared building/vegetation character-stamp positions (same as on-screen).
- * callback(ch, gx, gy, color) after optional outlineCallback(outerRing).
- */
-function forEachCategorizedFillStamp(geo, features, categoryField, fillGroupKey, callback, outlineCallback) {
-  const fills = (window.categoryFills && window.categoryFills[fillGroupKey]) || {};
-  const maxXBound = (geo.clipMaxX != null) ? geo.clipMaxX : width;
-  const maxYBound = (geo.clipMaxY != null) ? geo.clipMaxY : height;
-  const minXBound = (geo.clipMinX != null) ? geo.clipMinX : 0;
-  const minYBound = (geo.clipMinY != null) ? geo.clipMinY : 0;
-
-  features.forEach((f) => {
-    if (!f.geometry) return;
-    const polys = f.geometry.type === 'MultiPolygon'
-      ? f.geometry.coordinates
-      : [f.geometry.coordinates];
-
-    const category = (f.properties && f.properties[categoryField]) || 'Other';
-    const { char: ch, color } = normalizeFillEntry(fills[category]);
-
-    polys.forEach((poly) => {
-      const outerRing = ringToScreen(poly[0], geo);
-      if (outlineCallback) outlineCallback(outerRing);
-
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      outerRing.forEach((p) => {
-        if (p.x < minX) minX = p.x;
-        if (p.x > maxX) maxX = p.x;
-        if (p.y < minY) minY = p.y;
-        if (p.y > maxY) maxY = p.y;
-      });
-
-      if (maxX < minXBound || minX > maxXBound || maxY < minYBound || minY > maxYBound) return;
-
-      if (maxX - minX < HATCH_PITCH && maxY - minY < HATCH_PITCH) {
-        callback(ch, (minX + maxX) / 2, (minY + maxY) / 2, color);
-        return;
-      }
-
-      const gridStartX = Math.floor(minX / HATCH_PITCH) * HATCH_PITCH;
-      const gridStartY = Math.floor(minY / HATCH_PITCH) * HATCH_PITCH;
-      for (let gy = gridStartY; gy <= maxY; gy += HATCH_PITCH) {
-        for (let gx = gridStartX; gx <= maxX; gx += HATCH_PITCH) {
-          if (pointInPolygon(gx, gy, outerRing)) {
-            callback(ch, gx, gy, color);
-          }
-        }
-      }
-    });
-  });
-}
-
-// Shared by drawBuildings and drawVegetation, since both are now categorized
-// character fills, just reading a different property and a different
-// character map.
-function drawCategorizedFill(geo, features, categoryField, fillGroupKey) {
-  forEachCategorizedFillStamp(
-    geo,
-    features,
-    categoryField,
-    fillGroupKey,
-    (ch, gx, gy, color) => {
-      noStroke();
-      fill(color);
-      textSize(HATCH_PITCH * 0.9);
-      text(ch, gx, gy);
-    },
-    (outerRing) => {
-      noFill();
-      if (window.state && state.mapView && state.mapView.showOutlines) {
-        const outlineColor = (window.layerColors && window.layerColors.outlines) || '#999999';
-        stroke(outlineColor);
-        strokeWeight(0.5);
-      } else {
-        noStroke();
-      }
-      beginShape();
-      outerRing.forEach((p) => vertex(p.x, p.y));
-      endShape(CLOSE);
-    }
-  );
-}
-
-function drawBuildings(geo) {
-  if (!state.layers.buildings) return;
-  drawCategorizedFill(geo, scoreLayers.buildings, 'PropType', 'buildings');
-}
-
-function drawVegetation(geo) {
-  if (!state.layers.vegetation) return;
-  drawCategorizedFill(geo, scoreLayers.vegetation, 'LIFEFORM', 'vegetation');
 }
 
 // --- Observation lexicon marks (native p5, same feet → rotate → project pipeline) ---
@@ -1550,13 +1619,14 @@ function draw() {
   }
 
   drawContours(geo);
-  drawVegetation(geo);
-  drawStreets(geo);
-  drawBuildings(geo);
+  drawBaseLayerMarks(geo);
   drawNotations(geo);
 
   if (pageModes) {
-    if (scoreMode === 'sheet') drawPrintOverlapGuides(geo);
+    if (scoreMode === 'sheet') {
+      drawPrintOverlapGuides(geo);
+      drawSheetCaption(geo);
+    }
     drawingContext.restore();
   } else if (scoreMode === 'grid' && isAtlasScale()) {
     drawAtlasOverlay(geo);
@@ -1683,7 +1753,7 @@ function projectLngLatToPageInches(lng, lat, geo) {
   return screenToPageInches(geo, s.x, s.y);
 }
 
-/** Same pipeline as character stamps: ringToScreen(geo) → screenToPageInches. */
+/** Same pipeline as site features: ringToScreen(geo) → screenToPageInches. */
 function ringLngLatToPageInches(ring, geo) {
   return ringToScreen(ring, geo).map((p) => screenToPageInches(geo, p.x, p.y));
 }
@@ -1902,51 +1972,56 @@ function appendGeoPolygonOutlines(features, geo, outOutlines) {
   });
 }
 
-/** Hershey Roman Simplex (futural) — typical glyph y spans ~1..22. */
-const HERSHEY_EM = 21;
-const HERSHEY_BASELINE = 11.5;
+/** Built-in monoline caption glyphs (unit em height 1). A–Z, 0–9, colon, middle dot, space. */
+const CAPTION_GLYPHS = {
+  ' ': { w: 0.45, strokes: [] },
+  ':': { w: 0.35, strokes: [[[0.15, 0.25]], [[0.15, 0.7]]] },
+  '·': { w: 0.4, strokes: [[[0.18, 0.5]]] },
+  '•': { w: 0.4, strokes: [[[0.18, 0.5]]] },
+  '-': { w: 0.5, strokes: [[[0.08, 0.5], [0.42, 0.5]]] },
+  '0': { w: 0.7, strokes: [[[0.15, 0.15], [0.5, 0.15], [0.55, 0.3], [0.55, 0.7], [0.5, 0.85], [0.15, 0.85], [0.1, 0.7], [0.1, 0.3], [0.15, 0.15]]] },
+  '1': { w: 0.5, strokes: [[[0.15, 0.3], [0.3, 0.15], [0.3, 0.85]]] },
+  '2': { w: 0.7, strokes: [[[0.1, 0.3], [0.15, 0.15], [0.5, 0.15], [0.55, 0.3], [0.1, 0.85], [0.55, 0.85]]] },
+  '3': { w: 0.7, strokes: [[[0.1, 0.2], [0.45, 0.15], [0.55, 0.3], [0.35, 0.5], [0.55, 0.7], [0.45, 0.85], [0.1, 0.8]]] },
+  '4': { w: 0.7, strokes: [[[0.45, 0.85], [0.45, 0.15], [0.1, 0.6], [0.55, 0.6]]] },
+  '5': { w: 0.7, strokes: [[[0.55, 0.15], [0.15, 0.15], [0.1, 0.45], [0.45, 0.45], [0.55, 0.6], [0.5, 0.85], [0.15, 0.85], [0.1, 0.7]]] },
+  '6': { w: 0.7, strokes: [[[0.5, 0.2], [0.2, 0.15], [0.1, 0.4], [0.1, 0.7], [0.2, 0.85], [0.5, 0.85], [0.55, 0.65], [0.5, 0.5], [0.15, 0.5]]] },
+  '7': { w: 0.7, strokes: [[[0.1, 0.15], [0.55, 0.15], [0.25, 0.85]]] },
+  '8': { w: 0.7, strokes: [[[0.2, 0.5], [0.15, 0.3], [0.25, 0.15], [0.45, 0.15], [0.55, 0.3], [0.5, 0.5], [0.2, 0.5], [0.1, 0.7], [0.2, 0.85], [0.5, 0.85], [0.55, 0.7], [0.5, 0.5]]] },
+  '9': { w: 0.7, strokes: [[[0.15, 0.8], [0.45, 0.85], [0.55, 0.6], [0.55, 0.3], [0.45, 0.15], [0.15, 0.15], [0.1, 0.35], [0.15, 0.5], [0.5, 0.5]]] },
+  'A': { w: 0.75, strokes: [[[0.1, 0.85], [0.35, 0.15], [0.6, 0.85]], [[0.2, 0.55], [0.5, 0.55]]] },
+  'B': { w: 0.7, strokes: [[[0.1, 0.15], [0.1, 0.85], [0.4, 0.85], [0.55, 0.7], [0.4, 0.5], [0.1, 0.5]], [[0.1, 0.5], [0.4, 0.5], [0.55, 0.35], [0.4, 0.15], [0.1, 0.15]]] },
+  'C': { w: 0.7, strokes: [[[0.55, 0.25], [0.4, 0.15], [0.2, 0.15], [0.1, 0.3], [0.1, 0.7], [0.2, 0.85], [0.4, 0.85], [0.55, 0.75]]] },
+  'D': { w: 0.75, strokes: [[[0.1, 0.15], [0.1, 0.85], [0.4, 0.85], [0.6, 0.65], [0.6, 0.35], [0.4, 0.15], [0.1, 0.15]]] },
+  'E': { w: 0.65, strokes: [[[0.55, 0.15], [0.1, 0.15], [0.1, 0.85], [0.55, 0.85]], [[0.1, 0.5], [0.45, 0.5]]] },
+  'F': { w: 0.65, strokes: [[[0.55, 0.15], [0.1, 0.15], [0.1, 0.85]], [[0.1, 0.5], [0.45, 0.5]]] },
+  'G': { w: 0.75, strokes: [[[0.55, 0.25], [0.4, 0.15], [0.2, 0.15], [0.1, 0.3], [0.1, 0.7], [0.2, 0.85], [0.45, 0.85], [0.6, 0.7], [0.6, 0.5], [0.35, 0.5]]] },
+  'H': { w: 0.75, strokes: [[[0.1, 0.15], [0.1, 0.85]], [[0.6, 0.15], [0.6, 0.85]], [[0.1, 0.5], [0.6, 0.5]]] },
+  'I': { w: 0.4, strokes: [[[0.2, 0.15], [0.2, 0.85]]] },
+  'J': { w: 0.6, strokes: [[[0.45, 0.15], [0.45, 0.7], [0.35, 0.85], [0.15, 0.85], [0.1, 0.7]]] },
+  'K': { w: 0.7, strokes: [[[0.1, 0.15], [0.1, 0.85]], [[0.55, 0.15], [0.1, 0.5], [0.55, 0.85]]] },
+  'L': { w: 0.6, strokes: [[[0.1, 0.15], [0.1, 0.85], [0.5, 0.85]]] },
+  'M': { w: 0.85, strokes: [[[0.1, 0.85], [0.1, 0.15], [0.4, 0.55], [0.7, 0.15], [0.7, 0.85]]] },
+  'N': { w: 0.75, strokes: [[[0.1, 0.85], [0.1, 0.15], [0.6, 0.85], [0.6, 0.15]]] },
+  'O': { w: 0.75, strokes: [[[0.2, 0.15], [0.5, 0.15], [0.6, 0.35], [0.6, 0.65], [0.5, 0.85], [0.2, 0.85], [0.1, 0.65], [0.1, 0.35], [0.2, 0.15]]] },
+  'P': { w: 0.65, strokes: [[[0.1, 0.85], [0.1, 0.15], [0.4, 0.15], [0.55, 0.3], [0.4, 0.5], [0.1, 0.5]]] },
+  'Q': { w: 0.75, strokes: [[[0.2, 0.15], [0.5, 0.15], [0.6, 0.35], [0.6, 0.65], [0.5, 0.85], [0.2, 0.85], [0.1, 0.65], [0.1, 0.35], [0.2, 0.15]], [[0.4, 0.6], [0.65, 0.9]]] },
+  'R': { w: 0.7, strokes: [[[0.1, 0.85], [0.1, 0.15], [0.4, 0.15], [0.55, 0.3], [0.4, 0.5], [0.1, 0.5]], [[0.3, 0.5], [0.55, 0.85]]] },
+  'S': { w: 0.65, strokes: [[[0.55, 0.25], [0.4, 0.15], [0.2, 0.15], [0.1, 0.3], [0.2, 0.45], [0.45, 0.55], [0.55, 0.7], [0.4, 0.85], [0.15, 0.85], [0.1, 0.7]]] },
+  'T': { w: 0.7, strokes: [[[0.1, 0.15], [0.6, 0.15]], [[0.35, 0.15], [0.35, 0.85]]] },
+  'U': { w: 0.75, strokes: [[[0.1, 0.15], [0.1, 0.65], [0.2, 0.85], [0.5, 0.85], [0.6, 0.65], [0.6, 0.15]]] },
+  'V': { w: 0.75, strokes: [[[0.1, 0.15], [0.35, 0.85], [0.6, 0.15]]] },
+  'W': { w: 0.9, strokes: [[[0.1, 0.15], [0.25, 0.85], [0.45, 0.4], [0.65, 0.85], [0.8, 0.15]]] },
+  'X': { w: 0.7, strokes: [[[0.1, 0.15], [0.6, 0.85]], [[0.6, 0.15], [0.1, 0.85]]] },
+  'Y': { w: 0.7, strokes: [[[0.1, 0.15], [0.35, 0.5], [0.6, 0.15]], [[0.35, 0.5], [0.35, 0.85]]] },
+  'Z': { w: 0.7, strokes: [[[0.1, 0.15], [0.6, 0.15], [0.1, 0.85], [0.6, 0.85]]] },
+};
 
-function getHersheyGlyph(ch) {
-  const pack = window.HERSHEY_SIMPLEX;
-  if (!pack || !pack.glyphs) return null;
-  if (pack.glyphs[ch]) return pack.glyphs[ch];
-  if (ch === '·' || ch === '•') return pack.glyphs['.'] || null;
-  return pack.glyphs['.'] || null;
-}
-
-/**
- * Parse Hershey SVG path `d` (M/L only, with multi-pair L runs) into polylines.
- */
-function parseHersheyPathD(d) {
-  if (!d) return [];
-  const strokes = [];
-  let current = null;
-  const tokens = d.replace(/,/g, ' ').trim().split(/\s+/);
-  let i = 0;
-  let cmd = null;
-  while (i < tokens.length) {
-    const t = tokens[i];
-    if (t === 'M' || t === 'L') {
-      cmd = t;
-      i += 1;
-      continue;
-    }
-    const x = Number(t);
-    const y = Number(tokens[i + 1]);
-    i += 2;
-    if (!isFinite(x) || !isFinite(y) || !cmd) continue;
-    if (cmd === 'M') {
-      current = [{ x: x, y: y }];
-      strokes.push(current);
-      cmd = 'L';
-    } else if (!current) {
-      current = [{ x: x, y: y }];
-      strokes.push(current);
-    } else {
-      current.push({ x: x, y: y });
-    }
-  }
-  return strokes.filter((s) => s.length > 0);
+function getCaptionGlyph(ch) {
+  if (CAPTION_GLYPHS[ch]) return CAPTION_GLYPHS[ch];
+  const up = ch.toUpperCase();
+  if (CAPTION_GLYPHS[up]) return CAPTION_GLYPHS[up];
+  return CAPTION_GLYPHS[' '] || { w: 0.4, strokes: [] };
 }
 
 function polylineToPathD(pts) {
@@ -1958,118 +2033,225 @@ function polylineToPathD(pts) {
   return d;
 }
 
-/**
- * Emit a single Hershey glyph as SVG path(s), centered at page inches (cx, cy).
- * heightIn matches on-screen stamp size (HATCH_PITCH*0.9 / pxPerInch).
- */
-function hersheyGlyphPathsAt(ch, cx, cy, heightIn, color) {
-  const glyph = getHersheyGlyph(ch);
-  if (!glyph) return [];
-  const scale = heightIn / HERSHEY_EM;
-  const width = glyph.o != null ? Number(glyph.o) : 10;
-  const ox = width / 2;
-  const oy = HERSHEY_BASELINE;
-  const strokes = parseHersheyPathD(glyph.d || '');
-  const out = [];
-  strokes.forEach((stroke) => {
-    const pts = stroke.map((p) => ({
-      x: cx + (p.x - ox) * scale,
-      y: cy + (p.y - oy) * scale,
-    }));
-    const d = polylineToPathD(pts);
-    if (d) {
-      out.push(svgEl('path', {
-        d: d,
-        fill: 'none',
-        stroke: color || '#1a1a1a',
-        'stroke-width': svgNum(Math.max(heightIn * 0.08, 0.006)),
-        'stroke-linecap': 'round',
-        'stroke-linejoin': 'round',
-      }));
-    }
-  });
-  return out;
-}
-
-/** Render a Hershey string left-to-right; (startX,startY) is left/center of first glyph. */
-function hersheyStringPathsAt(str, startX, startY, heightIn, color) {
-  const scale = heightIn / HERSHEY_EM;
+/** Emit caption string as stroked paths; (startX,startY) is left / vertical center. */
+function captionStringPathsAt(str, startX, startY, heightIn, color) {
   let x = startX;
   const out = [];
+  const strokeW = Math.max(heightIn * 0.08, 0.006);
   for (let i = 0; i < str.length; i++) {
-    let ch = str.charAt(i);
-    if (ch === '·' || ch === '•') ch = '.';
-    const glyph = getHersheyGlyph(ch);
-    if (!glyph) continue;
-    const width = glyph.o != null ? Number(glyph.o) : 10;
-    const glyphPaths = hersheyGlyphPathsAt(ch, x + (width * scale) / 2, startY, heightIn, color);
-    for (let j = 0; j < glyphPaths.length; j++) out.push(glyphPaths[j]);
-    x += width * scale * 1.05;
+    const glyph = getCaptionGlyph(str.charAt(i));
+    const w = (glyph.w || 0.5) * heightIn;
+    (glyph.strokes || []).forEach((stroke) => {
+      if (!stroke.length) return;
+      const pts = stroke.map((p) => ({
+        x: x + p[0] * heightIn,
+        y: startY + (p[1] - 0.5) * heightIn,
+      }));
+      if (pts.length === 1) {
+        const r = Math.max(heightIn * 0.04, 0.004);
+        out.push(svgEl('circle', {
+          cx: svgNum(pts[0].x), cy: svgNum(pts[0].y), r: svgNum(r),
+          fill: color || '#1a1a1a', stroke: 'none',
+        }));
+        return;
+      }
+      const d = polylineToPathD(pts);
+      if (d) {
+        out.push(svgEl('path', {
+          d: d,
+          fill: 'none',
+          stroke: color || '#1a1a1a',
+          'stroke-width': svgNum(strokeW),
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+        }));
+      }
+    });
+    x += w * 1.08;
   }
   return out;
 }
 
-function svgStampText(ch, pageX, pageY, color, fontIn) {
-  // Emits Hershey vector paths (not <text>) so plotter SVGs need no custom fonts.
-  return hersheyGlyphPathsAt(ch, pageX, pageY, fontIn, color).join('');
+function sheetCaptionText(sheet, scaleDenom) {
+  return 'SHEET ' + sheet.label + ' · 1:' + scaleDenom;
 }
 
-/** Emit site texture as Hershey paths using the same stamp collectors as on-screen. */
-function appendSiteStampTexts(geo, plotParts) {
-  const fontIn = (HATCH_PITCH * 0.9) / geo.pxPerInch;
-
-  if (state.layers.streets && scoreLayers.streets.length) {
-    const streetParts = [];
-    forEachStreetStamp(geo, (ch, gx, gy, color) => {
-      const p = screenToPageInches(geo, gx, gy);
-      streetParts.push(svgStampText(ch, p.x, p.y, color, fontIn));
+function drawSheetCaption(geo) {
+  const sheet = getSelectedSheet();
+  if (!sheet || !geo.pxPerInch) return;
+  const caption = sheetCaptionText(sheet, geo.scaleDenom);
+  const heightPx = 0.22 * geo.pxPerInch;
+  let x = geo.pageX + 0.35 * geo.pxPerInch;
+  const startY = geo.pageY + 0.45 * geo.pxPerInch;
+  stroke('#1a1a1a');
+  strokeWeight(Math.max(heightPx * 0.08, 0.8));
+  strokeCap(ROUND);
+  strokeJoin(ROUND);
+  noFill();
+  for (let i = 0; i < caption.length; i++) {
+    const glyph = getCaptionGlyph(caption.charAt(i));
+    const w = (glyph.w || 0.5) * heightPx;
+    (glyph.strokes || []).forEach((stroke) => {
+      if (!stroke.length) return;
+      const pts = stroke.map((p) => ({
+        x: x + p[0] * heightPx,
+        y: startY + (p[1] - 0.5) * heightPx,
+      }));
+      if (pts.length === 1) {
+        noStroke();
+        fill('#1a1a1a');
+        circle(pts[0].x, pts[0].y, Math.max(heightPx * 0.08, 1.2));
+        noFill();
+        stroke('#1a1a1a');
+        strokeWeight(Math.max(heightPx * 0.08, 0.8));
+        return;
+      }
+      beginShape();
+      pts.forEach((p) => vertex(p.x, p.y));
+      endShape();
     });
-    if (streetParts.length) {
-      plotParts.push('<g id="streets-texture">');
-      plotParts.push(streetParts.join(''));
-      plotParts.push('</g>');
-    }
-  }
-
-  if (state.layers.buildings && scoreLayers.buildings.length) {
-    const buildingParts = [];
-    forEachCategorizedFillStamp(
-      geo, scoreLayers.buildings, 'PropType', 'buildings',
-      (ch, gx, gy, color) => {
-        const p = screenToPageInches(geo, gx, gy);
-        buildingParts.push(svgStampText(ch, p.x, p.y, color, fontIn));
-      }
-    );
-    if (buildingParts.length) {
-      plotParts.push('<g id="buildings-texture">');
-      plotParts.push(buildingParts.join(''));
-      plotParts.push('</g>');
-    }
-  }
-
-  if (state.layers.vegetation && scoreLayers.vegetation.length) {
-    const vegParts = [];
-    forEachCategorizedFillStamp(
-      geo, scoreLayers.vegetation, 'LIFEFORM', 'vegetation',
-      (ch, gx, gy, color) => {
-        const p = screenToPageInches(geo, gx, gy);
-        vegParts.push(svgStampText(ch, p.x, p.y, color, fontIn));
-      }
-    );
-    if (vegParts.length) {
-      plotParts.push('<g id="vegetation-texture">');
-      plotParts.push(vegParts.join(''));
-      plotParts.push('</g>');
-    }
+    x += w * 1.08;
   }
 }
 
-function appendNotationMarksSvg(geo, defs, plotParts, sheet, bufferFt) {
+/**
+ * Emit one sketch mark as SVG fragments (shared by notations + base-layer texture).
+ * clipState = { seq: number } mutated when hatch clipPaths are added to defs.
+ */
+function emitSketchMarkSvg(m, lng, lat, ftPerPx, geo, defs, clipState) {
+  if (!m || !m.geom) return [];
+  const inchesPerFt = 12 / geo.scaleDenom;
+  const g = m.geom;
+  const pivot = markLocalCenter(m);
+  const rot = m.rot || 0;
+  const color = m.color || '#1a1a1a';
+  const weightIn = Math.max((m.weight || 1) * ftPerPx * inchesPerFt * EXPORT_MARK_STROKE_SCALE, 0.006);
+  const hatchStep = MARK_HATCH_LINE_STEP * ftPerPx * inchesPerFt;
+  const out = [];
+
+  const toPage = (fx, fy) => {
+    const r = rotateFieldPt({ x: fx, y: fy }, pivot, rot);
+    return fieldPointToPageInches(r.x, r.y, lng, lat, ftPerPx, geo);
+  };
+
+  if (m.type === 'dot') {
+    const c = toPage(g.cx, g.cy);
+    const edge = toPage(g.cx + g.r, g.cy);
+    const rPx = Math.hypot(edge.x - c.x, edge.y - c.y);
+    if (m.fill === 'solid' || m.stroke === false) {
+      out.push(svgEl('circle', {
+        cx: svgNum(c.x), cy: svgNum(c.y), r: svgNum(rPx),
+        fill: color, stroke: 'none',
+      }));
+    } else {
+      out.push(svgEl('circle', {
+        cx: svgNum(c.x), cy: svgNum(c.y), r: svgNum(rPx),
+        fill: 'none', stroke: color, 'stroke-width': svgNum(weightIn),
+      }));
+    }
+    return out;
+  }
+
+  if (m.type === 'line') {
+    if (m.stroke === false) return out;
+    const a = toPage(g.x1, g.y1);
+    const b = toPage(g.x2, g.y2);
+    out.push(svgEl('line', {
+      x1: svgNum(a.x), y1: svgNum(a.y),
+      x2: svgNum(b.x), y2: svgNum(b.y),
+      stroke: color, 'stroke-width': svgNum(weightIn),
+      'stroke-linecap': 'round',
+    }));
+    return out;
+  }
+
+  if (m.type === 'semicircle') {
+    if (m.stroke === false) return out;
+    const samples = [];
+    const a = semiArcAngles(g.orient);
+    const steps = 32;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      let ang;
+      if (a.ccw) {
+        let delta = a.end - a.start;
+        if (delta > 0) delta -= Math.PI * 2;
+        ang = a.start + delta * t;
+      } else {
+        let delta = a.end - a.start;
+        if (delta < 0) delta += Math.PI * 2;
+        ang = a.start + delta * t;
+      }
+      samples.push(toPage(g.cx + g.r * Math.cos(ang), g.cy + g.r * Math.sin(ang)));
+    }
+    const d = svgPathFromPts(samples, false);
+    if (d) {
+      out.push(svgEl('path', {
+        d: d, fill: 'none', stroke: color, 'stroke-width': svgNum(weightIn),
+        'stroke-linecap': 'round',
+      }));
+    }
+    return out;
+  }
+
+  let pagePts = null;
+  if (m.type === 'circle') {
+    const samples = [];
+    for (let i = 0; i <= 48; i++) {
+      const t = (i / 48) * Math.PI * 2;
+      samples.push({ x: g.cx + g.r * Math.cos(t), y: g.cy + g.r * Math.sin(t) });
+    }
+    pagePts = mapFieldPtsToPageInches(samples, lng, lat, ftPerPx, geo, pivot, rot);
+  } else if (Array.isArray(g.pts) && g.pts.length) {
+    pagePts = mapFieldPtsToPageInches(g.pts, lng, lat, ftPerPx, geo, pivot, rot);
+  }
+  if (!pagePts || !pagePts.length) return out;
+
+  const outlineD = svgPathFromPts(pagePts, true);
+  if (m.fill && m.fill !== 'none' && m.fill !== 'solid') {
+    clipState.seq += 1;
+    const clipId = 'mark-clip-' + clipState.seq;
+    defs.push(
+      '<clipPath id="' + clipId + '">' +
+      svgEl('path', { d: outlineD }) +
+      '</clipPath>'
+    );
+    out.push(svgMarkHatchParts(pagePts, m.fill, hatchStep, clipId));
+  }
+  if (outlineD && (m.stroke !== false || m.fill === 'solid')) {
+    out.push(svgEl('path', {
+      d: outlineD, fill: 'none', stroke: color, 'stroke-width': svgNum(weightIn),
+    }));
+  }
+  return out;
+}
+
+/** Base-layer texture: same forEachBaseLayerStamp + emitSketchMarkSvg as Sheet preview. */
+function appendBaseLayerMarksSvg(geo, defs, plotParts, layerOpts, clipState) {
+  const ftPerPx = baseLayerFtPerFieldPx(geo);
+  const clips = clipState || { seq: 0 };
+  const parts = [];
+  forEachBaseLayerStamp(geo, (markDef, color, lng, lat) => {
+    if (!markDef || !Array.isArray(markDef.marks)) return;
+    markDef.marks.forEach((m) => {
+      const colored = Object.assign({}, m, { color: color || m.color || '#1a1a1a' });
+      const frags = emitSketchMarkSvg(colored, lng, lat, ftPerPx, geo, defs, clips);
+      for (let i = 0; i < frags.length; i++) parts.push(frags[i]);
+    });
+  }, Object.assign({ drawOutlines: false }, layerOpts || {}));
+  if (parts.length) {
+    plotParts.push('<g id="base-texture">');
+    plotParts.push(parts.join(''));
+    plotParts.push('</g>');
+  }
+}
+
+function appendNotationMarksSvg(geo, defs, plotParts, sheet, bufferFt, clipState) {
   const notations = getNotationsToDraw().filter((n) =>
     notationIntersectsSheet(n, sheet, bufferFt)
   );
   const inchesPerFt = 12 / geo.scaleDenom;
-  let clipSeq = 0;
+  const clips = clipState || { seq: 0 };
   notations.forEach((notation) => {
     if (notation.lat == null || notation.lng == null) return;
 
@@ -2106,104 +2288,9 @@ function appendNotationMarksSvg(geo, defs, plotParts, sheet, bufferFt) {
     }
 
     const ftPerPx = markFtPerFieldPx(notation.sketch);
-    const lng = notation.lng;
-    const lat = notation.lat;
-
     marks.forEach((m) => {
-      if (!m || !m.geom) return;
-      const g = m.geom;
-      const pivot = markLocalCenter(m);
-      const rot = m.rot || 0;
-      const weightIn = Math.max((m.weight || 1) * ftPerPx * inchesPerFt * EXPORT_MARK_STROKE_SCALE, 0.006);
-      const hatchStep = MARK_HATCH_LINE_STEP * ftPerPx * inchesPerFt;
-
-      const toPage = (fx, fy) => {
-        const r = rotateFieldPt({ x: fx, y: fy }, pivot, rot);
-        return fieldPointToPageInches(r.x, r.y, lng, lat, ftPerPx, geo);
-      };
-
-      if (m.type === 'dot') {
-        const c = toPage(g.cx, g.cy);
-        const edge = toPage(g.cx + g.r, g.cy);
-        const rPx = Math.hypot(edge.x - c.x, edge.y - c.y);
-        plotParts.push(svgEl('circle', {
-          cx: svgNum(c.x), cy: svgNum(c.y), r: svgNum(rPx),
-          fill: 'none', stroke: '#1a1a1a', 'stroke-width': svgNum(weightIn),
-        }));
-        return;
-      }
-
-      if (m.type === 'line') {
-        if (m.stroke === false) return;
-        const a = toPage(g.x1, g.y1);
-        const b = toPage(g.x2, g.y2);
-        plotParts.push(svgEl('line', {
-          x1: svgNum(a.x), y1: svgNum(a.y),
-          x2: svgNum(b.x), y2: svgNum(b.y),
-          stroke: '#1a1a1a', 'stroke-width': svgNum(weightIn),
-          'stroke-linecap': 'round',
-        }));
-        return;
-      }
-
-      if (m.type === 'semicircle') {
-        if (m.stroke === false) return;
-        const samples = [];
-        const a = semiArcAngles(g.orient);
-        const steps = 32;
-        for (let i = 0; i <= steps; i++) {
-          const t = i / steps;
-          let ang;
-          if (a.ccw) {
-            let delta = a.end - a.start;
-            if (delta > 0) delta -= Math.PI * 2;
-            ang = a.start + delta * t;
-          } else {
-            let delta = a.end - a.start;
-            if (delta < 0) delta += Math.PI * 2;
-            ang = a.start + delta * t;
-          }
-          samples.push(toPage(g.cx + g.r * Math.cos(ang), g.cy + g.r * Math.sin(ang)));
-        }
-        const d = svgPathFromPts(samples, false);
-        if (d) {
-          plotParts.push(svgEl('path', {
-            d: d, fill: 'none', stroke: '#1a1a1a', 'stroke-width': svgNum(weightIn),
-            'stroke-linecap': 'round',
-          }));
-        }
-        return;
-      }
-
-      let pagePts = null;
-      if (m.type === 'circle') {
-        const samples = [];
-        for (let i = 0; i <= 48; i++) {
-          const t = (i / 48) * Math.PI * 2;
-          samples.push({ x: g.cx + g.r * Math.cos(t), y: g.cy + g.r * Math.sin(t) });
-        }
-        pagePts = mapFieldPtsToPageInches(samples, lng, lat, ftPerPx, geo, pivot, rot);
-      } else if (Array.isArray(g.pts) && g.pts.length) {
-        pagePts = mapFieldPtsToPageInches(g.pts, lng, lat, ftPerPx, geo, pivot, rot);
-      }
-      if (!pagePts || !pagePts.length) return;
-
-      const outlineD = svgPathFromPts(pagePts, true);
-      if (m.fill && m.fill !== 'none' && m.fill !== 'solid') {
-        clipSeq += 1;
-        const clipId = 'mark-clip-' + clipSeq;
-        defs.push(
-          '<clipPath id="' + clipId + '">' +
-          svgEl('path', { d: outlineD }) +
-          '</clipPath>'
-        );
-        plotParts.push(svgMarkHatchParts(pagePts, m.fill, hatchStep, clipId));
-      }
-      if (outlineD && (m.stroke !== false || m.fill === 'solid')) {
-        plotParts.push(svgEl('path', {
-          d: outlineD, fill: 'none', stroke: '#1a1a1a', 'stroke-width': svgNum(weightIn),
-        }));
-      }
+      const frags = emitSketchMarkSvg(m, notation.lng, notation.lat, ftPerPx, geo, defs, clips);
+      for (let i = 0; i < frags.length; i++) plotParts.push(frags[i]);
     });
   });
 }
@@ -2247,8 +2334,10 @@ function buildSelectedSheetSvgString(options) {
     svgNum(PAGE_WIDTH_IN) + '" height="' + svgNum(PAGE_HEIGHT_IN) + '"/></clipPath>',
   ];
   const plotParts = [];
+  const exportClipState = { seq: 0 };
 
   if (includeGeom) {
+    // Contours still export when the Contours layer is on (exception vs other boundaries).
     if (typeof state !== 'undefined' && state.layers && state.layers.contours && contoursF.length) {
       const contourPaths = [];
       appendGeoLineStrings(contoursF, geo, contourPaths);
@@ -2259,56 +2348,18 @@ function buildSelectedSheetSvgString(options) {
       }
     }
 
-    if (typeof state !== 'undefined' && state.layers && state.layers.streets && streetsF.length) {
-      const streetPaths = [];
-      appendGeoLineStrings(streetsF, geo, streetPaths);
-      if (streetPaths.length) {
-        plotParts.push('<g id="streets" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN) + '">');
-        plotParts.push(streetPaths.join(''));
-        plotParts.push('</g>');
-      }
-    }
-
-    if (typeof state !== 'undefined' && state.layers && state.layers.buildings && buildingsF.length) {
-      const outlines = [];
-      appendGeoPolygonOutlines(buildingsF, geo, outlines);
-      if (outlines.length) {
-        plotParts.push('<g id="buildings-outline" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN) + '">');
-        plotParts.push(outlines.join(''));
-        plotParts.push('</g>');
-      }
-    }
-
-    if (typeof state !== 'undefined' && state.layers && state.layers.vegetation && vegetationF.length) {
-      const outlines = [];
-      appendGeoPolygonOutlines(vegetationF, geo, outlines);
-      if (outlines.length) {
-        plotParts.push('<g id="vegetation-outline" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN) + '">');
-        plotParts.push(outlines.join(''));
-        plotParts.push('</g>');
-      }
-    }
-
-    // Character stamps — same forEach* collectors as on-screen drawStreets / drawCategorizedFill
-    // Temporarily point stamp collectors at filtered layers.
-    const savedStreets = scoreLayers.streets;
-    const savedBuildings = scoreLayers.buildings;
-    const savedVegetation = scoreLayers.vegetation;
-    scoreLayers.streets = streetsF;
-    scoreLayers.buildings = buildingsF;
-    scoreLayers.vegetation = vegetationF;
-    try {
-      appendSiteStampTexts(geo, plotParts);
-    } finally {
-      scoreLayers.streets = savedStreets;
-      scoreLayers.buildings = savedBuildings;
-      scoreLayers.vegetation = savedVegetation;
-    }
+    // No street centerlines / building / vegetation outlines in export — marks only.
+    appendBaseLayerMarksSvg(geo, defs, plotParts, {
+      streets: streetsF,
+      buildings: buildingsF,
+      vegetation: vegetationF,
+      drawOutlines: false,
+    }, exportClipState);
   }
 
   if (includeMarks) {
     const markParts = [];
-    appendNotationMarksSvg(geo, defs, markParts, sheet, sheetBufferFt);
+    appendNotationMarksSvg(geo, defs, markParts, sheet, sheetBufferFt, exportClipState);
     if (markParts.length) {
       plotParts.push('<g id="marks">');
       plotParts.push(markParts.join(''));
@@ -2316,8 +2367,8 @@ function buildSelectedSheetSvgString(options) {
     }
   }
 
-  const caption = 'Sheet ' + sheet.label + ' - 1:' + geo.scaleDenom;
-  const labels = hersheyStringPathsAt(caption, 0.35, 0.45, 0.22, '#1a1a1a');
+  const caption = sheetCaptionText(sheet, geo.scaleDenom);
+  const labels = captionStringPathsAt(caption, 0.35, 0.45, 0.22, '#1a1a1a');
 
   const svg =
     '<?xml version="1.0" encoding="UTF-8"?>\n' +
@@ -2351,7 +2402,6 @@ function buildSelectedSheetSvgString(options) {
     vegetation: vegetationF.length + '/' + scoreLayers.vegetation.length,
     contours: contoursF.length + '/' + scoreLayers.contours.length,
     textElements: textCount,
-    hersheyReady: !!(window.HERSHEY_SIMPLEX && window.HERSHEY_SIMPLEX.glyphs),
   });
   if (pathVals.length) {
     console.log('[export svg] path coord range', {

@@ -321,14 +321,42 @@ nav {
   white-space: nowrap;
 }
 
-.fill-char-input {
-  width: 24px;
-  height: 24px;
-  text-align: center;
-  font-family: 'Media77', sans-serif;
-  font-size: 12px;
-  padding: 0;
+.fill-mark-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-width: 148px;
+  justify-content: flex-end;
+}
+
+.fill-mark-btn {
+  width: 18px;
+  height: 18px;
+  padding: 1px;
+  border: 1px solid var(--border);
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+}
+
+.fill-mark-btn svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+  pointer-events: none;
+}
+
+.fill-mark-btn.selected {
+  border-color: var(--ink);
+  background: var(--hi);
+}
+
+.fill-mark-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .fill-color-input {
@@ -384,11 +412,6 @@ nav {
   cursor: not-allowed;
 }
 
-.fill-char-input:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-  background: var(--hi);
-}
 
 .btn {
   font-family: 'Miniature', serif;
@@ -828,14 +851,6 @@ nav {
   }
 }
 
-.section-block input.fill-char-input {
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  margin-bottom: 0;
-  font-size: 12px;
-  text-align: center;
-}
 </style>
 </head>
 <body>
@@ -2020,34 +2035,162 @@ function bindEvents() {
     'Developed', 'Major Roads', 'Water',
   ];
   const DEFAULT_FILL_COLOR = '#1a1a1a';
-  const DEFAULT_ROAD_CHARS = {
-    'Highway': '=', 'Major Collector': '+', 'Minor Collector': '-',
-    'Local': '.', 'Path Pedestrian Only': ':', 'Path Multi-Use': ';',
-    'Fire Road': '*',
+  const DEFAULT_MARK_ID = 'dot';
+
+  // Field-space center for default base marks (same coord system as lexicon sketch.marks).
+  const BMC = { x: 300, y: 400 };
+
+  function mkLine(x1, y1, x2, y2) {
+    return {
+      type: 'line',
+      geom: { x1: x1, y1: y1, x2: x2, y2: y2 },
+      color: '#1a1a1a',
+      stroke: true,
+      weight: 1,
+      lineStyle: 'solid',
+      rot: 0,
+    };
+  }
+
+  /** Shared default mark library — geometry matches lexicon sketch.marks shape. */
+  window.BASE_MARK_LIBRARY = [
+    {
+      id: 'dot',
+      name: 'Dot',
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.5" fill="#1a1a1a"/></svg>',
+      marks: [{ type: 'dot', geom: { cx: BMC.x, cy: BMC.y, r: 8 }, color: '#1a1a1a', fill: 'solid', stroke: false, rot: 0 }],
+    },
+    {
+      id: 'tick',
+      name: 'Tick',
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="8" y1="3" x2="8" y2="13" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/></svg>',
+      marks: [mkLine(BMC.x, BMC.y - 16, BMC.x, BMC.y + 16)],
+    },
+    {
+      id: 'chevron',
+      name: 'Chevron',
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><polyline points="3,11 8,4 13,11" fill="none" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      marks: [
+        mkLine(BMC.x - 14, BMC.y + 10, BMC.x, BMC.y - 14),
+        mkLine(BMC.x, BMC.y - 14, BMC.x + 14, BMC.y + 10),
+      ],
+    },
+    {
+      id: 'cross',
+      name: 'Cross',
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="3" y1="3" x2="13" y2="13" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/><line x1="13" y1="3" x2="3" y2="13" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/></svg>',
+      marks: [
+        mkLine(BMC.x - 14, BMC.y - 14, BMC.x + 14, BMC.y + 14),
+        mkLine(BMC.x + 14, BMC.y - 14, BMC.x - 14, BMC.y + 14),
+      ],
+    },
+    {
+      id: 'circle',
+      name: 'Circle',
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="#1a1a1a" stroke-width="1.5"/></svg>',
+      marks: [{ type: 'circle', geom: { cx: BMC.x, cy: BMC.y, r: 14 }, color: '#1a1a1a', fill: 'none', stroke: true, weight: 1, rot: 0 }],
+    },
+    {
+      id: 'diagonal-tick',
+      name: 'Diagonal tick',
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="4" y1="12" x2="12" y2="4" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/></svg>',
+      marks: [mkLine(BMC.x - 12, BMC.y + 12, BMC.x + 12, BMC.y - 12)],
+    },
+    {
+      id: 'double-tick',
+      name: 'Double tick',
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="5.5" y1="3" x2="5.5" y2="13" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/><line x1="10.5" y1="3" x2="10.5" y2="13" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/></svg>',
+      marks: [
+        mkLine(BMC.x - 6, BMC.y - 16, BMC.x - 6, BMC.y + 16),
+        mkLine(BMC.x + 6, BMC.y - 16, BMC.x + 6, BMC.y + 16),
+      ],
+    },
+    {
+      id: 'triangle',
+      name: 'Triangle',
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><polygon points="8,2.5 13.5,13.5 2.5,13.5" fill="none" stroke="#1a1a1a" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+      marks: [{
+        type: 'triangle',
+        geom: {
+          pts: [
+            { x: BMC.x, y: BMC.y - 16 },
+            { x: BMC.x + 14, y: BMC.y + 12 },
+            { x: BMC.x - 14, y: BMC.y + 12 },
+          ],
+        },
+        color: '#1a1a1a',
+        fill: 'none',
+        stroke: true,
+        weight: 1,
+        rot: 0,
+      }],
+    },
+  ];
+
+  const DEFAULT_ROAD_MARKS = {
+    'Highway': 'double-tick',
+    'Major Collector': 'cross',
+    'Minor Collector': 'tick',
+    'Local': 'dot',
+    'Path Pedestrian Only': 'diagonal-tick',
+    'Path Multi-Use': 'chevron',
+    'Fire Road': 'circle',
   };
-  const DEFAULT_BUILDING_CHARS = {
-    'Single Family Residence': 's', 'Commercial': 'c', 'Industrial': 'i',
-    'Park Building': 'p', 'Out Building': 'o', 'Agriculture': 'a', 'Other': 'x',
+  const DEFAULT_BUILDING_MARKS = {
+    'Single Family Residence': 'tick',
+    'Commercial': 'cross',
+    'Industrial': 'double-tick',
+    'Park Building': 'circle',
+    'Out Building': 'dot',
+    'Agriculture': 'chevron',
+    'Other': 'diagonal-tick',
   };
-  const DEFAULT_VEGETATION_CHARS = {
-    'Native Forest': 'n', 'Non-native Forest & Woodland': 'w', 'Forest Sliver': 'f',
-    'Shrub': 's', 'Non-native Shrub': 'u', 'Herbaceous': 'h',
-    'Nursery or Ornamental Horticultural Area': 'y', 'Barren & Sparsely Vegetated': 'b',
-    'Developed': 'd', 'Major Roads': 'r', 'Water': 't',
+  const DEFAULT_VEGETATION_MARKS = {
+    'Native Forest': 'triangle',
+    'Non-native Forest & Woodland': 'chevron',
+    'Forest Sliver': 'tick',
+    'Shrub': 'dot',
+    'Non-native Shrub': 'diagonal-tick',
+    'Herbaceous': 'circle',
+    'Nursery or Ornamental Horticultural Area': 'cross',
+    'Barren & Sparsely Vegetated': 'double-tick',
+    'Developed': 'tick',
+    'Major Roads': 'diagonal-tick',
+    'Water': 'circle',
   };
 
-  function fillEntriesFromChars(charMap) {
+  /** Legacy character → markId for one-time Firestore normalize. */
+  const LEGACY_CHAR_TO_MARK_ID = {
+    '=': 'double-tick', '+': 'cross', '-': 'tick', '.': 'dot',
+    ':': 'diagonal-tick', ';': 'chevron', '*': 'circle',
+    's': 'tick', 'c': 'cross', 'i': 'double-tick', 'p': 'circle',
+    'o': 'dot', 'a': 'chevron', 'x': 'diagonal-tick',
+    'n': 'triangle', 'w': 'chevron', 'f': 'tick', 'u': 'diagonal-tick',
+    'h': 'circle', 'y': 'cross', 'b': 'double-tick', 'd': 'tick',
+    'r': 'diagonal-tick', 't': 'circle',
+  };
+
+  function isKnownMarkId(id) {
+    return !!(window.BASE_MARK_LIBRARY && window.BASE_MARK_LIBRARY.some((m) => m.id === id));
+  }
+
+  function fillEntriesFromMarkIds(markMap) {
     const out = {};
-    Object.keys(charMap).forEach((key) => {
-      out[key] = { char: charMap[key], color: DEFAULT_FILL_COLOR };
+    Object.keys(markMap).forEach((key) => {
+      out[key] = { markId: markMap[key], color: DEFAULT_FILL_COLOR };
     });
     return out;
   }
 
-  function getFillChar(entry, fallback) {
-    if (entry == null) return fallback || '.';
-    if (typeof entry === 'string') return entry || fallback || '.';
-    return entry.char || fallback || '.';
+  function getFillMarkId(entry, fallback) {
+    if (entry == null) return fallback || DEFAULT_MARK_ID;
+    if (typeof entry === 'string') {
+      if (isKnownMarkId(entry)) return entry;
+      return LEGACY_CHAR_TO_MARK_ID[entry] || fallback || DEFAULT_MARK_ID;
+    }
+    if (entry.markId && isKnownMarkId(entry.markId)) return entry.markId;
+    if (entry.char) return LEGACY_CHAR_TO_MARK_ID[entry.char] || fallback || DEFAULT_MARK_ID;
+    return fallback || DEFAULT_MARK_ID;
   }
 
   function getFillColor(entry, fallback) {
@@ -2055,11 +2198,11 @@ function bindEvents() {
     return fallback || DEFAULT_FILL_COLOR;
   }
 
-  function setFillChar(groupKey, cat, char, defaults) {
+  function setFillMarkId(groupKey, cat, markId, defaults) {
     const prev = window.categoryFills[groupKey][cat];
     const color = getFillColor(prev, DEFAULT_FILL_COLOR);
     window.categoryFills[groupKey][cat] = {
-      char: char || defaults[cat] || '.',
+      markId: markId || defaults[cat] || DEFAULT_MARK_ID,
       color,
     };
   }
@@ -2067,15 +2210,20 @@ function bindEvents() {
   function setFillColor(groupKey, cat, color, defaults) {
     const prev = window.categoryFills[groupKey][cat];
     window.categoryFills[groupKey][cat] = {
-      char: getFillChar(prev, defaults[cat] || '.'),
+      markId: getFillMarkId(prev, defaults[cat] || DEFAULT_MARK_ID),
       color: color || DEFAULT_FILL_COLOR,
     };
   }
 
   window.categoryFills = {
-    streets: fillEntriesFromChars(DEFAULT_ROAD_CHARS),
-    buildings: fillEntriesFromChars(DEFAULT_BUILDING_CHARS),
-    vegetation: fillEntriesFromChars(DEFAULT_VEGETATION_CHARS),
+    streets: fillEntriesFromMarkIds(DEFAULT_ROAD_MARKS),
+    buildings: fillEntriesFromMarkIds(DEFAULT_BUILDING_MARKS),
+    vegetation: fillEntriesFromMarkIds(DEFAULT_VEGETATION_MARKS),
+  };
+  window.DEFAULT_CATEGORY_MARKS = {
+    streets: DEFAULT_ROAD_MARKS,
+    buildings: DEFAULT_BUILDING_MARKS,
+    vegetation: DEFAULT_VEGETATION_MARKS,
   };
 
   window.layerColors = {
@@ -2086,6 +2234,7 @@ function bindEvents() {
   function buildFillCategoryRows(containerId, categories, groupKey, defaults) {
     const container = document.getElementById(containerId);
     if (!container) return;
+    const library = window.BASE_MARK_LIBRARY || [];
     categories.forEach((cat) => {
       const row = document.createElement('div');
       row.className = 'fill-category-row';
@@ -2093,17 +2242,36 @@ function bindEvents() {
       const label = document.createElement('span');
       label.className = 'fill-category-name';
       label.textContent = cat;
+      label.title = cat;
 
       const controls = document.createElement('div');
       controls.className = 'fill-category-controls';
 
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'fill-char-input';
-      input.maxLength = 1;
-      input.dataset.fillGroup = groupKey;
-      input.dataset.fillCategory = cat;
-      input.value = getFillChar(window.categoryFills[groupKey][cat], defaults[cat]);
+      const picker = document.createElement('div');
+      picker.className = 'fill-mark-picker';
+      picker.dataset.fillGroup = groupKey;
+      picker.dataset.fillCategory = cat;
+
+      const selectedId = getFillMarkId(window.categoryFills[groupKey][cat], defaults[cat]);
+      library.forEach((def) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'fill-mark-btn' + (def.id === selectedId ? ' selected' : '');
+        btn.dataset.markId = def.id;
+        btn.title = def.name;
+        btn.setAttribute('aria-label', cat + ': ' + def.name);
+        btn.innerHTML = def.previewSvg;
+        btn.addEventListener('click', () => {
+          if (!isFacultyUser()) return;
+          setFillMarkId(groupKey, cat, def.id, defaults);
+          picker.querySelectorAll('.fill-mark-btn').forEach((b) => {
+            b.classList.toggle('selected', b.dataset.markId === def.id);
+          });
+          if (window.redraw) redraw();
+          saveScoreSettings();
+        });
+        picker.appendChild(btn);
+      });
 
       const colorInput = document.createElement('input');
       colorInput.type = 'color';
@@ -2112,18 +2280,6 @@ function bindEvents() {
       colorInput.dataset.fillCategory = cat;
       colorInput.value = getFillColor(window.categoryFills[groupKey][cat], DEFAULT_FILL_COLOR);
       colorInput.setAttribute('aria-label', cat + ' color');
-
-      input.addEventListener('input', () => {
-        if (!isFacultyUser()) {
-          input.value = getFillChar(window.categoryFills[groupKey][cat], defaults[cat]);
-          return;
-        }
-        const val = input.value.slice(0, 1);
-        input.value = val;
-        setFillChar(groupKey, cat, val, defaults);
-        if (window.redraw) redraw();
-        saveScoreSettings();
-      });
 
       colorInput.addEventListener('input', () => {
         if (!isFacultyUser()) {
@@ -2135,7 +2291,7 @@ function bindEvents() {
         saveScoreSettings();
       });
 
-      controls.appendChild(input);
+      controls.appendChild(picker);
       controls.appendChild(colorInput);
       row.appendChild(label);
       row.appendChild(controls);
@@ -2143,9 +2299,9 @@ function bindEvents() {
     });
   }
 
-  buildFillCategoryRows('streetsFillList', ROAD_FILL_CATEGORIES, 'streets', DEFAULT_ROAD_CHARS);
-  buildFillCategoryRows('buildingsFillList', BUILDING_FILL_CATEGORIES, 'buildings', DEFAULT_BUILDING_CHARS);
-  buildFillCategoryRows('vegetationFillList', VEGETATION_FILL_CATEGORIES, 'vegetation', DEFAULT_VEGETATION_CHARS);
+  buildFillCategoryRows('streetsFillList', ROAD_FILL_CATEGORIES, 'streets', DEFAULT_ROAD_MARKS);
+  buildFillCategoryRows('buildingsFillList', BUILDING_FILL_CATEGORIES, 'buildings', DEFAULT_BUILDING_MARKS);
+  buildFillCategoryRows('vegetationFillList', VEGETATION_FILL_CATEGORIES, 'vegetation', DEFAULT_VEGETATION_MARKS);
 
   function bindLayerColorPicker(inputId, key) {
     const input = document.getElementById(inputId);
@@ -2303,14 +2459,30 @@ function collectScoreSettingsPayload() {
   };
 }
 
-function normalizeIncomingFillEntry(val) {
+function normalizeIncomingFillEntry(val, defaultMarkId) {
+  const fallback = defaultMarkId || 'dot';
+  const known = (id) =>
+    !!(window.BASE_MARK_LIBRARY && window.BASE_MARK_LIBRARY.some((m) => m.id === id));
+  const legacyChar = {
+    '=': 'double-tick', '+': 'cross', '-': 'tick', '.': 'dot',
+    ':': 'diagonal-tick', ';': 'chevron', '*': 'circle',
+    's': 'tick', 'c': 'cross', 'i': 'double-tick', 'p': 'circle',
+    'o': 'dot', 'a': 'chevron', 'x': 'diagonal-tick',
+    'n': 'triangle', 'w': 'chevron', 'f': 'tick', 'u': 'diagonal-tick',
+    'h': 'circle', 'y': 'cross', 'b': 'double-tick', 'd': 'tick',
+    'r': 'diagonal-tick', 't': 'circle',
+  };
   if (val == null) return null;
   if (typeof val === 'string') {
-    return { char: val || '.', color: '#1a1a1a' };
+    if (known(val)) return { markId: val, color: '#1a1a1a' };
+    return { markId: legacyChar[val] || fallback, color: '#1a1a1a' };
   }
   if (typeof val === 'object') {
+    let markId = fallback;
+    if (val.markId && known(val.markId)) markId = val.markId;
+    else if (val.char) markId = legacyChar[val.char] || fallback;
     return {
-      char: val.char || '.',
+      markId: markId,
       color: val.color || '#1a1a1a',
     };
   }
@@ -2328,11 +2500,16 @@ function applyScoreSettingsData(data) {
     state.mapView.showOutlines = data.showOutlines;
   }
   if (data.categoryFills && typeof data.categoryFills === 'object' && window.categoryFills) {
+    const defaults = window.DEFAULT_CATEGORY_MARKS || {};
     ['streets', 'buildings', 'vegetation'].forEach((group) => {
       if (!data.categoryFills[group] || typeof data.categoryFills[group] !== 'object') return;
       if (!window.categoryFills[group]) window.categoryFills[group] = {};
       Object.keys(data.categoryFills[group]).forEach((cat) => {
-        const normalized = normalizeIncomingFillEntry(data.categoryFills[group][cat]);
+        const groupDefaults = defaults[group] || {};
+        const normalized = normalizeIncomingFillEntry(
+          data.categoryFills[group][cat],
+          groupDefaults[cat] || 'dot'
+        );
         if (normalized) window.categoryFills[group][cat] = normalized;
       });
     });
@@ -2370,13 +2547,20 @@ function syncLayerControlsFromState() {
     outlinesEl.setAttribute('aria-pressed', !!state.mapView.showOutlines);
   }
 
-  document.querySelectorAll('.fill-char-input[data-fill-group]').forEach((input) => {
-    const group = input.dataset.fillGroup;
-    const cat = input.dataset.fillCategory;
+  document.querySelectorAll('.fill-mark-picker[data-fill-group]').forEach((picker) => {
+    const group = picker.dataset.fillGroup;
+    const cat = picker.dataset.fillCategory;
     const entry = window.categoryFills && window.categoryFills[group]
       ? window.categoryFills[group][cat]
       : null;
-    input.value = typeof entry === 'string' ? entry : (entry && entry.char) || '';
+    const defaults = (window.DEFAULT_CATEGORY_MARKS && window.DEFAULT_CATEGORY_MARKS[group]) || {};
+    let markId = 'dot';
+    if (entry && typeof entry === 'object' && entry.markId) markId = entry.markId;
+    else if (typeof entry === 'string') markId = entry;
+    else if (defaults[cat]) markId = defaults[cat];
+    picker.querySelectorAll('.fill-mark-btn').forEach((btn) => {
+      btn.classList.toggle('selected', btn.dataset.markId === markId);
+    });
   });
 
   document.querySelectorAll('.fill-color-input[data-fill-group]').forEach((input) => {
@@ -2411,10 +2595,16 @@ function applyLayerEditingGate() {
     el.disabled = !canEdit;
     el.title = canEdit ? '' : 'Only faculty can change shared layer settings';
   });
-  document.querySelectorAll('.fill-char-input, .fill-color-input').forEach((input) => {
-    input.disabled = !canEdit;
-    if (input.classList.contains('fill-char-input')) input.readOnly = !canEdit;
-    input.title = canEdit ? '' : 'Only faculty can change shared layer settings';
+  document.querySelectorAll('.fill-mark-btn, .fill-color-input').forEach((el) => {
+    el.disabled = !canEdit;
+    if (!canEdit) {
+      el.title = 'Only faculty can change shared layer settings';
+    } else if (el.classList.contains('fill-mark-btn')) {
+      const def = (window.BASE_MARK_LIBRARY || []).find((m) => m.id === el.dataset.markId);
+      el.title = def ? def.name : '';
+    } else {
+      el.title = '';
+    }
   });
 }
 
@@ -2665,7 +2855,6 @@ if (document.readyState === 'loading') {
   init();
 }
 </script>
-<script src="js/hershey-simplex-subset.js"></script>
 <script src="js/collective-p5.js"></script>
 <script src="js/auth-gate.js"></script>
 </body>

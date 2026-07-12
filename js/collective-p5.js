@@ -6,10 +6,10 @@
 // for each building type and vegetation type.
 //
 // Two modes:
-// - View: freely pannable and zoomable, the everyday working view of the
-//   whole composition, not tied to any page size.
-// - Print: a fixed 11x17 portrait page at a chosen architectural scale
-//   (1:500 to 1:5000), centred on wherever you have panned to in View mode.
+// - View: freely pannable and zoomable, with an optional print-atlas sheet
+//   grid overlay so faculty can pick which A3 sheet to preview.
+// - Print: a fixed A3 portrait page at a chosen architectural scale
+//   (1:500 to 1:5000), centred on the selected atlas sheet (not free pan).
 //
 // The whole composition is rotated 42 degrees, applied in real-world feet
 // before anything is scaled to the screen or the page, so it stays correct
@@ -42,8 +42,10 @@ function normalizeFillEntry(entry) {
 const ROTATION_DEG = 42;
 const FT_PER_DEG_LAT = 364000;
 
-const PAGE_WIDTH_IN = 11;
-const PAGE_HEIGHT_IN = 17;
+// A3 portrait (mm 297 × 420) in inches.
+const PAGE_WIDTH_IN = 11.69;
+const PAGE_HEIGHT_IN = 16.54;
+const PAGE_OVERLAP_IN = 0.5;
 const PAGE_MARGIN_PX = 40;
 
 let scoreMode = 'view';
@@ -51,6 +53,10 @@ let panRX = 0;
 let panRY = 0;
 let viewZoom = 1;
 let baseFitPxPerFt = 1;
+
+let selectedSheetId = null;
+let selectedSheetCol = 0;
+let selectedSheetRow = 0;
 
 let isDragging = false;
 let dragStartMouseX = 0;
@@ -100,7 +106,10 @@ function bindModeControls() {
   }
   const scaleEl = document.getElementById('exportScale');
   if (scaleEl) {
-    scaleEl.addEventListener('change', () => redraw());
+    scaleEl.addEventListener('change', () => {
+      refreshAtlasSelection();
+      redraw();
+    });
   }
 }
 
@@ -250,7 +259,14 @@ function currentScaleDenominator() {
 
 function getViewGeometry() {
   const pxPerFt = baseFitPxPerFt * viewZoom;
-  return { mode: 'view', pxPerFt, centerX: width / 2, centerY: height / 2 };
+  return {
+    mode: 'view',
+    pxPerFt,
+    centerX: width / 2,
+    centerY: height / 2,
+    originRx: panRX,
+    originRy: panRY,
+  };
 }
 
 function getPrintGeometry() {
@@ -264,17 +280,261 @@ function getPrintGeometry() {
   const pageY = (height - pageH) / 2;
   const ftPerPagePixel = (scaleDenom / 12) / pxPerInch;
   const pxPerFt = 1 / ftPerPagePixel;
+  const sheet = getSelectedSheet();
   return {
-    mode: 'print', scaleDenom, pxPerFt, pageW, pageH, pageX, pageY,
-    centerX: pageX + pageW / 2, centerY: pageY + pageH / 2,
+    mode: 'print',
+    scaleDenom,
+    pxPerFt,
+    pageW,
+    pageH,
+    pageX,
+    pageY,
+    centerX: pageX + pageW / 2,
+    centerY: pageY + pageH / 2,
+    originRx: sheet ? sheet.centerRx : panRX,
+    originRy: sheet ? sheet.centerRy : panRY,
   };
 }
 
 function project(lng, lat, geo) {
   const { rx, ry } = toRotatedFeet(lng, lat);
-  const x = geo.centerX + (rx - panRX) * geo.pxPerFt;
-  const y = geo.centerY - (ry - panRY) * geo.pxPerFt;
-  return { x, y };
+  return rotatedFeetToScreen(rx, ry, geo);
+}
+
+function rotatedFeetToScreen(rx, ry, geo) {
+  const ox = geo.originRx != null ? geo.originRx : panRX;
+  const oy = geo.originRy != null ? geo.originRy : panRY;
+  return {
+    x: geo.centerX + (rx - ox) * geo.pxPerFt,
+    y: geo.centerY - (ry - oy) * geo.pxPerFt,
+  };
+}
+
+function sheetLabel(col, row) {
+  let n = col;
+  let label = '';
+  do {
+    label = String.fromCharCode(65 + (n % 26)) + label;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return label + String(row + 1);
+}
+
+/** Site AABB in rotated-feet space (same frame as toRotatedFeet).
+ *  Streets + buildings only — optional overlays must not resize the atlas. */
+function computeSiteBoundsFt() {
+  let minRx = Infinity, maxRx = -Infinity, minRy = Infinity, maxRy = -Infinity;
+  const allFeatures = [
+    ...scoreLayers.streets,
+    ...scoreLayers.buildings,
+  ];
+  allFeatures.forEach((f) => {
+    if (!f.geometry) return;
+    (function walk(coords) {
+      if (typeof coords[0] === 'number') {
+        const { rx, ry } = toRotatedFeet(coords[0], coords[1]);
+        if (rx < minRx) minRx = rx;
+        if (rx > maxRx) maxRx = rx;
+        if (ry < minRy) minRy = ry;
+        if (ry > maxRy) maxRy = ry;
+        return;
+      }
+      coords.forEach(walk);
+    })(f.geometry.coordinates);
+  });
+  if (!isFinite(minRx)) {
+    return { minRx: -1, maxRx: 1, minRy: -1, maxRy: 1, widthFt: 2, heightFt: 2 };
+  }
+  return {
+    minRx,
+    maxRx,
+    minRy,
+    maxRy,
+    widthFt: Math.max(maxRx - minRx, 1),
+    heightFt: Math.max(maxRy - minRy, 1),
+  };
+}
+
+function computePrintAtlas(scaleDenom) {
+  const denom = scaleDenom || currentScaleDenominator();
+  const site = computeSiteBoundsFt();
+  const pageWFt = PAGE_WIDTH_IN * (denom / 12);
+  const pageHFt = PAGE_HEIGHT_IN * (denom / 12);
+  const stepWFt = (PAGE_WIDTH_IN - PAGE_OVERLAP_IN) * (denom / 12);
+  const stepHFt = (PAGE_HEIGHT_IN - PAGE_OVERLAP_IN) * (denom / 12);
+
+  let cols = 1;
+  let rows = 1;
+  const fitsOne =
+    site.widthFt <= pageWFt && site.heightFt <= pageHFt;
+
+  if (!fitsOne) {
+    cols = Math.max(1, Math.ceil(site.widthFt / stepWFt));
+    rows = Math.max(1, Math.ceil(site.heightFt / stepHFt));
+  }
+
+  const sheets = [];
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      let minX;
+      let maxY;
+      let maxX;
+      let minY;
+      if (fitsOne) {
+        const cx = (site.minRx + site.maxRx) / 2;
+        const cy = (site.minRy + site.maxRy) / 2;
+        minX = cx - pageWFt / 2;
+        maxX = cx + pageWFt / 2;
+        minY = cy - pageHFt / 2;
+        maxY = cy + pageHFt / 2;
+      } else {
+        // A1 at northwest: cols increase east, rows increase south.
+        minX = site.minRx + col * stepWFt;
+        maxY = site.maxRy - row * stepHFt;
+        maxX = minX + pageWFt;
+        minY = maxY - pageHFt;
+      }
+      const centerRx = (minX + maxX) / 2;
+      const centerRy = (minY + maxY) / 2;
+      const label = sheetLabel(col, row);
+      sheets.push({
+        id: label,
+        col,
+        row,
+        label,
+        centerRx,
+        centerRy,
+        boundsFt: { minX, maxX, minY, maxY },
+      });
+    }
+  }
+
+  return {
+    scaleDenom: denom,
+    cols,
+    rows,
+    pageWFt,
+    pageHFt,
+    stepWFt,
+    stepHFt,
+    fitsOne,
+    site,
+    sheets,
+  };
+}
+
+function getCurrentAtlas() {
+  return computePrintAtlas(currentScaleDenominator());
+}
+
+function getSelectedSheet() {
+  const atlas = getCurrentAtlas();
+  if (!atlas.sheets.length) return null;
+  let sheet = atlas.sheets.find((s) => s.id === selectedSheetId);
+  if (sheet) return sheet;
+  sheet = atlas.sheets.find((s) => s.col === selectedSheetCol && s.row === selectedSheetRow);
+  if (sheet) return sheet;
+  return atlas.sheets[0];
+}
+
+/** Keep selection when scale/grid changes; clamp to nearest col/row if needed. */
+function refreshAtlasSelection() {
+  const atlas = getCurrentAtlas();
+  if (!atlas.sheets.length) {
+    selectedSheetId = null;
+    selectedSheetCol = 0;
+    selectedSheetRow = 0;
+    return atlas;
+  }
+
+  const exact = atlas.sheets.find((s) => s.id === selectedSheetId)
+    || atlas.sheets.find((s) => s.col === selectedSheetCol && s.row === selectedSheetRow);
+  if (exact) {
+    selectedSheetId = exact.id;
+    selectedSheetCol = exact.col;
+    selectedSheetRow = exact.row;
+    return atlas;
+  }
+
+  let best = atlas.sheets[0];
+  let bestDist = Infinity;
+  atlas.sheets.forEach((s) => {
+    const d = Math.hypot(s.col - selectedSheetCol, s.row - selectedSheetRow);
+    if (d < bestDist) {
+      bestDist = d;
+      best = s;
+    }
+  });
+  selectedSheetId = best.id;
+  selectedSheetCol = best.col;
+  selectedSheetRow = best.row;
+  return atlas;
+}
+
+function selectAtlasSheet(sheet) {
+  if (!sheet) return;
+  selectedSheetId = sheet.id;
+  selectedSheetCol = sheet.col;
+  selectedSheetRow = sheet.row;
+  redraw();
+}
+
+function drawAtlasOverlay(geo) {
+  const atlas = getCurrentAtlas();
+  if (!atlas.sheets.length) return;
+  const selected = getSelectedSheet();
+
+  atlas.sheets.forEach((sheet) => {
+    const b = sheet.boundsFt;
+    const sw = rotatedFeetToScreen(b.minX, b.minY, geo);
+    const se = rotatedFeetToScreen(b.maxX, b.minY, geo);
+    const ne = rotatedFeetToScreen(b.maxX, b.maxY, geo);
+    const nw = rotatedFeetToScreen(b.minX, b.maxY, geo);
+    const isSelected = selected && sheet.id === selected.id;
+
+    noFill();
+    stroke(isSelected ? '#1a1a1a' : '#888888');
+    strokeWeight(isSelected ? 1.5 : 0.75);
+    beginShape();
+    vertex(nw.x, nw.y);
+    vertex(ne.x, ne.y);
+    vertex(se.x, se.y);
+    vertex(sw.x, sw.y);
+    endShape(CLOSE);
+
+    const cx = (nw.x + se.x) / 2;
+    const cy = (nw.y + se.y) / 2;
+    noStroke();
+    fill(isSelected ? '#1a1a1a' : '#666666');
+    textAlign(CENTER, CENTER);
+    textSize(isSelected ? 13 : 11);
+    textFont('Miniature, serif');
+    text(sheet.label, cx, cy);
+  });
+
+  textFont('monospace');
+  textAlign(CENTER, CENTER);
+}
+
+function hitTestSheetAt(mx, my) {
+  if (!scoreReady || scoreMode !== 'view') return null;
+  const atlas = getCurrentAtlas();
+  const geo = getViewGeometry();
+  // Prefer later sheets only if overlapping; walk reverse so SE sheets win ties.
+  for (let i = atlas.sheets.length - 1; i >= 0; i--) {
+    const sheet = atlas.sheets[i];
+    const b = sheet.boundsFt;
+    const sw = rotatedFeetToScreen(b.minX, b.minY, geo);
+    const ne = rotatedFeetToScreen(b.maxX, b.maxY, geo);
+    const minX = Math.min(sw.x, ne.x);
+    const maxX = Math.max(sw.x, ne.x);
+    const minY = Math.min(sw.y, ne.y);
+    const maxY = Math.max(sw.y, ne.y);
+    if (mx >= minX && mx <= maxX && my >= minY && my <= maxY) {
+      return sheet;
+    }
+  }
+  return null;
 }
 
 function ringToScreen(ring, geo) {
@@ -994,42 +1254,16 @@ function updateFitStatus(geo) {
   const statusEl = document.getElementById('scaleFitStatus');
   if (!statusEl) return;
 
-  if (scoreMode !== 'print') {
+  const atlas = getCurrentAtlas();
+  const sheet = getSelectedSheet();
+  if (!sheet) {
     statusEl.textContent = '';
     return;
   }
 
-  let minRx = Infinity, maxRx = -Infinity, minRy = Infinity, maxRy = -Infinity;
-  const allFeatures = [...scoreLayers.streets, ...scoreLayers.buildings, ...scoreLayers.contours];
-  allFeatures.forEach((f) => {
-    if (!f.geometry) return;
-    const coordsList = [];
-    (function walk(coords) {
-      if (typeof coords[0] === 'number') { coordsList.push(coords); return; }
-      coords.forEach(walk);
-    })(f.geometry.coordinates);
-    coordsList.forEach(([lng, lat]) => {
-      const { rx, ry } = toRotatedFeet(lng, lat);
-      if (rx < minRx) minRx = rx;
-      if (rx > maxRx) maxRx = rx;
-      if (ry < minRy) minRy = ry;
-      if (ry > maxRy) maxRy = ry;
-    });
-  });
-
-  const siteWidthFt = maxRx - minRx;
-  const siteHeightFt = maxRy - minRy;
-  const pageWidthFt = geo.pageW / geo.pxPerFt;
-  const pageHeightFt = geo.pageH / geo.pxPerFt;
-
-  if (siteWidthFt <= pageWidthFt && siteHeightFt <= pageHeightFt) {
-    statusEl.textContent = 'Full site fits on the page at 1:' + geo.scaleDenom + '.';
-  } else {
-    statusEl.textContent = 'Showing a ' + Math.round(pageWidthFt) + ' by ' +
-      Math.round(pageHeightFt) + ' ft crop of a ' + Math.round(siteWidthFt) +
-      ' by ' + Math.round(siteHeightFt) + ' ft site at 1:' + geo.scaleDenom +
-      '. Pan in View mode to choose a different area, then switch back to Print.';
-  }
+  statusEl.textContent =
+    'Sheet ' + sheet.label + ' of ' + atlas.cols + '×' + atlas.rows +
+    ' at 1:' + atlas.scaleDenom;
 }
 
 function draw() {
@@ -1037,6 +1271,7 @@ function draw() {
   background(255);
   if (!scoreReady) return;
 
+  refreshAtlasSelection();
   const geo = scoreMode === 'print' ? getPrintGeometry() : getViewGeometry();
 
   if (scoreMode === 'print') {
@@ -1055,6 +1290,8 @@ function draw() {
 
   if (scoreMode === 'print') {
     drawingContext.restore();
+  } else {
+    drawAtlasOverlay(geo);
   }
 
   updateFitStatus(geo);
@@ -1116,7 +1353,9 @@ function mousePressed() {
 
 function mouseDragged() {
   if (!isDragging || !scoreReady) return;
-  const geo = scoreMode === 'print' ? getPrintGeometry() : getViewGeometry();
+  // Print crop is locked to the selected atlas sheet — no free pan in Print Preview.
+  if (scoreMode === 'print') return;
+  const geo = getViewGeometry();
   const dxPx = mouseX - dragStartMouseX;
   const dyPx = mouseY - dragStartMouseY;
   if (Math.hypot(dxPx, dyPx) > CLICK_MOVE_THRESH_PX) pointerDidPan = true;
@@ -1131,9 +1370,16 @@ function mouseReleased() {
   if (pointerDidPan || !scoreReady) return;
   if (!isPointerInCanvas(mouseX, mouseY)) return;
 
+  // Marker hits take priority over atlas sheet selection.
   const hit = hitTestNotationAt(mouseX, mouseY);
   if (hit && typeof selectNotation === 'function') {
     selectNotation(hit.id);
+    return;
+  }
+
+  if (scoreMode === 'view') {
+    const sheet = hitTestSheetAt(mouseX, mouseY);
+    if (sheet) selectAtlasSheet(sheet);
   }
 }
 

@@ -43,13 +43,11 @@ const BASE_MARK_FIELD_SPAN = 30;
 /** drawSketchMark weight so stroke ≈ MARK_STROKE_IN on the page at any scale. */
 const BASE_MARK_STROKE_WEIGHT = (MARK_STROKE_IN * BASE_MARK_FIELD_SPAN) / MARK_SIZE_IN;
 
-// Corner crop / registration marks (full mark stays inside the page).
+// Corner crop / registration marks (centers sit on content-rect corners).
 const CROP_MARK_RADIUS_MM = 1.5;   // 3mm diameter circle
 const CROP_MARK_CROSS_MM = 2.5;    // half-arm length from center (5mm total)
-const CROP_MARK_INSET_MM = 7;      // center inset from each page edge
 const CROP_MARK_RADIUS_IN = CROP_MARK_RADIUS_MM / MM_PER_IN;
 const CROP_MARK_CROSS_IN = CROP_MARK_CROSS_MM / MM_PER_IN;
-const CROP_MARK_INSET_IN = CROP_MARK_INSET_MM / MM_PER_IN;
 const CROP_MARK_STROKE_IN = 0.2 / MM_PER_IN;
 
 function normalizeFillEntry(entry) {
@@ -98,6 +96,21 @@ const PAGE_OVERLAP_IN = 0.5;
 const PAGE_MARGIN_PX = 40;
 /** Atlas tiling only at 1:1000 and coarser; finer scales use free-pan single crop. */
 const ATLAS_MIN_SCALE_DENOM = 1000;
+
+/**
+ * Shared content / crop-mark rectangle in page inches.
+ * Inset PAGE_OVERLAP_IN (0.5") from every page edge — same constant as atlas step
+ * (PAGE_*_IN - PAGE_OVERLAP_IN). Outer band is blank handling/glue margin.
+ */
+function getContentRectInches() {
+  const m = PAGE_OVERLAP_IN;
+  return {
+    minX: m,
+    minY: m,
+    maxX: PAGE_WIDTH_IN - m,
+    maxY: PAGE_HEIGHT_IN - m,
+  };
+}
 
 let scoreMode = 'view';
 let panRX = 0;
@@ -538,8 +551,8 @@ function computePrintAtlas(scaleDenom) {
   const site = computeSiteBoundsFt();
   const pageWFt = PAGE_WIDTH_IN * (denom / 12);
   const pageHFt = PAGE_HEIGHT_IN * (denom / 12);
-  const stepWFt = (PAGE_WIDTH_IN - PAGE_OVERLAP_IN) * (denom / 12);
-  const stepHFt = (PAGE_HEIGHT_IN - PAGE_OVERLAP_IN) * (denom / 12);
+  const stepWFt = (PAGE_WIDTH_IN - 2 * PAGE_OVERLAP_IN) * (denom / 12);
+  const stepHFt = (PAGE_HEIGHT_IN - 2 * PAGE_OVERLAP_IN) * (denom / 12);
 
   let cols = 1;
   let rows = 1;
@@ -1647,15 +1660,21 @@ function draw() {
   const pageModes = scoreMode === 'print' || scoreMode === 'sheet';
 
   if (pageModes) {
-    // Cull stamps to the page (same as export); canvas clip handles screen preview.
-    geo.clipMinX = geo.pageX;
-    geo.clipMaxX = geo.pageX + geo.pageW;
-    geo.clipMinY = geo.pageY;
-    geo.clipMaxY = geo.pageY + geo.pageH;
+    // Cull + clip to the shared content rect (0.5" inset), not the full page.
+    const mPx = PAGE_OVERLAP_IN * geo.pxPerInch;
+    geo.clipMinX = geo.pageX + mPx;
+    geo.clipMaxX = geo.pageX + geo.pageW - mPx;
+    geo.clipMinY = geo.pageY + mPx;
+    geo.clipMaxY = geo.pageY + geo.pageH - mPx;
     drawPageFrame(geo);
     drawingContext.save();
     drawingContext.beginPath();
-    drawingContext.rect(geo.pageX, geo.pageY, geo.pageW, geo.pageH);
+    drawingContext.rect(
+      geo.clipMinX,
+      geo.clipMinY,
+      geo.clipMaxX - geo.clipMinX,
+      geo.clipMaxY - geo.clipMinY
+    );
     drawingContext.clip();
   }
 
@@ -1664,12 +1683,13 @@ function draw() {
   drawNotations(geo);
 
   if (pageModes) {
+    drawingContext.restore();
+    // Crop marks, caption, and overlap guides live in/on the margin — outside content clip.
     if (scoreMode === 'sheet') {
       drawPrintOverlapGuides(geo);
       drawCropMarks(geo);
       drawSheetCaption(geo);
     }
-    drawingContext.restore();
   } else if (scoreMode === 'grid' && isAtlasScale()) {
     drawAtlasOverlay(geo);
   }
@@ -1779,13 +1799,6 @@ function mouseWheel(event) {
 const EXPORT_STROKE_IN = 0.012;
 const EXPORT_MARK_STROKE_SCALE = 1;
 
-const PAGE_RECT_IN = {
-  minX: 0,
-  minY: 0,
-  maxX: PAGE_WIDTH_IN,
-  maxY: PAGE_HEIGHT_IN,
-};
-
 /** Inkscape-friendly layer group open tag. */
 function svgLayerOpen(id, label) {
   return '<g id="' + id + '" inkscape:groupmode="layer" inkscape:label="' +
@@ -1799,7 +1812,7 @@ function svgLayerClose() {
 // --- Geometric clipping against the page rectangle (plotter-safe; no clip-path) ---
 
 function pointInPageRect(p, rect) {
-  const r = rect || PAGE_RECT_IN;
+  const r = rect || getContentRectInches();
   return p.x >= r.minX && p.x <= r.maxX && p.y >= r.minY && p.y <= r.maxY;
 }
 
@@ -1814,7 +1827,7 @@ function outCode(x, y, rect) {
 
 /** Cohen–Sutherland. Returns clipped segment {x1,y1,x2,y2} or null. */
 function clipSegmentToRect(x1, y1, x2, y2, rect) {
-  const r = rect || PAGE_RECT_IN;
+  const r = rect || getContentRectInches();
   let code1 = outCode(x1, y1, r);
   let code2 = outCode(x2, y2, r);
   for (;;) {
@@ -1846,7 +1859,7 @@ function clipSegmentToRect(x1, y1, x2, y2, rect) {
 
 /** Clip a polyline into zero or more open polylines inside rect. */
 function clipPolylineToRect(pts, rect) {
-  const r = rect || PAGE_RECT_IN;
+  const r = rect || getContentRectInches();
   if (!pts || pts.length < 2) return [];
   const out = [];
   let current = null;
@@ -1876,13 +1889,13 @@ function clipPolylineToRect(pts, rect) {
 }
 
 function circleFullyInRect(cx, cy, radius, rect) {
-  const r = rect || PAGE_RECT_IN;
+  const r = rect || getContentRectInches();
   return cx - radius >= r.minX && cx + radius <= r.maxX &&
     cy - radius >= r.minY && cy + radius <= r.maxY;
 }
 
 function circleOutsideRect(cx, cy, radius, rect) {
-  const r = rect || PAGE_RECT_IN;
+  const r = rect || getContentRectInches();
   return cx + radius < r.minX || cx - radius > r.maxX ||
     cy + radius < r.minY || cy - radius > r.maxY;
 }
@@ -1929,7 +1942,7 @@ function emitClippedPolylineSvg(pts, color, weightIn, rect) {
  * discretized and segment-clipped (no SVG clip-path).
  */
 function emitClippedCircleSvg(cx, cy, radius, color, weightIn, filled, rect) {
-  const r = rect || PAGE_RECT_IN;
+  const r = rect || getContentRectInches();
   if (circleOutsideRect(cx, cy, radius, r)) return [];
   if (circleFullyInRect(cx, cy, radius, r)) {
     if (filled) {
@@ -2120,7 +2133,7 @@ function appendGeoLineStrings(features, geo, outPaths) {
     lines.forEach((line) => {
       const pts = ringLngLatToPageInches(line, geo);
       if (pts.length < 2) return;
-      clipPolylineToRect(pts, PAGE_RECT_IN).forEach((poly) => {
+      clipPolylineToRect(pts, getContentRectInches()).forEach((poly) => {
         const d = svgPathFromPts(poly, false);
         if (d) outPaths.push(svgEl('path', { d: d }));
       });
@@ -2302,7 +2315,7 @@ function emitSketchMarkSvg(m, lng, lat, ftPerPx, geo, defs, clipState, options) 
     ? opts.fixedStrokeIn
     : Math.max((m.weight || 1) * ftPerPx * inchesPerFt * EXPORT_MARK_STROKE_SCALE, 0.006);
   const hatchStep = MARK_HATCH_LINE_STEP * ftPerPx * inchesPerFt;
-  const pageRect = opts.pageRect || PAGE_RECT_IN;
+  const pageRect = opts.pageRect || getContentRectInches();
   const out = [];
 
   const toPage = (fx, fy) => {
@@ -2472,12 +2485,12 @@ function appendNotationMarksSvg(geo, defs, plotParts, sheet, bufferFt, clipState
     if (notation.lexiconLinkStatus === 'missing') {
       const p = projectLngLatToPageInches(notation.lng, notation.lat, geo);
       const r = Math.max(FALLBACK_DOT_RADIUS_FT * inchesPerFt, 0.02);
-      emitClippedCircleSvg(p.x, p.y, r, '#1a1a1a', EXPORT_STROKE_IN * 1.5, false, PAGE_RECT_IN)
+      emitClippedCircleSvg(p.x, p.y, r, '#1a1a1a', EXPORT_STROKE_IN * 1.5, false, getContentRectInches())
         .forEach((el) => parts.push(el));
       const arm = r * 0.55;
-      emitClippedLineSvg(p.x - arm, p.y - arm, p.x + arm, p.y + arm, '#1a1a1a', EXPORT_STROKE_IN, PAGE_RECT_IN)
+      emitClippedLineSvg(p.x - arm, p.y - arm, p.x + arm, p.y + arm, '#1a1a1a', EXPORT_STROKE_IN, getContentRectInches())
         .forEach((el) => parts.push(el));
-      emitClippedLineSvg(p.x + arm, p.y - arm, p.x - arm, p.y + arm, '#1a1a1a', EXPORT_STROKE_IN, PAGE_RECT_IN)
+      emitClippedLineSvg(p.x + arm, p.y - arm, p.x - arm, p.y + arm, '#1a1a1a', EXPORT_STROKE_IN, getContentRectInches())
         .forEach((el) => parts.push(el));
       return;
     }
@@ -2488,7 +2501,7 @@ function appendNotationMarksSvg(geo, defs, plotParts, sheet, bufferFt, clipState
     if (!marks || !marks.length) {
       const p = projectLngLatToPageInches(notation.lng, notation.lat, geo);
       const r = Math.max(FALLBACK_DOT_RADIUS_FT * inchesPerFt, 0.02);
-      emitClippedCircleSvg(p.x, p.y, r, '#1a1a1a', EXPORT_STROKE_IN, false, PAGE_RECT_IN)
+      emitClippedCircleSvg(p.x, p.y, r, '#1a1a1a', EXPORT_STROKE_IN, false, getContentRectInches())
         .forEach((el) => parts.push(el));
       return;
     }
@@ -2507,12 +2520,12 @@ function appendNotationMarksSvg(geo, defs, plotParts, sheet, bufferFt, clipState
 }
 
 function cropMarkCentersInches() {
-  const inset = CROP_MARK_INSET_IN;
+  const r = getContentRectInches();
   return [
-    { x: inset, y: inset },
-    { x: PAGE_WIDTH_IN - inset, y: inset },
-    { x: PAGE_WIDTH_IN - inset, y: PAGE_HEIGHT_IN - inset },
-    { x: inset, y: PAGE_HEIGHT_IN - inset },
+    { x: r.minX, y: r.minY },
+    { x: r.maxX, y: r.minY },
+    { x: r.maxX, y: r.maxY },
+    { x: r.minX, y: r.maxY },
   ];
 }
 
@@ -2580,11 +2593,12 @@ function buildSelectedSheetSvgString(options) {
 
   // Same geometry Sheet mode uses on screen (origin = sheet center, scaleDenom/12).
   const geo = getSheetGeometry();
-  // Cull stamps to the page rect (same area Sheet mode clips to).
-  geo.clipMinX = geo.pageX;
-  geo.clipMaxX = geo.pageX + geo.pageW;
-  geo.clipMinY = geo.pageY;
-  geo.clipMaxY = geo.pageY + geo.pageH;
+  // Cull stamps to the shared content rect (0.5" inset), matching Sheet on-screen clip.
+  const mPx = PAGE_OVERLAP_IN * geo.pxPerInch;
+  geo.clipMinX = geo.pageX + mPx;
+  geo.clipMaxX = geo.pageX + geo.pageW - mPx;
+  geo.clipMinY = geo.pageY + mPx;
+  geo.clipMaxY = geo.pageY + geo.pageH - mPx;
   logExportCoordCheck(geo, sheet);
 
   // Only write features that intersect this sheet (overlap strip as buffer).

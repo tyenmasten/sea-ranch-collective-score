@@ -29,6 +29,29 @@ let scoreReady = false;
 const HATCH_PITCH = 7;
 const DEFAULT_MARK_ID = 'dot';
 
+// Fixed physical texture on the printed page (independent of map scale).
+// Mark extent ≈ 2.5mm; stamp grid ≈ 4mm center-to-center.
+const MM_PER_IN = 25.4;
+const MARK_SIZE_MM = 2.5;
+const MARK_GRID_MM = 4.0;
+const MARK_STROKE_MM = 0.25;
+const MARK_SIZE_IN = MARK_SIZE_MM / MM_PER_IN;
+const MARK_GRID_IN = MARK_GRID_MM / MM_PER_IN;
+const MARK_STROKE_IN = MARK_STROKE_MM / MM_PER_IN;
+/** Library marks span roughly this many field units tip-to-tip. */
+const BASE_MARK_FIELD_SPAN = 30;
+/** drawSketchMark weight so stroke ≈ MARK_STROKE_IN on the page at any scale. */
+const BASE_MARK_STROKE_WEIGHT = (MARK_STROKE_IN * BASE_MARK_FIELD_SPAN) / MARK_SIZE_IN;
+
+// Corner crop / registration marks (full mark stays inside the page).
+const CROP_MARK_RADIUS_MM = 1.5;   // 3mm diameter circle
+const CROP_MARK_CROSS_MM = 2.5;    // half-arm length from center (5mm total)
+const CROP_MARK_INSET_MM = 7;      // center inset from each page edge
+const CROP_MARK_RADIUS_IN = CROP_MARK_RADIUS_MM / MM_PER_IN;
+const CROP_MARK_CROSS_IN = CROP_MARK_CROSS_MM / MM_PER_IN;
+const CROP_MARK_INSET_IN = CROP_MARK_INSET_MM / MM_PER_IN;
+const CROP_MARK_STROKE_IN = 0.2 / MM_PER_IN;
+
 function normalizeFillEntry(entry) {
   const legacyChar = {
     '=': 'double-tick', '+': 'cross', '-': 'tick', '.': 'dot',
@@ -790,23 +813,33 @@ function nearestOffsetGridPoint(x, y, pitch, offset) {
   return { gx, gy };
 }
 
-/** Pitch in feet so page density ≈ former HATCH_PITCH screen spacing. */
+/**
+ * Stamp grid pitch in rotated feet so spacing on the page is MARK_GRID_MM
+ * at the active scale (finer scales → fewer world samples; coarser → more).
+ */
 function texturePitchFt(geo) {
-  return HATCH_PITCH / Math.max(geo.pxPerFt, 1e-9);
+  const denom = (geo && geo.scaleDenom) || currentScaleDenominator();
+  return MARK_GRID_IN * (denom / 12);
 }
 
-/** Field px → feet scale so marks read ~same size as old character stamps. */
+/**
+ * Field px → feet so a BASE_MARK_FIELD_SPAN-wide mark reads as MARK_SIZE_MM
+ * on the printed page at the active scale.
+ */
 function baseLayerFtPerFieldPx(geo) {
-  const desiredFt = (HATCH_PITCH * 0.85) / Math.max(geo.pxPerFt, 1e-9);
-  return desiredFt / 30;
+  const denom = (geo && geo.scaleDenom) || currentScaleDenominator();
+  const inchesPerFt = 12 / denom;
+  return MARK_SIZE_IN / (BASE_MARK_FIELD_SPAN * inchesPerFt);
 }
 
 function stampInClip(geo, lng, lat) {
   if (geo.clipMinX == null) return true;
   const p = project(lng, lat, geo);
-  const pad = HATCH_PITCH * 2;
-  return p.x >= geo.clipMinX - pad && p.x <= geo.clipMaxX + pad &&
-    p.y >= geo.clipMinY - pad && p.y <= geo.clipMaxY + pad;
+  const padPx = (geo.pxPerInch != null)
+    ? (MARK_SIZE_IN * 0.6 * geo.pxPerInch)
+    : HATCH_PITCH * 2;
+  return p.x >= geo.clipMinX - padPx && p.x <= geo.clipMaxX + padPx &&
+    p.y >= geo.clipMinY - padPx && p.y <= geo.clipMaxY + padPx;
 }
 
 function ringToRotatedFeet(ring) {
@@ -960,7 +993,10 @@ function drawBaseLayerMarkAt(markDef, color, lng, lat, geo) {
   if (!markDef || !Array.isArray(markDef.marks)) return;
   const ftPerPx = baseLayerFtPerFieldPx(geo);
   markDef.marks.forEach((m) => {
-    const colored = Object.assign({}, m, { color: color || m.color || '#1a1a1a' });
+    const colored = Object.assign({}, m, {
+      color: color || m.color || '#1a1a1a',
+      weight: BASE_MARK_STROKE_WEIGHT,
+    });
     drawSketchMark(colored, lng, lat, ftPerPx, geo);
   });
 }
@@ -1611,6 +1647,11 @@ function draw() {
   const pageModes = scoreMode === 'print' || scoreMode === 'sheet';
 
   if (pageModes) {
+    // Cull stamps to the page (same as export); canvas clip handles screen preview.
+    geo.clipMinX = geo.pageX;
+    geo.clipMaxX = geo.pageX + geo.pageW;
+    geo.clipMinY = geo.pageY;
+    geo.clipMaxY = geo.pageY + geo.pageH;
     drawPageFrame(geo);
     drawingContext.save();
     drawingContext.beginPath();
@@ -1625,6 +1666,7 @@ function draw() {
   if (pageModes) {
     if (scoreMode === 'sheet') {
       drawPrintOverlapGuides(geo);
+      drawCropMarks(geo);
       drawSheetCaption(geo);
     }
     drawingContext.restore();
@@ -1736,6 +1778,174 @@ function mouseWheel(event) {
 
 const EXPORT_STROKE_IN = 0.012;
 const EXPORT_MARK_STROKE_SCALE = 1;
+
+const PAGE_RECT_IN = {
+  minX: 0,
+  minY: 0,
+  maxX: PAGE_WIDTH_IN,
+  maxY: PAGE_HEIGHT_IN,
+};
+
+/** Inkscape-friendly layer group open tag. */
+function svgLayerOpen(id, label) {
+  return '<g id="' + id + '" inkscape:groupmode="layer" inkscape:label="' +
+    (label || id) + '">';
+}
+
+function svgLayerClose() {
+  return '</g>';
+}
+
+// --- Geometric clipping against the page rectangle (plotter-safe; no clip-path) ---
+
+function pointInPageRect(p, rect) {
+  const r = rect || PAGE_RECT_IN;
+  return p.x >= r.minX && p.x <= r.maxX && p.y >= r.minY && p.y <= r.maxY;
+}
+
+function outCode(x, y, rect) {
+  let code = 0;
+  if (x < rect.minX) code |= 1;
+  else if (x > rect.maxX) code |= 2;
+  if (y < rect.minY) code |= 4;
+  else if (y > rect.maxY) code |= 8;
+  return code;
+}
+
+/** Cohen–Sutherland. Returns clipped segment {x1,y1,x2,y2} or null. */
+function clipSegmentToRect(x1, y1, x2, y2, rect) {
+  const r = rect || PAGE_RECT_IN;
+  let code1 = outCode(x1, y1, r);
+  let code2 = outCode(x2, y2, r);
+  for (;;) {
+    if (!(code1 | code2)) return { x1: x1, y1: y1, x2: x2, y2: y2 };
+    if (code1 & code2) return null;
+    const codeOut = code1 || code2;
+    let x = 0;
+    let y = 0;
+    if (codeOut & 8) {
+      x = x1 + (x2 - x1) * (r.maxY - y1) / (y2 - y1);
+      y = r.maxY;
+    } else if (codeOut & 4) {
+      x = x1 + (x2 - x1) * (r.minY - y1) / (y2 - y1);
+      y = r.minY;
+    } else if (codeOut & 2) {
+      y = y1 + (y2 - y1) * (r.maxX - x1) / (x2 - x1);
+      x = r.maxX;
+    } else {
+      y = y1 + (y2 - y1) * (r.minX - x1) / (x2 - x1);
+      x = r.minX;
+    }
+    if (codeOut === code1) {
+      x1 = x; y1 = y; code1 = outCode(x1, y1, r);
+    } else {
+      x2 = x; y2 = y; code2 = outCode(x2, y2, r);
+    }
+  }
+}
+
+/** Clip a polyline into zero or more open polylines inside rect. */
+function clipPolylineToRect(pts, rect) {
+  const r = rect || PAGE_RECT_IN;
+  if (!pts || pts.length < 2) return [];
+  const out = [];
+  let current = null;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const seg = clipSegmentToRect(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, r);
+    if (!seg) {
+      if (current && current.length >= 2) out.push(current);
+      current = null;
+      continue;
+    }
+    const a = { x: seg.x1, y: seg.y1 };
+    const b = { x: seg.x2, y: seg.y2 };
+    if (!current) {
+      current = [a, b];
+    } else {
+      const last = current[current.length - 1];
+      if (Math.hypot(last.x - a.x, last.y - a.y) > 1e-9) {
+        out.push(current);
+        current = [a, b];
+      } else {
+        current.push(b);
+      }
+    }
+  }
+  if (current && current.length >= 2) out.push(current);
+  return out;
+}
+
+function circleFullyInRect(cx, cy, radius, rect) {
+  const r = rect || PAGE_RECT_IN;
+  return cx - radius >= r.minX && cx + radius <= r.maxX &&
+    cy - radius >= r.minY && cy + radius <= r.maxY;
+}
+
+function circleOutsideRect(cx, cy, radius, rect) {
+  const r = rect || PAGE_RECT_IN;
+  return cx + radius < r.minX || cx - radius > r.maxX ||
+    cy + radius < r.minY || cy - radius > r.maxY;
+}
+
+/** Sample a circle as a closed polyline in page inches. */
+function sampleCirclePagePts(cx, cy, radius, steps) {
+  const n = steps || 48;
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const t = (i / n) * Math.PI * 2;
+    pts.push({ x: cx + radius * Math.cos(t), y: cy + radius * Math.sin(t) });
+  }
+  return pts;
+}
+
+function emitClippedLineSvg(x1, y1, x2, y2, color, weightIn, rect) {
+  const seg = clipSegmentToRect(x1, y1, x2, y2, rect);
+  if (!seg) return [];
+  return [svgEl('line', {
+    x1: svgNum(seg.x1), y1: svgNum(seg.y1),
+    x2: svgNum(seg.x2), y2: svgNum(seg.y2),
+    stroke: color || '#1a1a1a', 'stroke-width': svgNum(weightIn),
+    'stroke-linecap': 'round',
+  })];
+}
+
+function emitClippedPolylineSvg(pts, color, weightIn, rect) {
+  const parts = [];
+  clipPolylineToRect(pts, rect).forEach((poly) => {
+    const d = svgPathFromPts(poly, false);
+    if (d) {
+      parts.push(svgEl('path', {
+        d: d, fill: 'none', stroke: color || '#1a1a1a',
+        'stroke-width': svgNum(weightIn),
+        'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+      }));
+    }
+  });
+  return parts;
+}
+
+/**
+ * Emit a circle clipped to the page: intact <circle> if fully inside, else
+ * discretized and segment-clipped (no SVG clip-path).
+ */
+function emitClippedCircleSvg(cx, cy, radius, color, weightIn, filled, rect) {
+  const r = rect || PAGE_RECT_IN;
+  if (circleOutsideRect(cx, cy, radius, r)) return [];
+  if (circleFullyInRect(cx, cy, radius, r)) {
+    if (filled) {
+      return [svgEl('circle', {
+        cx: svgNum(cx), cy: svgNum(cy), r: svgNum(radius),
+        fill: color || '#1a1a1a', stroke: 'none',
+      })];
+    }
+    return [svgEl('circle', {
+      cx: svgNum(cx), cy: svgNum(cy), r: svgNum(radius),
+      fill: 'none', stroke: color || '#1a1a1a', 'stroke-width': svgNum(weightIn),
+    })];
+  }
+  // Partial: stroke as clipped polyline (filled dots become stroked outline when cut).
+  return emitClippedPolylineSvg(sampleCirclePagePts(cx, cy, radius, 64), color, weightIn, r);
+}
 
 /**
  * Convert Sheet-mode screen pixels to page inches using the same page frame
@@ -1901,47 +2111,6 @@ function mapFieldPtsToPageInches(pts, lng, lat, ftPerPx, geo, pivot, rot) {
   });
 }
 
-/** Port of hatchFillScreen → SVG primitives in page inches (clip via clipPath). */
-function svgMarkHatchParts(pagePts, fillStyle, stepIn, clipId) {
-  if (!pagePts.length || fillStyle === 'none' || fillStyle === 'solid') return '';
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  pagePts.forEach((p) => {
-    if (p.x < minX) minX = p.x;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.y > maxY) maxY = p.y;
-  });
-  const parts = [];
-  const clipAttr = clipId ? ' clip-path="url(#' + clipId + ')"' : '';
-  parts.push('<g fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(Math.max(stepIn * 0.2, 0.006)) + '"' + clipAttr + '>');
-  if (fillStyle === 'h' || fillStyle === 'cross') {
-    for (let y = minY; y <= maxY; y += stepIn) {
-      parts.push(svgEl('line', { x1: svgNum(minX), y1: svgNum(y), x2: svgNum(maxX), y2: svgNum(y) }));
-    }
-  }
-  if (fillStyle === 'd' || fillStyle === 'cross') {
-    const span = Math.max(maxX - minX, maxY - minY) * 2;
-    for (let d = -span; d <= span; d += stepIn) {
-      parts.push(svgEl('line', {
-        x1: svgNum(minX + d), y1: svgNum(minY),
-        x2: svgNum(minX + d + span), y2: svgNum(maxY),
-      }));
-    }
-  }
-  if (fillStyle === 'dots') {
-    const dotR = Math.max(stepIn * 0.15, 0.004);
-    const dotStep = stepIn * (10 / 8);
-    parts.push('</g><g fill="#1a1a1a" stroke="none"' + clipAttr + '>');
-    for (let y = minY; y <= maxY; y += dotStep) {
-      for (let x = minX; x <= maxX; x += dotStep) {
-        parts.push(svgEl('circle', { cx: svgNum(x), cy: svgNum(y), r: svgNum(dotR) }));
-      }
-    }
-  }
-  parts.push('</g>');
-  return parts.join('');
-}
-
 function appendGeoLineStrings(features, geo, outPaths) {
   features.forEach((f) => {
     if (!f.geometry) return;
@@ -1951,8 +2120,10 @@ function appendGeoLineStrings(features, geo, outPaths) {
     lines.forEach((line) => {
       const pts = ringLngLatToPageInches(line, geo);
       if (pts.length < 2) return;
-      const d = svgPathFromPts(pts, false);
-      if (d) outPaths.push(svgEl('path', { d: d }));
+      clipPolylineToRect(pts, PAGE_RECT_IN).forEach((poly) => {
+        const d = svgPathFromPts(poly, false);
+        if (d) outPaths.push(svgEl('path', { d: d }));
+      });
     });
   });
 }
@@ -2116,17 +2287,22 @@ function drawSheetCaption(geo) {
 
 /**
  * Emit one sketch mark as SVG fragments (shared by notations + base-layer texture).
- * clipState = { seq: number } mutated when hatch clipPaths are added to defs.
+ * Page-edge clipping is geometric (Cohen–Sutherland / polyline clip) — not clip-path.
+ * clipState = { seq: number } only for optional hatch shape masks (notation fills).
  */
-function emitSketchMarkSvg(m, lng, lat, ftPerPx, geo, defs, clipState) {
+function emitSketchMarkSvg(m, lng, lat, ftPerPx, geo, defs, clipState, options) {
   if (!m || !m.geom) return [];
+  const opts = options || {};
   const inchesPerFt = 12 / geo.scaleDenom;
   const g = m.geom;
   const pivot = markLocalCenter(m);
   const rot = m.rot || 0;
   const color = m.color || '#1a1a1a';
-  const weightIn = Math.max((m.weight || 1) * ftPerPx * inchesPerFt * EXPORT_MARK_STROKE_SCALE, 0.006);
+  const weightIn = opts.fixedStrokeIn != null
+    ? opts.fixedStrokeIn
+    : Math.max((m.weight || 1) * ftPerPx * inchesPerFt * EXPORT_MARK_STROKE_SCALE, 0.006);
   const hatchStep = MARK_HATCH_LINE_STEP * ftPerPx * inchesPerFt;
+  const pageRect = opts.pageRect || PAGE_RECT_IN;
   const out = [];
 
   const toPage = (fx, fy) => {
@@ -2138,31 +2314,15 @@ function emitSketchMarkSvg(m, lng, lat, ftPerPx, geo, defs, clipState) {
     const c = toPage(g.cx, g.cy);
     const edge = toPage(g.cx + g.r, g.cy);
     const rPx = Math.hypot(edge.x - c.x, edge.y - c.y);
-    if (m.fill === 'solid' || m.stroke === false) {
-      out.push(svgEl('circle', {
-        cx: svgNum(c.x), cy: svgNum(c.y), r: svgNum(rPx),
-        fill: color, stroke: 'none',
-      }));
-    } else {
-      out.push(svgEl('circle', {
-        cx: svgNum(c.x), cy: svgNum(c.y), r: svgNum(rPx),
-        fill: 'none', stroke: color, 'stroke-width': svgNum(weightIn),
-      }));
-    }
-    return out;
+    const filled = m.fill === 'solid' || m.stroke === false;
+    return emitClippedCircleSvg(c.x, c.y, rPx, color, weightIn, filled, pageRect);
   }
 
   if (m.type === 'line') {
     if (m.stroke === false) return out;
     const a = toPage(g.x1, g.y1);
     const b = toPage(g.x2, g.y2);
-    out.push(svgEl('line', {
-      x1: svgNum(a.x), y1: svgNum(a.y),
-      x2: svgNum(b.x), y2: svgNum(b.y),
-      stroke: color, 'stroke-width': svgNum(weightIn),
-      'stroke-linecap': 'round',
-    }));
-    return out;
+    return emitClippedLineSvg(a.x, a.y, b.x, b.y, color, weightIn, pageRect);
   }
 
   if (m.type === 'semicircle') {
@@ -2184,14 +2344,7 @@ function emitSketchMarkSvg(m, lng, lat, ftPerPx, geo, defs, clipState) {
       }
       samples.push(toPage(g.cx + g.r * Math.cos(ang), g.cy + g.r * Math.sin(ang)));
     }
-    const d = svgPathFromPts(samples, false);
-    if (d) {
-      out.push(svgEl('path', {
-        d: d, fill: 'none', stroke: color, 'stroke-width': svgNum(weightIn),
-        'stroke-linecap': 'round',
-      }));
-    }
-    return out;
+    return emitClippedPolylineSvg(samples, color, weightIn, pageRect);
   }
 
   let pagePts = null;
@@ -2207,42 +2360,102 @@ function emitSketchMarkSvg(m, lng, lat, ftPerPx, geo, defs, clipState) {
   }
   if (!pagePts || !pagePts.length) return out;
 
-  const outlineD = svgPathFromPts(pagePts, true);
   if (m.fill && m.fill !== 'none' && m.fill !== 'solid') {
-    clipState.seq += 1;
-    const clipId = 'mark-clip-' + clipState.seq;
-    defs.push(
-      '<clipPath id="' + clipId + '">' +
-      svgEl('path', { d: outlineD }) +
-      '</clipPath>'
-    );
-    out.push(svgMarkHatchParts(pagePts, m.fill, hatchStep, clipId));
+    // Hatch lines: keep only those whose midpoint lies in the mark, then
+    // clip each segment to the page geometrically (no SVG clip-path).
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    pagePts.forEach((p) => {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    });
+    const stepIn = hatchStep;
+    const hatchStroke = Math.max(stepIn * 0.2, 0.006);
+    if (m.fill === 'h' || m.fill === 'cross') {
+      for (let y = minY; y <= maxY; y += stepIn) {
+        if (!pointInPolygon((minX + maxX) / 2, y, pagePts)) continue;
+        emitClippedLineSvg(minX, y, maxX, y, color, hatchStroke, pageRect)
+          .forEach((el) => out.push(el));
+      }
+    }
+    if (m.fill === 'd' || m.fill === 'cross') {
+      const span = Math.max(maxX - minX, maxY - minY) * 2;
+      for (let d = -span; d <= span; d += stepIn) {
+        const x1 = minX + d;
+        const y1 = minY;
+        const x2 = minX + d + span;
+        const y2 = maxY;
+        if (!pointInPolygon((x1 + x2) / 2, (y1 + y2) / 2, pagePts)) continue;
+        emitClippedLineSvg(x1, y1, x2, y2, color, hatchStroke, pageRect)
+          .forEach((el) => out.push(el));
+      }
+    }
   }
-  if (outlineD && (m.stroke !== false || m.fill === 'solid')) {
-    out.push(svgEl('path', {
-      d: outlineD, fill: 'none', stroke: color, 'stroke-width': svgNum(weightIn),
-    }));
+
+  if (m.stroke !== false || m.fill === 'solid') {
+    // Closed outline → open clipped edge segments (plotter-safe).
+    const closed = pagePts.slice();
+    if (closed.length > 1) {
+      const first = closed[0];
+      const last = closed[closed.length - 1];
+      if (Math.hypot(first.x - last.x, first.y - last.y) > 1e-9) closed.push(first);
+    }
+    emitClippedPolylineSvg(closed, color, weightIn, pageRect).forEach((el) => out.push(el));
   }
   return out;
 }
 
-/** Base-layer texture: same forEachBaseLayerStamp + emitSketchMarkSvg as Sheet preview. */
-function appendBaseLayerMarksSvg(geo, defs, plotParts, layerOpts, clipState) {
+function pushMarkFrags(parts, markDef, color, lng, lat, ftPerPx, geo, defs, clipState, emitOpts) {
+  if (!markDef || !Array.isArray(markDef.marks)) return;
+  markDef.marks.forEach((m) => {
+    const colored = Object.assign({}, m, {
+      color: color || m.color || '#1a1a1a',
+      weight: BASE_MARK_STROKE_WEIGHT,
+    });
+    const frags = emitSketchMarkSvg(
+      colored, lng, lat, ftPerPx, geo, defs, clipState,
+      Object.assign({ fixedStrokeIn: MARK_STROKE_IN }, emitOpts || {})
+    );
+    for (let i = 0; i < frags.length; i++) parts.push(frags[i]);
+  });
+}
+
+/** Append one category layer of base-texture marks. */
+function appendOneBaseLayerSvg(geo, defs, plotParts, layerId, label, stampIterator, clipState) {
   const ftPerPx = baseLayerFtPerFieldPx(geo);
   const clips = clipState || { seq: 0 };
   const parts = [];
-  forEachBaseLayerStamp(geo, (markDef, color, lng, lat) => {
-    if (!markDef || !Array.isArray(markDef.marks)) return;
-    markDef.marks.forEach((m) => {
-      const colored = Object.assign({}, m, { color: color || m.color || '#1a1a1a' });
-      const frags = emitSketchMarkSvg(colored, lng, lat, ftPerPx, geo, defs, clips);
-      for (let i = 0; i < frags.length; i++) parts.push(frags[i]);
-    });
-  }, Object.assign({ drawOutlines: false }, layerOpts || {}));
+  stampIterator((markDef, color, lng, lat) => {
+    pushMarkFrags(parts, markDef, color, lng, lat, ftPerPx, geo, defs, clips, {});
+  });
   if (parts.length) {
-    plotParts.push('<g id="base-texture">');
+    plotParts.push(svgLayerOpen(layerId, label));
     plotParts.push(parts.join(''));
-    plotParts.push('</g>');
+    plotParts.push(svgLayerClose());
+  }
+}
+
+function appendBaseLayerMarksSvg(geo, defs, plotParts, layerOpts, clipState) {
+  const opts = layerOpts || {};
+  const streets = opts.streets != null ? opts.streets : scoreLayers.streets;
+  const buildings = opts.buildings != null ? opts.buildings : scoreLayers.buildings;
+  const vegetation = opts.vegetation != null ? opts.vegetation : scoreLayers.vegetation;
+
+  if (state.layers.vegetation) {
+    appendOneBaseLayerSvg(geo, defs, plotParts, 'vegetation', 'vegetation', (cb) => {
+      forEachCategorizedMarkStamp(geo, vegetation, 'LIFEFORM', 'vegetation', cb, null);
+    }, clipState);
+  }
+  if (state.layers.streets) {
+    appendOneBaseLayerSvg(geo, defs, plotParts, 'streets', 'streets', (cb) => {
+      forEachStreetMarkStamp(geo, streets, cb);
+    }, clipState);
+  }
+  if (state.layers.buildings) {
+    appendOneBaseLayerSvg(geo, defs, plotParts, 'buildings', 'buildings', (cb) => {
+      forEachCategorizedMarkStamp(geo, buildings, 'PropType', 'buildings', cb, null);
+    }, clipState);
   }
 }
 
@@ -2252,25 +2465,20 @@ function appendNotationMarksSvg(geo, defs, plotParts, sheet, bufferFt, clipState
   );
   const inchesPerFt = 12 / geo.scaleDenom;
   const clips = clipState || { seq: 0 };
+  const parts = [];
   notations.forEach((notation) => {
     if (notation.lat == null || notation.lng == null) return;
 
     if (notation.lexiconLinkStatus === 'missing') {
       const p = projectLngLatToPageInches(notation.lng, notation.lat, geo);
       const r = Math.max(FALLBACK_DOT_RADIUS_FT * inchesPerFt, 0.02);
-      plotParts.push(svgEl('circle', {
-        cx: svgNum(p.x), cy: svgNum(p.y), r: svgNum(r),
-        fill: 'none', stroke: '#1a1a1a', 'stroke-width': svgNum(EXPORT_STROKE_IN * 1.5),
-      }));
+      emitClippedCircleSvg(p.x, p.y, r, '#1a1a1a', EXPORT_STROKE_IN * 1.5, false, PAGE_RECT_IN)
+        .forEach((el) => parts.push(el));
       const arm = r * 0.55;
-      plotParts.push(svgEl('line', {
-        x1: svgNum(p.x - arm), y1: svgNum(p.y - arm),
-        x2: svgNum(p.x + arm), y2: svgNum(p.y + arm),
-      }));
-      plotParts.push(svgEl('line', {
-        x1: svgNum(p.x + arm), y1: svgNum(p.y - arm),
-        x2: svgNum(p.x - arm), y2: svgNum(p.y + arm),
-      }));
+      emitClippedLineSvg(p.x - arm, p.y - arm, p.x + arm, p.y + arm, '#1a1a1a', EXPORT_STROKE_IN, PAGE_RECT_IN)
+        .forEach((el) => parts.push(el));
+      emitClippedLineSvg(p.x + arm, p.y - arm, p.x - arm, p.y + arm, '#1a1a1a', EXPORT_STROKE_IN, PAGE_RECT_IN)
+        .forEach((el) => parts.push(el));
       return;
     }
 
@@ -2280,18 +2488,75 @@ function appendNotationMarksSvg(geo, defs, plotParts, sheet, bufferFt, clipState
     if (!marks || !marks.length) {
       const p = projectLngLatToPageInches(notation.lng, notation.lat, geo);
       const r = Math.max(FALLBACK_DOT_RADIUS_FT * inchesPerFt, 0.02);
-      plotParts.push(svgEl('circle', {
-        cx: svgNum(p.x), cy: svgNum(p.y), r: svgNum(r),
-        fill: 'none', stroke: '#1a1a1a', 'stroke-width': svgNum(EXPORT_STROKE_IN),
-      }));
+      emitClippedCircleSvg(p.x, p.y, r, '#1a1a1a', EXPORT_STROKE_IN, false, PAGE_RECT_IN)
+        .forEach((el) => parts.push(el));
       return;
     }
 
     const ftPerPx = markFtPerFieldPx(notation.sketch);
     marks.forEach((m) => {
-      const frags = emitSketchMarkSvg(m, notation.lng, notation.lat, ftPerPx, geo, defs, clips);
-      for (let i = 0; i < frags.length; i++) plotParts.push(frags[i]);
+      const frags = emitSketchMarkSvg(m, notation.lng, notation.lat, ftPerPx, geo, defs, clips, {});
+      for (let i = 0; i < frags.length; i++) parts.push(frags[i]);
     });
+  });
+  if (parts.length) {
+    plotParts.push(svgLayerOpen('marks', 'notation marks'));
+    plotParts.push(parts.join(''));
+    plotParts.push(svgLayerClose());
+  }
+}
+
+function cropMarkCentersInches() {
+  const inset = CROP_MARK_INSET_IN;
+  return [
+    { x: inset, y: inset },
+    { x: PAGE_WIDTH_IN - inset, y: inset },
+    { x: PAGE_WIDTH_IN - inset, y: PAGE_HEIGHT_IN - inset },
+    { x: inset, y: PAGE_HEIGHT_IN - inset },
+  ];
+}
+
+function appendCropMarksSvg(plotParts) {
+  const parts = [];
+  const r = CROP_MARK_RADIUS_IN;
+  const arm = CROP_MARK_CROSS_IN;
+  const sw = CROP_MARK_STROKE_IN;
+  cropMarkCentersInches().forEach((c) => {
+    parts.push(svgEl('circle', {
+      cx: svgNum(c.x), cy: svgNum(c.y), r: svgNum(r),
+      fill: 'none', stroke: '#1a1a1a', 'stroke-width': svgNum(sw),
+    }));
+    parts.push(svgEl('line', {
+      x1: svgNum(c.x - arm), y1: svgNum(c.y),
+      x2: svgNum(c.x + arm), y2: svgNum(c.y),
+      stroke: '#1a1a1a', 'stroke-width': svgNum(sw), 'stroke-linecap': 'round',
+    }));
+    parts.push(svgEl('line', {
+      x1: svgNum(c.x), y1: svgNum(c.y - arm),
+      x2: svgNum(c.x), y2: svgNum(c.y + arm),
+      stroke: '#1a1a1a', 'stroke-width': svgNum(sw), 'stroke-linecap': 'round',
+    }));
+  });
+  plotParts.push(svgLayerOpen('crop-marks', 'crop marks'));
+  plotParts.push(parts.join(''));
+  plotParts.push(svgLayerClose());
+}
+
+/** Screen-space crop marks in Sheet mode (same page inset as export). */
+function drawCropMarks(geo) {
+  if (!geo || !geo.pxPerInch) return;
+  const px = geo.pxPerInch;
+  const r = CROP_MARK_RADIUS_IN * px;
+  const arm = CROP_MARK_CROSS_IN * px;
+  stroke('#1a1a1a');
+  strokeWeight(Math.max(CROP_MARK_STROKE_IN * px, 0.8));
+  noFill();
+  cropMarkCentersInches().forEach((c) => {
+    const sx = geo.pageX + c.x * px;
+    const sy = geo.pageY + c.y * px;
+    circle(sx, sy, r * 2);
+    line(sx - arm, sy, sx + arm, sy);
+    line(sx, sy - arm, sx, sy + arm);
   });
 }
 
@@ -2329,26 +2594,24 @@ function buildSelectedSheetSvgString(options) {
   const vegetationF = filterFeaturesToSheet(scoreLayers.vegetation, sheet, sheetBufferFt);
   const contoursF = filterFeaturesToSheet(scoreLayers.contours, sheet, sheetBufferFt);
 
-  const defs = [
-    '<clipPath id="sheet-clip"><rect x="0" y="0" width="' +
-    svgNum(PAGE_WIDTH_IN) + '" height="' + svgNum(PAGE_HEIGHT_IN) + '"/></clipPath>',
-  ];
+  const defs = [];
   const plotParts = [];
   const exportClipState = { seq: 0 };
 
   if (includeGeom) {
-    // Contours still export when the Contours layer is on (exception vs other boundaries).
     if (typeof state !== 'undefined' && state.layers && state.layers.contours && contoursF.length) {
       const contourPaths = [];
       appendGeoLineStrings(contoursF, geo, contourPaths);
       if (contourPaths.length) {
-        plotParts.push('<g id="contours" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN * 0.6) + '">');
+        plotParts.push(
+          '<g id="contours" inkscape:groupmode="layer" inkscape:label="contours" ' +
+          'fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN * 0.6) + '">'
+        );
         plotParts.push(contourPaths.join(''));
-        plotParts.push('</g>');
+        plotParts.push(svgLayerClose());
       }
     }
 
-    // No street centerlines / building / vegetation outlines in export — marks only.
     appendBaseLayerMarksSvg(geo, defs, plotParts, {
       streets: streetsF,
       buildings: buildingsF,
@@ -2358,14 +2621,10 @@ function buildSelectedSheetSvgString(options) {
   }
 
   if (includeMarks) {
-    const markParts = [];
-    appendNotationMarksSvg(geo, defs, markParts, sheet, sheetBufferFt, exportClipState);
-    if (markParts.length) {
-      plotParts.push('<g id="marks">');
-      plotParts.push(markParts.join(''));
-      plotParts.push('</g>');
-    }
+    appendNotationMarksSvg(geo, defs, plotParts, sheet, sheetBufferFt, exportClipState);
   }
+
+  appendCropMarksSvg(plotParts);
 
   const caption = sheetCaptionText(sheet, geo.scaleDenom);
   const labels = captionStringPathsAt(caption, 0.35, 0.45, 0.22, '#1a1a1a');
@@ -2373,17 +2632,17 @@ function buildSelectedSheetSvgString(options) {
   const svg =
     '<?xml version="1.0" encoding="UTF-8"?>\n' +
     '<svg xmlns="http://www.w3.org/2000/svg" ' +
+    'xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" ' +
     'width="' + PAGE_WIDTH_IN + 'in" height="' + PAGE_HEIGHT_IN + 'in" ' +
     'viewBox="0 0 ' + PAGE_WIDTH_IN + ' ' + PAGE_HEIGHT_IN + '">\n' +
-    '<defs>\n' + defs.join('\n') + '\n</defs>\n' +
-    '<g id="plot" clip-path="url(#sheet-clip)" fill="none" stroke="#1a1a1a" stroke-width="' +
-    svgNum(EXPORT_STROKE_IN) + '">\n' +
+    (defs.length ? '<defs>\n' + defs.join('\n') + '\n</defs>\n' : '') +
     plotParts.join('\n') + '\n' +
-    '</g>\n' +
-    '<g id="labels">\n' + labels.join('\n') + '\n</g>\n' +
+    svgLayerOpen('labels', 'caption') + '\n' +
+    labels.join('\n') + '\n' +
+    svgLayerClose() + '\n' +
     '</svg>\n';
 
-  // Diagnose path coordinate ranges and confirm no <text> remains.
+  // Diagnose path coordinate ranges and confirm no <text> / no clip-path on plot.
   const pathVals = [];
   const pathRe = /\b(?:x|y|x1|y1|x2|y2|cx|cy)="([-+0-9.]+)"/g;
   const dRe = /[ML]\s*([-+0-9.]+)\s+([-+0-9.]+)/g;
@@ -2394,6 +2653,7 @@ function buildSelectedSheetSvgString(options) {
     pathVals.push(Number(m[2]));
   }
   const textCount = (svg.match(/<text[\s>]/g) || []).length;
+  const clipPathCount = (svg.match(/clip-path=/g) || []).length;
   console.log('[export svg] filter counts', {
     sheet: sheet.label,
     bufferFt: sheetBufferFt,
@@ -2402,6 +2662,9 @@ function buildSelectedSheetSvgString(options) {
     vegetation: vegetationF.length + '/' + scoreLayers.vegetation.length,
     contours: contoursF.length + '/' + scoreLayers.contours.length,
     textElements: textCount,
+    clipPathAttrs: clipPathCount,
+    markSizeMm: MARK_SIZE_MM,
+    markGridMm: MARK_GRID_MM,
   });
   if (pathVals.length) {
     console.log('[export svg] path coord range', {

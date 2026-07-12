@@ -2262,9 +2262,9 @@ function drawSheetCaption(geo) {
   for (let i = 0; i < caption.length; i++) {
     const glyph = getCaptionGlyph(caption.charAt(i));
     const w = (glyph.w || 0.5) * heightPx;
-    (glyph.strokes || []).forEach((stroke) => {
-      if (!stroke.length) return;
-      const pts = stroke.map((p) => ({
+    (glyph.strokes || []).forEach((seg) => {
+      if (!seg.length) return;
+      const pts = seg.map((p) => ({
         x: x + p[0] * heightPx,
         y: startY + (p[1] - 0.5) * heightPx,
       }));
@@ -2667,9 +2667,16 @@ function buildSelectedSheetSvgString(options) {
     markGridMm: MARK_GRID_MM,
   });
   if (pathVals.length) {
+    let minV = pathVals[0];
+    let maxV = pathVals[0];
+    for (let i = 1; i < pathVals.length; i++) {
+      const v = pathVals[i];
+      if (v < minV) minV = v;
+      if (v > maxV) maxV = v;
+    }
     console.log('[export svg] path coord range', {
-      min: Math.min.apply(null, pathVals),
-      max: Math.max.apply(null, pathVals),
+      min: minV,
+      max: maxV,
       n: pathVals.length,
       svgBytes: svg.length,
     });

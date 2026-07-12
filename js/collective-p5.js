@@ -447,10 +447,10 @@ function drawVegetation(geo) {
 // --- Observation lexicon marks (native p5, same feet → rotate → project pipeline) ---
 //
 // Site layers arrive as WGS84 lng/lat (after prepareSiteGeoJSON state-plane fit).
-// toRotatedFeet converts each lng/lat to east/north feet from scoreCentroid, then
-// applies the fixed 42° rotation. Lexicon sketches live in a 600×800 field.
-// Real-world size: sketch.scaleFt feet across MARK_SCALE_BAR_PX field pixels
-// (matches lexicon-app SCALE_BAR_PX / sketch GRID = 100; default scaleFt = 10).
+// Anchors use toRotatedFeet (42°) then project so marks sit on the rotated site.
+// Local sketch offsets are applied upright in screen space (scale only); per-mark
+// rot still applies in field space. Real-world size: sketch.scaleFt feet across
+// MARK_SCALE_BAR_PX field pixels (default scaleFt = 10).
 
 const MARK_FIELD_W = 600;
 const MARK_FIELD_H = 800;
@@ -470,15 +470,14 @@ function markFtPerFieldPx(sketch) {
 }
 
 function fieldPointToScreen(fx, fy, lng, lat, ftPerPx, geo) {
-  const { rx: orx, ry: ory } = toRotatedFeet(lng, lat);
-  const east = (fx - MARK_FIELD_W / 2) * ftPerPx;
-  const north = (MARK_FIELD_H / 2 - fy) * ftPerPx;
-  const rad = -ROTATION_DEG * Math.PI / 180;
-  const rx = orx + east * Math.cos(rad) - north * Math.sin(rad);
-  const ry = ory + east * Math.sin(rad) + north * Math.cos(rad);
+  // Anchor: full rotated site pipeline (same as streets/buildings).
+  const anchor = project(lng, lat, geo);
+  // Local geometry: upright field axes at that screen point (no 42° on shape offsets).
+  const dxFt = (fx - MARK_FIELD_W / 2) * ftPerPx;
+  const dyFt = (fy - MARK_FIELD_H / 2) * ftPerPx;
   return {
-    x: geo.centerX + (rx - panRX) * geo.pxPerFt,
-    y: geo.centerY - (ry - panRY) * geo.pxPerFt,
+    x: anchor.x + dxFt * geo.pxPerFt,
+    y: anchor.y + dyFt * geo.pxPerFt,
   };
 }
 
@@ -1061,13 +1060,52 @@ function draw() {
 
 // --- pan and zoom interaction ---
 
+const CLICK_MOVE_THRESH_PX = 5;
+const NOTATION_HIT_MIN_PX = 14;
+const NOTATION_HIT_MAX_PX = 72;
+
+let pointerDidPan = false;
+
 function isPointerInCanvas(x, y) {
   return x >= 0 && x <= width && y >= 0 && y <= height;
+}
+
+function notationHitRadiusPx(notation, geo) {
+  if (notation.lexiconLinkStatus === 'missing' ||
+      !(notation.sketch && Array.isArray(notation.sketch.marks) && notation.sketch.marks.length)) {
+    return Math.max(NOTATION_HIT_MIN_PX, FALLBACK_DOT_RADIUS_FT * geo.pxPerFt * 2.5);
+  }
+  const ftPerPx = markFtPerFieldPx(notation.sketch);
+  // Field center is the projected anchor; use a fraction of field half-width in screen px.
+  const halfFieldPx = (MARK_FIELD_W / 2) * ftPerPx * geo.pxPerFt * 0.45;
+  return Math.max(NOTATION_HIT_MIN_PX, Math.min(NOTATION_HIT_MAX_PX, halfFieldPx));
+}
+
+/** Hit-test filtered (visible) notations only. Prefers the closest mark within radius. */
+function hitTestNotationAt(mx, my) {
+  if (!scoreReady) return null;
+  const geo = scoreMode === 'print' ? getPrintGeometry() : getViewGeometry();
+  const list = getNotationsToDraw();
+  let best = null;
+  let bestDist = Infinity;
+  for (let i = 0; i < list.length; i++) {
+    const notation = list[i];
+    if (notation.lat == null || notation.lng == null) continue;
+    const p = project(notation.lng, notation.lat, geo);
+    const r = notationHitRadiusPx(notation, geo);
+    const d = Math.hypot(mx - p.x, my - p.y);
+    if (d <= r && d < bestDist) {
+      bestDist = d;
+      best = notation;
+    }
+  }
+  return best;
 }
 
 function mousePressed() {
   if (!isPointerInCanvas(mouseX, mouseY)) return;
   isDragging = true;
+  pointerDidPan = false;
   dragStartMouseX = mouseX;
   dragStartMouseY = mouseY;
   dragStartPanRX = panRX;
@@ -1079,13 +1117,22 @@ function mouseDragged() {
   const geo = scoreMode === 'print' ? getPrintGeometry() : getViewGeometry();
   const dxPx = mouseX - dragStartMouseX;
   const dyPx = mouseY - dragStartMouseY;
+  if (Math.hypot(dxPx, dyPx) > CLICK_MOVE_THRESH_PX) pointerDidPan = true;
   panRX = dragStartPanRX - dxPx / geo.pxPerFt;
   panRY = dragStartPanRY + dyPx / geo.pxPerFt;
   redraw();
 }
 
 function mouseReleased() {
+  if (!isDragging) return;
   isDragging = false;
+  if (pointerDidPan || !scoreReady) return;
+  if (!isPointerInCanvas(mouseX, mouseY)) return;
+
+  const hit = hitTestNotationAt(mouseX, mouseY);
+  if (hit && typeof selectNotation === 'function') {
+    selectNotation(hit.id);
+  }
 }
 
 function mouseWheel(event) {

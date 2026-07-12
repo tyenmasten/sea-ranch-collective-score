@@ -185,6 +185,10 @@ function updateHeaderBadge() {
     if (typeof updateLexiconField === 'function') updateLexiconField();
   }
 
+  if (typeof window.onAuthSessionChange === 'function') {
+    window.onAuthSessionChange();
+  }
+
   const badge = document.getElementById('headerUser');
   if (!badge) return;
 

@@ -350,6 +350,17 @@ nav {
 
 .layer-toggle.on::after { left: 15px; }
 
+.layer-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.fill-char-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--hi);
+}
+
 .btn {
   font-family: 'Miniature', serif;
   font-size: 9px;
@@ -1182,6 +1193,7 @@ const state = {
   mapView: {
     rotation: 0,
     northArrow: true,
+    showOutlines: false,
   },
 };
 
@@ -1922,24 +1934,29 @@ function bindEvents() {
   });
 
   els.toggleStreets.addEventListener('click', () => {
+    if (!isFacultyUser()) return;
     state.layers.streets = !state.layers.streets;
     els.toggleStreets.classList.toggle('on', state.layers.streets);
     els.toggleStreets.setAttribute('aria-pressed', state.layers.streets);
     applyLayerVisibility();
     if (window.redraw) redraw();
+    saveScoreSettings();
   });
 
   els.toggleBuildings.addEventListener('click', () => {
+    if (!isFacultyUser()) return;
     state.layers.buildings = !state.layers.buildings;
     els.toggleBuildings.classList.toggle('on', state.layers.buildings);
     els.toggleBuildings.setAttribute('aria-pressed', state.layers.buildings);
     applyLayerVisibility();
     if (window.redraw) redraw();
+    saveScoreSettings();
   });
 
   els.toggleVegetation = document.getElementById('toggleVegetation');
   if (els.toggleVegetation) {
     els.toggleVegetation.addEventListener('click', () => {
+      if (!isFacultyUser()) return;
       state.layers.vegetation = !state.layers.vegetation;
       els.toggleVegetation.classList.toggle('on', state.layers.vegetation);
       els.toggleVegetation.setAttribute('aria-pressed', state.layers.vegetation);
@@ -1947,6 +1964,7 @@ function bindEvents() {
         window.loadVegetationLayer();
       }
       if (window.redraw) redraw();
+      saveScoreSettings();
     });
   }
 
@@ -1987,7 +2005,7 @@ function bindEvents() {
     vegetation: { ...DEFAULT_VEGETATION_FILLS },
   };
 
-  function buildFillCategoryRows(containerId, categories, groupKey) {
+  function buildFillCategoryRows(containerId, categories, groupKey, defaults) {
     const container = document.getElementById(containerId);
     if (!container) return;
     categories.forEach((cat) => {
@@ -2002,13 +2020,20 @@ function bindEvents() {
       input.type = 'text';
       input.className = 'fill-char-input';
       input.maxLength = 1;
+      input.dataset.fillGroup = groupKey;
+      input.dataset.fillCategory = cat;
       input.value = window.categoryFills[groupKey][cat] || '';
 
       input.addEventListener('input', () => {
+        if (!isFacultyUser()) {
+          input.value = window.categoryFills[groupKey][cat] || '';
+          return;
+        }
         const val = input.value.slice(0, 1);
         input.value = val;
-        window.categoryFills[groupKey][cat] = val || DEFAULT_BUILDING_FILLS[cat] || '.';
+        window.categoryFills[groupKey][cat] = val || defaults[cat] || '.';
         if (window.redraw) redraw();
+        saveScoreSettings();
       });
 
       row.appendChild(label);
@@ -2017,9 +2042,9 @@ function bindEvents() {
     });
   }
 
-  buildFillCategoryRows('streetsFillList', ROAD_FILL_CATEGORIES, 'streets');
-  buildFillCategoryRows('buildingsFillList', BUILDING_FILL_CATEGORIES, 'buildings');
-  buildFillCategoryRows('vegetationFillList', VEGETATION_FILL_CATEGORIES, 'vegetation');
+  buildFillCategoryRows('streetsFillList', ROAD_FILL_CATEGORIES, 'streets', DEFAULT_ROAD_FILLS);
+  buildFillCategoryRows('buildingsFillList', BUILDING_FILL_CATEGORIES, 'buildings', DEFAULT_BUILDING_FILLS);
+  buildFillCategoryRows('vegetationFillList', VEGETATION_FILL_CATEGORIES, 'vegetation', DEFAULT_VEGETATION_FILLS);
 
   const FILL_EXPAND_GROUPS = [
     { btnId: 'expandStreets', listId: 'streetsFillList' },
@@ -2047,24 +2072,30 @@ function bindEvents() {
   });
 
   els.toggleParcels.addEventListener('click', () => {
+    if (!isFacultyUser()) return;
     state.layers.parcels = !state.layers.parcels;
     els.toggleParcels.classList.toggle('on', state.layers.parcels);
     els.toggleParcels.setAttribute('aria-pressed', state.layers.parcels);
     console.log('Parcels toggle (no layer data yet):', state.layers.parcels);
+    saveScoreSettings();
   });
 
   els.toggleCoastalEdge.addEventListener('click', () => {
+    if (!isFacultyUser()) return;
     state.layers.coastalEdge = !state.layers.coastalEdge;
     els.toggleCoastalEdge.classList.toggle('on', state.layers.coastalEdge);
     els.toggleCoastalEdge.setAttribute('aria-pressed', state.layers.coastalEdge);
     console.log('Coastal edge toggle (no layer data yet):', state.layers.coastalEdge);
+    saveScoreSettings();
   });
 
   els.togglePublicLand.addEventListener('click', () => {
+    if (!isFacultyUser()) return;
     state.layers.publicLand = !state.layers.publicLand;
     els.togglePublicLand.classList.toggle('on', state.layers.publicLand);
     els.togglePublicLand.setAttribute('aria-pressed', state.layers.publicLand);
     console.log('Public land toggle (no layer data yet):', state.layers.publicLand);
+    saveScoreSettings();
   });
 
   els.toggleNorthArrow.addEventListener('click', () => {
@@ -2075,20 +2106,24 @@ function bindEvents() {
   });
 
   els.toggleContours.addEventListener('click', () => {
+    if (!isFacultyUser()) return;
     state.layers.contours = !state.layers.contours;
     els.toggleContours.classList.toggle('on', state.layers.contours);
     els.toggleContours.setAttribute('aria-pressed', state.layers.contours);
     applyLayerVisibility();
     if (window.redraw) redraw();
+    saveScoreSettings();
   });
 
   els.toggleOutlines = document.getElementById('toggleOutlines');
   if (els.toggleOutlines) {
     els.toggleOutlines.addEventListener('click', () => {
+      if (!isFacultyUser()) return;
       state.mapView.showOutlines = !state.mapView.showOutlines;
       els.toggleOutlines.classList.toggle('on', state.mapView.showOutlines);
       els.toggleOutlines.setAttribute('aria-pressed', state.mapView.showOutlines);
       if (window.redraw) redraw();
+      saveScoreSettings();
     });
   }
 
@@ -2115,6 +2150,167 @@ function bindEvents() {
     if (map) map.invalidateSize();
   });
 }
+
+const SCORE_SETTINGS_PATH = { collection: 'scoreSettings', doc: 'current' };
+
+function isFacultyUser() {
+  return !!(window.currentUser && window.currentUser.role === 'faculty');
+}
+
+function collectScoreSettingsPayload() {
+  return {
+    layers: {
+      streets: !!state.layers.streets,
+      buildings: !!state.layers.buildings,
+      vegetation: !!state.layers.vegetation,
+      contours: !!state.layers.contours,
+      parcels: !!state.layers.parcels,
+      coastalEdge: !!state.layers.coastalEdge,
+      publicLand: !!state.layers.publicLand,
+    },
+    showOutlines: !!state.mapView.showOutlines,
+    categoryFills: JSON.parse(JSON.stringify(window.categoryFills || {
+      streets: {},
+      buildings: {},
+      vegetation: {},
+    })),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function applyScoreSettingsData(data) {
+  if (!data) return;
+  if (data.layers && typeof data.layers === 'object') {
+    Object.keys(state.layers).forEach((key) => {
+      if (typeof data.layers[key] === 'boolean') state.layers[key] = data.layers[key];
+    });
+  }
+  if (typeof data.showOutlines === 'boolean') {
+    state.mapView.showOutlines = data.showOutlines;
+  }
+  if (data.categoryFills && typeof data.categoryFills === 'object' && window.categoryFills) {
+    ['streets', 'buildings', 'vegetation'].forEach((group) => {
+      if (!data.categoryFills[group] || typeof data.categoryFills[group] !== 'object') return;
+      if (!window.categoryFills[group]) window.categoryFills[group] = {};
+      Object.keys(data.categoryFills[group]).forEach((cat) => {
+        const val = data.categoryFills[group][cat];
+        if (val == null) return;
+        if (typeof val === 'string') {
+          window.categoryFills[group][cat] = val;
+        } else if (typeof val === 'object' && val.char != null) {
+          window.categoryFills[group][cat] = val;
+        }
+      });
+    });
+  }
+}
+
+function syncLayerControlsFromState() {
+  const layerToggles = [
+    [els.toggleStreets, state.layers.streets],
+    [els.toggleBuildings, state.layers.buildings],
+    [els.toggleVegetation || document.getElementById('toggleVegetation'), state.layers.vegetation],
+    [els.toggleContours, state.layers.contours],
+    [els.toggleParcels, state.layers.parcels],
+    [els.toggleCoastalEdge, state.layers.coastalEdge],
+    [els.togglePublicLand, state.layers.publicLand],
+  ];
+  layerToggles.forEach(([el, on]) => {
+    if (!el) return;
+    el.classList.toggle('on', !!on);
+    el.setAttribute('aria-pressed', !!on);
+  });
+
+  const outlinesEl = els.toggleOutlines || document.getElementById('toggleOutlines');
+  if (outlinesEl) {
+    outlinesEl.classList.toggle('on', !!state.mapView.showOutlines);
+    outlinesEl.setAttribute('aria-pressed', !!state.mapView.showOutlines);
+  }
+
+  document.querySelectorAll('.fill-char-input[data-fill-group]').forEach((input) => {
+    const group = input.dataset.fillGroup;
+    const cat = input.dataset.fillCategory;
+    const entry = window.categoryFills && window.categoryFills[group]
+      ? window.categoryFills[group][cat]
+      : '';
+    input.value = typeof entry === 'string' ? entry : (entry && entry.char) || '';
+  });
+}
+
+function applyLayerEditingGate() {
+  const canEdit = isFacultyUser();
+  const toggles = [
+    els.toggleStreets,
+    els.toggleBuildings,
+    els.toggleVegetation || document.getElementById('toggleVegetation'),
+    els.toggleContours,
+    els.toggleParcels,
+    els.toggleCoastalEdge,
+    els.togglePublicLand,
+    els.toggleOutlines || document.getElementById('toggleOutlines'),
+  ];
+  toggles.forEach((el) => {
+    if (!el) return;
+    el.disabled = !canEdit;
+    el.title = canEdit ? '' : 'Only faculty can change shared layer settings';
+  });
+  document.querySelectorAll('.fill-char-input').forEach((input) => {
+    input.disabled = !canEdit;
+    input.readOnly = !canEdit;
+    input.title = canEdit ? '' : 'Only faculty can change shared layer settings';
+  });
+}
+
+function saveScoreSettings() {
+  if (!window.db || !isFacultyUser()) return Promise.resolve();
+  const payload = collectScoreSettingsPayload();
+  return window.db.collection(SCORE_SETTINGS_PATH.collection).doc(SCORE_SETTINGS_PATH.doc)
+    .set(payload, { merge: true })
+    .then(() => {
+      console.log('[collective-score] Saved scoreSettings/current', payload);
+    })
+    .catch((err) => {
+      console.error('[collective-score] Failed to save scoreSettings:', err);
+    });
+}
+
+function loadScoreSettings() {
+  if (!window.db) {
+    console.warn('[collective-score] Firestore not available; using default layer settings.');
+    syncLayerControlsFromState();
+    applyLayerEditingGate();
+    return Promise.resolve(null);
+  }
+
+  return window.db.collection(SCORE_SETTINGS_PATH.collection).doc(SCORE_SETTINGS_PATH.doc).get()
+    .then((docSnap) => {
+      if (docSnap.exists) {
+        const data = docSnap.data();
+        console.log('[collective-score] Loaded scoreSettings/current', data);
+        applyScoreSettingsData(data);
+      } else {
+        console.log('[collective-score] No scoreSettings/current yet; using defaults.');
+      }
+      syncLayerControlsFromState();
+      applyLayerEditingGate();
+      applyLayerVisibility();
+      if (state.layers.vegetation && window.loadVegetationLayer) {
+        window.loadVegetationLayer();
+      }
+      if (window.redraw) redraw();
+      return docSnap.exists ? docSnap.data() : null;
+    })
+    .catch((err) => {
+      console.error('[collective-score] Failed to load scoreSettings:', err);
+      syncLayerControlsFromState();
+      applyLayerEditingGate();
+      return null;
+    });
+}
+
+window.onAuthSessionChange = function onAuthSessionChange() {
+  applyLayerEditingGate();
+};
 
 function syncCompass() {
   const compass = document.getElementById('scoreCompass');
@@ -2301,6 +2497,8 @@ function init() {
   updateVisibilityButtons();
   bindEvents();
   syncCompass();
+  applyLayerEditingGate();
+  loadScoreSettings();
   loadAllObservations();
 }
 

@@ -1902,19 +1902,119 @@ function appendGeoPolygonOutlines(features, geo, outOutlines) {
   });
 }
 
-function svgStampText(ch, pageX, pageY, color, fontIn) {
-  return svgEl('text', {
-    x: svgNum(pageX),
-    y: svgNum(pageY),
-    fill: color || '#1a1a1a',
-    'font-family': 'monospace',
-    'font-size': svgNum(fontIn),
-    'text-anchor': 'middle',
-    'dominant-baseline': 'middle',
-  }, svgEscapeText(ch));
+/** Hershey Roman Simplex (futural) — typical glyph y spans ~1..22. */
+const HERSHEY_EM = 21;
+const HERSHEY_BASELINE = 11.5;
+
+function getHersheyGlyph(ch) {
+  const pack = window.HERSHEY_SIMPLEX;
+  if (!pack || !pack.glyphs) return null;
+  if (pack.glyphs[ch]) return pack.glyphs[ch];
+  if (ch === '·' || ch === '•') return pack.glyphs['.'] || null;
+  return pack.glyphs['.'] || null;
 }
 
-/** Emit site texture as SVG <text> using the same stamp collectors as on-screen. */
+/**
+ * Parse Hershey SVG path `d` (M/L only, with multi-pair L runs) into polylines.
+ */
+function parseHersheyPathD(d) {
+  if (!d) return [];
+  const strokes = [];
+  let current = null;
+  const tokens = d.replace(/,/g, ' ').trim().split(/\s+/);
+  let i = 0;
+  let cmd = null;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (t === 'M' || t === 'L') {
+      cmd = t;
+      i += 1;
+      continue;
+    }
+    const x = Number(t);
+    const y = Number(tokens[i + 1]);
+    i += 2;
+    if (!isFinite(x) || !isFinite(y) || !cmd) continue;
+    if (cmd === 'M') {
+      current = [{ x: x, y: y }];
+      strokes.push(current);
+      cmd = 'L';
+    } else if (!current) {
+      current = [{ x: x, y: y }];
+      strokes.push(current);
+    } else {
+      current.push({ x: x, y: y });
+    }
+  }
+  return strokes.filter((s) => s.length > 0);
+}
+
+function polylineToPathD(pts) {
+  if (!pts.length) return '';
+  let d = 'M ' + svgNum(pts[0].x) + ' ' + svgNum(pts[0].y);
+  for (let i = 1; i < pts.length; i++) {
+    d += ' L ' + svgNum(pts[i].x) + ' ' + svgNum(pts[i].y);
+  }
+  return d;
+}
+
+/**
+ * Emit a single Hershey glyph as SVG path(s), centered at page inches (cx, cy).
+ * heightIn matches on-screen stamp size (HATCH_PITCH*0.9 / pxPerInch).
+ */
+function hersheyGlyphPathsAt(ch, cx, cy, heightIn, color) {
+  const glyph = getHersheyGlyph(ch);
+  if (!glyph) return [];
+  const scale = heightIn / HERSHEY_EM;
+  const width = glyph.o != null ? Number(glyph.o) : 10;
+  const ox = width / 2;
+  const oy = HERSHEY_BASELINE;
+  const strokes = parseHersheyPathD(glyph.d || '');
+  const out = [];
+  strokes.forEach((stroke) => {
+    const pts = stroke.map((p) => ({
+      x: cx + (p.x - ox) * scale,
+      y: cy + (p.y - oy) * scale,
+    }));
+    const d = polylineToPathD(pts);
+    if (d) {
+      out.push(svgEl('path', {
+        d: d,
+        fill: 'none',
+        stroke: color || '#1a1a1a',
+        'stroke-width': svgNum(Math.max(heightIn * 0.08, 0.006)),
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+      }));
+    }
+  });
+  return out;
+}
+
+/** Render a Hershey string left-to-right; (startX,startY) is left/center of first glyph. */
+function hersheyStringPathsAt(str, startX, startY, heightIn, color) {
+  const scale = heightIn / HERSHEY_EM;
+  let x = startX;
+  const out = [];
+  for (let i = 0; i < str.length; i++) {
+    let ch = str.charAt(i);
+    if (ch === '·' || ch === '•') ch = '.';
+    const glyph = getHersheyGlyph(ch);
+    if (!glyph) continue;
+    const width = glyph.o != null ? Number(glyph.o) : 10;
+    const glyphPaths = hersheyGlyphPathsAt(ch, x + (width * scale) / 2, startY, heightIn, color);
+    for (let j = 0; j < glyphPaths.length; j++) out.push(glyphPaths[j]);
+    x += width * scale * 1.05;
+  }
+  return out;
+}
+
+function svgStampText(ch, pageX, pageY, color, fontIn) {
+  // Emits Hershey vector paths (not <text>) so plotter SVGs need no custom fonts.
+  return hersheyGlyphPathsAt(ch, pageX, pageY, fontIn, color).join('');
+}
+
+/** Emit site texture as Hershey paths using the same stamp collectors as on-screen. */
 function appendSiteStampTexts(geo, plotParts) {
   const fontIn = (HATCH_PITCH * 0.9) / geo.pxPerInch;
 
@@ -2216,15 +2316,8 @@ function buildSelectedSheetSvgString(options) {
     }
   }
 
-  const labels = [
-    svgEl('text', {
-      x: svgNum(0.35),
-      y: svgNum(0.45),
-      'font-family': 'Miniature, serif',
-      'font-size': '0.22',
-      fill: '#1a1a1a',
-    }, 'Sheet ' + sheet.label + ' · 1:' + geo.scaleDenom),
-  ];
+  const caption = 'Sheet ' + sheet.label + ' - 1:' + geo.scaleDenom;
+  const labels = hersheyStringPathsAt(caption, 0.35, 0.45, 0.22, '#1a1a1a');
 
   const svg =
     '<?xml version="1.0" encoding="UTF-8"?>\n' +
@@ -2239,17 +2332,17 @@ function buildSelectedSheetSvgString(options) {
     '<g id="labels">\n' + labels.join('\n') + '\n</g>\n' +
     '</svg>\n';
 
-  // Diagnose path coordinate ranges in the assembled SVG (excludes <text>).
+  // Diagnose path coordinate ranges and confirm no <text> remains.
   const pathVals = [];
   const pathRe = /\b(?:x|y|x1|y1|x2|y2|cx|cy)="([-+0-9.]+)"/g;
   const dRe = /[ML]\s*([-+0-9.]+)\s+([-+0-9.]+)/g;
-  const pathOnly = svg.replace(/<text[\s\S]*?<\/text>/g, '');
   let m;
-  while ((m = pathRe.exec(pathOnly))) pathVals.push(Number(m[1]));
-  while ((m = dRe.exec(pathOnly))) {
+  while ((m = pathRe.exec(svg))) pathVals.push(Number(m[1]));
+  while ((m = dRe.exec(svg))) {
     pathVals.push(Number(m[1]));
     pathVals.push(Number(m[2]));
   }
+  const textCount = (svg.match(/<text[\s>]/g) || []).length;
   console.log('[export svg] filter counts', {
     sheet: sheet.label,
     bufferFt: sheetBufferFt,
@@ -2257,6 +2350,8 @@ function buildSelectedSheetSvgString(options) {
     buildings: buildingsF.length + '/' + scoreLayers.buildings.length,
     vegetation: vegetationF.length + '/' + scoreLayers.vegetation.length,
     contours: contoursF.length + '/' + scoreLayers.contours.length,
+    textElements: textCount,
+    hersheyReady: !!(window.HERSHEY_SIMPLEX && window.HERSHEY_SIMPLEX.glyphs),
   });
   if (pathVals.length) {
     console.log('[export svg] path coord range', {

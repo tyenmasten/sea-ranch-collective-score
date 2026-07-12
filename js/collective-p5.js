@@ -1683,8 +1683,63 @@ function projectLngLatToPageInches(lng, lat, geo) {
   return screenToPageInches(geo, s.x, s.y);
 }
 
-function ringToPageInches(ring, geo) {
-  return ring.map(([lng, lat]) => projectLngLatToPageInches(lng, lat, geo));
+/** Same pipeline as character stamps: ringToScreen(geo) → screenToPageInches. */
+function ringLngLatToPageInches(ring, geo) {
+  return ringToScreen(ring, geo).map((p) => screenToPageInches(geo, p.x, p.y));
+}
+
+function featureBoundsFt(feature) {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  let any = false;
+  function walk(coords) {
+    if (typeof coords[0] === 'number') {
+      const { rx, ry } = toRotatedFeet(coords[0], coords[1]);
+      if (rx < minX) minX = rx;
+      if (rx > maxX) maxX = rx;
+      if (ry < minY) minY = ry;
+      if (ry > maxY) maxY = ry;
+      any = true;
+      return;
+    }
+    coords.forEach(walk);
+  }
+  if (feature && feature.geometry && feature.geometry.coordinates) {
+    walk(feature.geometry.coordinates);
+  }
+  if (!any) return null;
+  return { minX, maxX, minY, maxY };
+}
+
+function boundsIntersectFt(a, b, bufferFt) {
+  if (!a || !b) return false;
+  const buf = bufferFt || 0;
+  return !(
+    a.maxX < b.minX - buf ||
+    a.minX > b.maxX + buf ||
+    a.maxY < b.minY - buf ||
+    a.minY > b.maxY + buf
+  );
+}
+
+/** Keep features whose rotated-feet AABB intersects the sheet (plus buffer). */
+function filterFeaturesToSheet(features, sheet, bufferFt) {
+  if (!sheet || !sheet.boundsFt) return features || [];
+  const sheetB = sheet.boundsFt;
+  return (features || []).filter((f) => {
+    const fb = featureBoundsFt(f);
+    return boundsIntersectFt(fb, sheetB, bufferFt);
+  });
+}
+
+function notationIntersectsSheet(notation, sheet, bufferFt) {
+  if (!notation || notation.lat == null || notation.lng == null || !sheet || !sheet.boundsFt) {
+    return false;
+  }
+  const { rx, ry } = toRotatedFeet(notation.lng, notation.lat);
+  const b = sheet.boundsFt;
+  const buf = bufferFt || 0;
+  return rx >= b.minX - buf && rx <= b.maxX + buf &&
+    ry >= b.minY - buf && ry <= b.maxY + buf;
 }
 
 function logExportCoordCheck(geo, sheet) {
@@ -1824,7 +1879,7 @@ function appendGeoLineStrings(features, geo, outPaths) {
       ? f.geometry.coordinates
       : [f.geometry.coordinates];
     lines.forEach((line) => {
-      const pts = ringToPageInches(line, geo);
+      const pts = ringLngLatToPageInches(line, geo);
       if (pts.length < 2) return;
       const d = svgPathFromPts(pts, false);
       if (d) outPaths.push(svgEl('path', { d: d }));
@@ -1839,7 +1894,7 @@ function appendGeoPolygonOutlines(features, geo, outOutlines) {
       ? f.geometry.coordinates
       : [f.geometry.coordinates];
     polys.forEach((poly) => {
-      const ring = ringToPageInches(poly[0], geo);
+      const ring = ringLngLatToPageInches(poly[0], geo);
       if (ring.length < 3) return;
       const d = svgPathFromPts(ring, true);
       if (d) outOutlines.push(svgEl('path', { d: d }));
@@ -1909,8 +1964,10 @@ function appendSiteStampTexts(geo, plotParts) {
   }
 }
 
-function appendNotationMarksSvg(geo, defs, plotParts) {
-  const notations = getNotationsToDraw();
+function appendNotationMarksSvg(geo, defs, plotParts, sheet, bufferFt) {
+  const notations = getNotationsToDraw().filter((n) =>
+    notationIntersectsSheet(n, sheet, bufferFt)
+  );
   const inchesPerFt = 12 / geo.scaleDenom;
   let clipSeq = 0;
   notations.forEach((notation) => {
@@ -2078,6 +2135,13 @@ function buildSelectedSheetSvgString(options) {
   geo.clipMaxY = geo.pageY + geo.pageH;
   logExportCoordCheck(geo, sheet);
 
+  // Only write features that intersect this sheet (overlap strip as buffer).
+  const sheetBufferFt = PAGE_OVERLAP_IN * (geo.scaleDenom / 12);
+  const streetsF = filterFeaturesToSheet(scoreLayers.streets, sheet, sheetBufferFt);
+  const buildingsF = filterFeaturesToSheet(scoreLayers.buildings, sheet, sheetBufferFt);
+  const vegetationF = filterFeaturesToSheet(scoreLayers.vegetation, sheet, sheetBufferFt);
+  const contoursF = filterFeaturesToSheet(scoreLayers.contours, sheet, sheetBufferFt);
+
   const defs = [
     '<clipPath id="sheet-clip"><rect x="0" y="0" width="' +
     svgNum(PAGE_WIDTH_IN) + '" height="' + svgNum(PAGE_HEIGHT_IN) + '"/></clipPath>',
@@ -2085,9 +2149,9 @@ function buildSelectedSheetSvgString(options) {
   const plotParts = [];
 
   if (includeGeom) {
-    if (typeof state !== 'undefined' && state.layers && state.layers.contours && scoreLayers.contours.length) {
+    if (typeof state !== 'undefined' && state.layers && state.layers.contours && contoursF.length) {
       const contourPaths = [];
-      appendGeoLineStrings(scoreLayers.contours, geo, contourPaths);
+      appendGeoLineStrings(contoursF, geo, contourPaths);
       if (contourPaths.length) {
         plotParts.push('<g id="contours" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN * 0.6) + '">');
         plotParts.push(contourPaths.join(''));
@@ -2095,9 +2159,9 @@ function buildSelectedSheetSvgString(options) {
       }
     }
 
-    if (typeof state !== 'undefined' && state.layers && state.layers.streets && scoreLayers.streets.length) {
+    if (typeof state !== 'undefined' && state.layers && state.layers.streets && streetsF.length) {
       const streetPaths = [];
-      appendGeoLineStrings(scoreLayers.streets, geo, streetPaths);
+      appendGeoLineStrings(streetsF, geo, streetPaths);
       if (streetPaths.length) {
         plotParts.push('<g id="streets" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN) + '">');
         plotParts.push(streetPaths.join(''));
@@ -2105,9 +2169,9 @@ function buildSelectedSheetSvgString(options) {
       }
     }
 
-    if (typeof state !== 'undefined' && state.layers && state.layers.buildings && scoreLayers.buildings.length) {
+    if (typeof state !== 'undefined' && state.layers && state.layers.buildings && buildingsF.length) {
       const outlines = [];
-      appendGeoPolygonOutlines(scoreLayers.buildings, geo, outlines);
+      appendGeoPolygonOutlines(buildingsF, geo, outlines);
       if (outlines.length) {
         plotParts.push('<g id="buildings-outline" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN) + '">');
         plotParts.push(outlines.join(''));
@@ -2115,9 +2179,9 @@ function buildSelectedSheetSvgString(options) {
       }
     }
 
-    if (typeof state !== 'undefined' && state.layers && state.layers.vegetation && scoreLayers.vegetation.length) {
+    if (typeof state !== 'undefined' && state.layers && state.layers.vegetation && vegetationF.length) {
       const outlines = [];
-      appendGeoPolygonOutlines(scoreLayers.vegetation, geo, outlines);
+      appendGeoPolygonOutlines(vegetationF, geo, outlines);
       if (outlines.length) {
         plotParts.push('<g id="vegetation-outline" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN) + '">');
         plotParts.push(outlines.join(''));
@@ -2126,12 +2190,25 @@ function buildSelectedSheetSvgString(options) {
     }
 
     // Character stamps — same forEach* collectors as on-screen drawStreets / drawCategorizedFill
-    appendSiteStampTexts(geo, plotParts);
+    // Temporarily point stamp collectors at filtered layers.
+    const savedStreets = scoreLayers.streets;
+    const savedBuildings = scoreLayers.buildings;
+    const savedVegetation = scoreLayers.vegetation;
+    scoreLayers.streets = streetsF;
+    scoreLayers.buildings = buildingsF;
+    scoreLayers.vegetation = vegetationF;
+    try {
+      appendSiteStampTexts(geo, plotParts);
+    } finally {
+      scoreLayers.streets = savedStreets;
+      scoreLayers.buildings = savedBuildings;
+      scoreLayers.vegetation = savedVegetation;
+    }
   }
 
   if (includeMarks) {
     const markParts = [];
-    appendNotationMarksSvg(geo, defs, markParts);
+    appendNotationMarksSvg(geo, defs, markParts, sheet, sheetBufferFt);
     if (markParts.length) {
       plotParts.push('<g id="marks">');
       plotParts.push(markParts.join(''));
@@ -2161,6 +2238,34 @@ function buildSelectedSheetSvgString(options) {
     '</g>\n' +
     '<g id="labels">\n' + labels.join('\n') + '\n</g>\n' +
     '</svg>\n';
+
+  // Diagnose path coordinate ranges in the assembled SVG (excludes <text>).
+  const pathVals = [];
+  const pathRe = /\b(?:x|y|x1|y1|x2|y2|cx|cy)="([-+0-9.]+)"/g;
+  const dRe = /[ML]\s*([-+0-9.]+)\s+([-+0-9.]+)/g;
+  const pathOnly = svg.replace(/<text[\s\S]*?<\/text>/g, '');
+  let m;
+  while ((m = pathRe.exec(pathOnly))) pathVals.push(Number(m[1]));
+  while ((m = dRe.exec(pathOnly))) {
+    pathVals.push(Number(m[1]));
+    pathVals.push(Number(m[2]));
+  }
+  console.log('[export svg] filter counts', {
+    sheet: sheet.label,
+    bufferFt: sheetBufferFt,
+    streets: streetsF.length + '/' + scoreLayers.streets.length,
+    buildings: buildingsF.length + '/' + scoreLayers.buildings.length,
+    vegetation: vegetationF.length + '/' + scoreLayers.vegetation.length,
+    contours: contoursF.length + '/' + scoreLayers.contours.length,
+  });
+  if (pathVals.length) {
+    console.log('[export svg] path coord range', {
+      min: Math.min.apply(null, pathVals),
+      max: Math.max.apply(null, pathVals),
+      n: pathVals.length,
+      svgBytes: svg.length,
+    });
+  }
 
   return {
     svg,

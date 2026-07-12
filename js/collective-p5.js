@@ -864,7 +864,7 @@ function ringToRotatedFeet(ring) {
 
 /**
  * Shared base-layer stamp positions in rotated-feet space.
- * callback(markDef, color, lng, lat) — same path for screen draw and SVG export.
+ * callback(markDef, color, lng, lat, category) — same path for screen draw and SVG export.
  */
 function forEachStreetMarkStamp(geo, features, callback) {
   if (!state.layers.streets) return;
@@ -900,7 +900,7 @@ function forEachStreetMarkStamp(geo, features, callback) {
           drawnPoints.add(key);
           const { lng, lat } = fromRotatedFeet(gx, gy);
           if (!stampInClip(geo, lng, lat)) continue;
-          callback(markDef, color, lng, lat);
+          callback(markDef, color, lng, lat, category);
         }
       }
     });
@@ -939,7 +939,7 @@ function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey,
         const cx = (minX + maxX) / 2;
         const cy = (minY + maxY) / 2;
         const { lng, lat } = fromRotatedFeet(cx, cy);
-        if (stampInClip(geo, lng, lat)) callback(markDef, color, lng, lat);
+        if (stampInClip(geo, lng, lat)) callback(markDef, color, lng, lat, category);
         return;
       }
 
@@ -950,7 +950,7 @@ function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey,
           if (!pointInPolygon(gx, gy, outerFt)) continue;
           const { lng, lat } = fromRotatedFeet(gx, gy);
           if (!stampInClip(geo, lng, lat)) continue;
-          callback(markDef, color, lng, lat);
+          callback(markDef, color, lng, lat, category);
         }
       }
     });
@@ -1801,12 +1801,18 @@ const EXPORT_MARK_STROKE_SCALE = 1;
 
 /** Inkscape-friendly layer group open tag. */
 function svgLayerOpen(id, label) {
-  return '<g id="' + id + '" inkscape:groupmode="layer" inkscape:label="' +
-    (label || id) + '">';
+  const safeId = String(id).replace(/[^A-Za-z0-9._:-]+/g, '-');
+  return '<g id="' + safeId + '" inkscape:groupmode="layer" inkscape:label="' +
+    svgEscapeText(label || id) + '">';
 }
 
 function svgLayerClose() {
   return '</g>';
+}
+
+/** Stable subgroup id from parent layer + classification name. */
+function svgCategorySubId(parentId, category) {
+  return parentId + '--' + String(category).replace(/[^A-Za-z0-9]+/g, '-');
 }
 
 // --- Geometric clipping against the page rectangle (plotter-safe; no clip-path) ---
@@ -2434,19 +2440,32 @@ function pushMarkFrags(parts, markDef, color, lng, lat, ftPerPx, geo, defs, clip
   });
 }
 
-/** Append one category layer of base-texture marks. */
-function appendOneBaseLayerSvg(geo, defs, plotParts, layerId, label, stampIterator, clipState) {
+/** Append one category layer with Inkscape sublayers per classification. */
+function appendOneBaseLayerSvg(geo, defs, plotParts, layerId, label, fillGroupKey, stampIterator, clipState) {
   const ftPerPx = baseLayerFtPerFieldPx(geo);
   const clips = clipState || { seq: 0 };
-  const parts = [];
-  stampIterator((markDef, color, lng, lat) => {
-    pushMarkFrags(parts, markDef, color, lng, lat, ftPerPx, geo, defs, clips, {});
+  const byCat = {};
+  stampIterator((markDef, color, lng, lat, category) => {
+    const cat = category || 'Other';
+    if (!byCat[cat]) byCat[cat] = [];
+    pushMarkFrags(byCat[cat], markDef, color, lng, lat, ftPerPx, geo, defs, clips, {});
   });
-  if (parts.length) {
-    plotParts.push(svgLayerOpen(layerId, label));
-    plotParts.push(parts.join(''));
+
+  const present = Object.keys(byCat);
+  if (!present.length) return;
+
+  const defaults = (window.DEFAULT_CATEGORY_MARKS && window.DEFAULT_CATEGORY_MARKS[fillGroupKey]) || {};
+  const preferred = Object.keys(defaults);
+  const ordered = preferred.filter((c) => byCat[c])
+    .concat(present.filter((c) => preferred.indexOf(c) < 0).sort());
+
+  plotParts.push(svgLayerOpen(layerId, label));
+  ordered.forEach((cat) => {
+    plotParts.push(svgLayerOpen(svgCategorySubId(layerId, cat), cat));
+    plotParts.push(byCat[cat].join(''));
     plotParts.push(svgLayerClose());
-  }
+  });
+  plotParts.push(svgLayerClose());
 }
 
 function appendBaseLayerMarksSvg(geo, defs, plotParts, layerOpts, clipState) {
@@ -2456,17 +2475,17 @@ function appendBaseLayerMarksSvg(geo, defs, plotParts, layerOpts, clipState) {
   const vegetation = opts.vegetation != null ? opts.vegetation : scoreLayers.vegetation;
 
   if (state.layers.vegetation) {
-    appendOneBaseLayerSvg(geo, defs, plotParts, 'vegetation', 'vegetation', (cb) => {
+    appendOneBaseLayerSvg(geo, defs, plotParts, 'vegetation', 'vegetation', 'vegetation', (cb) => {
       forEachCategorizedMarkStamp(geo, vegetation, 'LIFEFORM', 'vegetation', cb, null);
     }, clipState);
   }
   if (state.layers.streets) {
-    appendOneBaseLayerSvg(geo, defs, plotParts, 'streets', 'streets', (cb) => {
+    appendOneBaseLayerSvg(geo, defs, plotParts, 'streets', 'streets', 'streets', (cb) => {
       forEachStreetMarkStamp(geo, streets, cb);
     }, clipState);
   }
   if (state.layers.buildings) {
-    appendOneBaseLayerSvg(geo, defs, plotParts, 'buildings', 'buildings', (cb) => {
+    appendOneBaseLayerSvg(geo, defs, plotParts, 'buildings', 'buildings', 'buildings', (cb) => {
       forEachCategorizedMarkStamp(geo, buildings, 'PropType', 'buildings', cb, null);
     }, clipState);
   }

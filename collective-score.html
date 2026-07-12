@@ -970,9 +970,9 @@ nav {
             <div class="section-block">
               <div class="slabel">Score</div>
               <div class="stats-bar">
-                <div class="stat-box"><span class="stat-num">15</span><span class="stat-label">Students</span></div>
-                <div class="stat-box"><span class="stat-num">47</span><span class="stat-label">Notations</span></div>
-                <div class="stat-box"><span class="stat-num">8</span><span class="stat-label">Days</span></div>
+                <div class="stat-box"><span class="stat-num" id="statStudents">0</span><span class="stat-label">Students</span></div>
+                <div class="stat-box"><span class="stat-num" id="statNotations">0</span><span class="stat-label">Notations</span></div>
+                <div class="stat-box"><span class="stat-num" id="statDays">0</span><span class="stat-label">Days</span></div>
               </div>
             </div>
 
@@ -1080,18 +1080,10 @@ const SITE_MAX_BOUNDS = L.latLngBounds(
 const NOTATION_MARK_SIZE = 12;
 const FILTERED_OPACITY = 0.2;
 
-const AUTHORS = [
-  'A. Halprin',
-  'L. Moore',
-  'J. Esherick',
-  'B. Solomon',
-  'H. Eckbo',
-];
-
+// Fixed category sets from Lexicon Builder (not per-entry growth).
+// Author chips are built dynamically from state.notations after fetch.
 const FILTER_OPTIONS = {
-  author: [{ value: 'all', label: 'All' }].concat(
-    AUTHORS.map((name) => ({ value: name, label: name }))
-  ),
+  author: [{ value: 'all', label: 'All' }],
   element: [
     { value: 'all', label: 'All' },
     { value: 'landscape', label: 'Landscape' },
@@ -1165,6 +1157,7 @@ const DEV_TEST_MARKS = [
 
 const state = {
   notations: [],
+  filteredNotations: [],
   selectedId: null,
   filters: {
     author: 'all',
@@ -1219,6 +1212,9 @@ const ELEMENT_IDS = {
   selDescription: 'selDescription',
   mapArea: 'mapArea',
   mapLoadMsg: 'mapLoadMsg',
+  statStudents: 'statStudents',
+  statNotations: 'statNotations',
+  statDays: 'statDays',
   btnExport: 'btnExport',
   exportLayer: 'exportLayer',
   exportScale: 'exportScale',
@@ -1573,14 +1569,31 @@ function createNotationIcon(notation, selected) {
   });
 }
 
+function notationFieldValues(notation, singularKey, pluralKey) {
+  const multi = notation[pluralKey];
+  if (Array.isArray(multi) && multi.length) return multi;
+  const single = notation[singularKey];
+  return single ? [single] : [];
+}
+
 function notationPassesFilters(notation) {
   const f = state.filters;
   if (f.author !== 'all' && notation.author !== f.author) return false;
-  if (f.element !== 'all' && notation.element !== f.element) return false;
-  if (f.meta !== 'all' && notation.meta !== f.meta) return false;
+  if (f.element !== 'all') {
+    const values = notationFieldValues(notation, 'element', 'elements');
+    if (!values.includes(f.element)) return false;
+  }
+  if (f.meta !== 'all') {
+    const values = notationFieldValues(notation, 'meta', 'metas');
+    if (!values.includes(f.meta)) return false;
+  }
   if (f.typology !== 'all' && notation.typology !== f.typology) return false;
   if (f.status !== 'all' && notation.status !== f.status) return false;
   return true;
+}
+
+function getFilteredNotations() {
+  return state.notations.filter(notationPassesFilters);
 }
 
 function getMarkerOpacity(notation) {
@@ -1589,10 +1602,18 @@ function getMarkerOpacity(notation) {
 }
 
 function applyFilters() {
+  state.filteredNotations = getFilteredNotations();
+  console.log(
+    '[collective-score] Filtered notations:',
+    state.filteredNotations.length + '/' + state.notations.length,
+    state.filters,
+    state.filteredNotations
+  );
   state.notations.forEach((notation) => {
     const marker = markerById.get(notation.id);
     if (marker) marker.setOpacity(getMarkerOpacity(notation));
   });
+  if (typeof redraw === 'function') redraw();
 }
 
 function syncNotationMarkers() {
@@ -1628,11 +1649,10 @@ function formatLocation(lat, lng) {
 }
 
 function populateSelectedPanel(notation) {
-  const markDef = getMarkDefinition(notation.markIndex);
-  if (notation.status === 'dot-placeholder') {
-    els.selectedMarkPreview.innerHTML = buildDotPlaceholderHtml(false);
-  } else {
-    els.selectedMarkPreview.innerHTML = buildLexiconMarkHtml(markDef, false);
+  if (typeof window.renderSelectedNotationPreview === 'function') {
+    window.renderSelectedNotationPreview(els.selectedMarkPreview, notation);
+  } else if (els.selectedMarkPreview) {
+    els.selectedMarkPreview.innerHTML = '';
   }
 
   els.selAuthor.textContent = notation.author;
@@ -1685,21 +1705,71 @@ function setFilter(key, value, chipEl) {
   applyFilters();
 }
 
+function getAuthorFilterOptions() {
+  const authors = [...new Set(
+    state.notations.map((n) => n.author).filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b));
+  return [{ value: 'all', label: 'All' }].concat(
+    authors.map((name) => ({ value: name, label: name }))
+  );
+}
+
+function renderFilterChips(key, options) {
+  const container = document.querySelector(`.filter-chips[data-filter-key="${key}"]`);
+  if (!container) return;
+  const activeValue = state.filters[key] || 'all';
+  const known = options.some((opt) => opt.value === activeValue);
+  if (!known) state.filters[key] = 'all';
+  const selected = known ? activeValue : 'all';
+
+  container.innerHTML = '';
+  options.forEach((opt) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip' + (opt.value === selected ? ' active' : '');
+    chip.textContent = opt.label;
+    chip.dataset.value = opt.value;
+    chip.addEventListener('click', () => setFilter(key, opt.value, chip));
+    container.appendChild(chip);
+  });
+}
+
 function buildFilterChips() {
   Object.entries(FILTER_OPTIONS).forEach(([key, options]) => {
-    const container = document.querySelector(`.filter-chips[data-filter-key="${key}"]`);
-    if (!container) return;
-    container.innerHTML = '';
-    options.forEach((opt, idx) => {
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'chip' + (idx === 0 ? ' active' : '');
-      chip.textContent = opt.label;
-      chip.dataset.value = opt.value;
-      chip.addEventListener('click', () => setFilter(key, opt.value, chip));
-      container.appendChild(chip);
-    });
+    if (key === 'author') {
+      renderFilterChips('author', getAuthorFilterOptions());
+      return;
+    }
+    renderFilterChips(key, options);
   });
+}
+
+function countUniqueAuthors(notations) {
+  return new Set(notations.map((n) => n.author).filter(Boolean)).size;
+}
+
+/** Distinct calendar days with at least one notation timestamp (demo "8" was static HTML). */
+function countNotationDays(notations) {
+  const days = new Set();
+  notations.forEach((n) => {
+    if (!n.timestamp) return;
+    const d = new Date(n.timestamp);
+    if (Number.isNaN(d.getTime())) return;
+    days.add(d.toISOString().slice(0, 10));
+  });
+  return days.size;
+}
+
+function updateScoreStats() {
+  if (els.statStudents) els.statStudents.textContent = String(countUniqueAuthors(state.notations));
+  if (els.statNotations) els.statNotations.textContent = String(state.notations.length);
+  if (els.statDays) els.statDays.textContent = String(countNotationDays(state.notations));
+}
+
+function refreshStudentDataSidebar() {
+  renderFilterChips('author', getAuthorFilterOptions());
+  updateScoreStats();
+  applyFilters();
 }
 
 function updateVisibilityButtons() {
@@ -2094,7 +2164,7 @@ function allMetaSlugs(value) {
   return slug ? [slug] : [];
 }
 
-function mapObservationToNotation(obs, lexiconEntry) {
+function mapObservationToNotation(obs, lexiconEntry, lexiconLinkStatus) {
   const meta = (lexiconEntry && lexiconEntry.metadata) || {};
   const lexiconName =
     (obs.lexiconName && String(obs.lexiconName)) ||
@@ -2119,12 +2189,11 @@ function mapObservationToNotation(obs, lexiconEntry) {
     lexiconName,
     lexiconEntryId: obs.lexiconEntryId || null,
     lexiconComplete: !!obs.lexiconComplete,
-    // Keep markIndex for existing DEV_TEST drawing path until p5 sketch drawing lands.
+    lexiconLinkStatus: lexiconLinkStatus || 'none',
     markIndex: 0,
     element: firstMetaSlug(meta.element),
     meta: firstMetaSlug(meta.metaData),
     typology: firstMetaSlug(meta.typology),
-    // Full multi-select sets (slug form) for later filter improvements.
     elements: allMetaSlugs(meta.element),
     metas: allMetaSlugs(meta.metaData),
     status: statusForUi,
@@ -2176,37 +2245,48 @@ function loadAllObservations() {
           .then((docSnap) => {
             if (!docSnap.exists) {
               console.warn('[collective-score] Missing lexiconEntries doc:', id);
-              return { id, data: null };
+              return { id, data: null, linkStatus: 'missing' };
             }
-            return { id, data: docSnap.data() };
+            return { id, data: docSnap.data(), linkStatus: 'ok' };
           })
           .catch((err) => {
             console.error('[collective-score] Failed to load lexiconEntries/' + id, err);
-            return { id, data: null };
+            return { id, data: null, linkStatus: 'missing' };
           })
       );
 
       return Promise.all(lexiconFetches).then((lexiconResults) => {
         const lexiconById = new Map();
         lexiconResults.forEach((result) => {
-          lexiconById.set(result.id, result.data);
+          lexiconById.set(result.id, result);
         });
 
         console.log(
           '[collective-score] Linked lexiconEntries loaded:',
           lexiconIds.length,
-          Object.fromEntries(lexiconById)
+          Object.fromEntries(
+            [...lexiconById.entries()].map(([id, r]) => [id, r.data])
+          )
         );
 
         const mapped = observations.map((obs) => {
-          const entry = obs.lexiconEntryId
-            ? lexiconById.get(obs.lexiconEntryId) || null
-            : null;
-          return mapObservationToNotation(obs, entry);
+          if (!obs.lexiconEntryId) {
+            return mapObservationToNotation(obs, null, 'none');
+          }
+          const linked = lexiconById.get(obs.lexiconEntryId);
+          if (!linked || linked.linkStatus === 'missing' || !linked.data) {
+            console.warn(
+              '[collective-score] Notation has lexiconEntryId but linked lexicon doc is missing or failed to load:',
+              { observationId: obs.id, lexiconEntryId: obs.lexiconEntryId }
+            );
+            return mapObservationToNotation(obs, null, 'missing');
+          }
+          return mapObservationToNotation(obs, linked.data, 'ok');
         });
 
         state.notations = mapped;
         console.log('[collective-score] Mapped state.notations:', mapped);
+        refreshStudentDataSidebar();
         return mapped;
       });
     })

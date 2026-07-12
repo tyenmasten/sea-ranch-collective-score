@@ -444,6 +444,551 @@ function drawVegetation(geo) {
   drawCategorizedFill(geo, scoreLayers.vegetation, 'LIFEFORM', 'vegetation');
 }
 
+// --- Observation lexicon marks (native p5, same feet → rotate → project pipeline) ---
+//
+// Site layers arrive as WGS84 lng/lat (after prepareSiteGeoJSON state-plane fit).
+// toRotatedFeet converts each lng/lat to east/north feet from scoreCentroid, then
+// applies the fixed 42° rotation. Lexicon sketches live in a 600×800 field.
+// Real-world size: sketch.scaleFt feet across MARK_SCALE_BAR_PX field pixels
+// (matches lexicon-app SCALE_BAR_PX / sketch GRID = 100; default scaleFt = 10).
+
+const MARK_FIELD_W = 600;
+const MARK_FIELD_H = 800;
+const MARK_SCALE_BAR_PX = 100;
+const MARK_HATCH_LINE_STEP = 8;
+const FALLBACK_DOT_RADIUS_FT = 3;
+
+function getNotationsToDraw() {
+  if (typeof state === 'undefined' || !state || !Array.isArray(state.notations)) return [];
+  if (Array.isArray(state.filteredNotations)) return state.filteredNotations;
+  return state.notations;
+}
+
+function markFtPerFieldPx(sketch) {
+  const scaleFt = sketch && sketch.scaleFt != null ? Number(sketch.scaleFt) : 10;
+  return (scaleFt > 0 ? scaleFt : 10) / MARK_SCALE_BAR_PX;
+}
+
+function fieldPointToScreen(fx, fy, lng, lat, ftPerPx, geo) {
+  const { rx: orx, ry: ory } = toRotatedFeet(lng, lat);
+  const east = (fx - MARK_FIELD_W / 2) * ftPerPx;
+  const north = (MARK_FIELD_H / 2 - fy) * ftPerPx;
+  const rad = -ROTATION_DEG * Math.PI / 180;
+  const rx = orx + east * Math.cos(rad) - north * Math.sin(rad);
+  const ry = ory + east * Math.sin(rad) + north * Math.cos(rad);
+  return {
+    x: geo.centerX + (rx - panRX) * geo.pxPerFt,
+    y: geo.centerY - (ry - panRY) * geo.pxPerFt,
+  };
+}
+
+function markLocalCenter(m) {
+  const g = m.geom || {};
+  if (m.type === 'line') {
+    return { x: (g.x1 + g.x2) / 2, y: (g.y1 + g.y2) / 2 };
+  }
+  if (m.type === 'circle' || m.type === 'dot' || m.type === 'semicircle') {
+    return { x: g.cx, y: g.cy };
+  }
+  if (Array.isArray(g.pts) && g.pts.length) {
+    let sx = 0, sy = 0;
+    g.pts.forEach((p) => { sx += p.x; sy += p.y; });
+    return { x: sx / g.pts.length, y: sy / g.pts.length };
+  }
+  return { x: MARK_FIELD_W / 2, y: MARK_FIELD_H / 2 };
+}
+
+function rotateFieldPt(p, c, rot) {
+  if (!rot) return { x: p.x, y: p.y };
+  const dx = p.x - c.x;
+  const dy = p.y - c.y;
+  const cos = Math.cos(rot);
+  const sin = Math.sin(rot);
+  return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos };
+}
+
+function mapFieldPts(pts, lng, lat, ftPerPx, geo, pivot, rot) {
+  return pts.map((p) => {
+    const r = rotateFieldPt(p, pivot, rot);
+    return fieldPointToScreen(r.x, r.y, lng, lat, ftPerPx, geo);
+  });
+}
+
+function semiArcAngles(orient) {
+  const o = orient || 0;
+  if (o === 1) return { start: Math.PI / 2, end: -Math.PI / 2, ccw: true };
+  if (o === 2) return { start: 0, end: Math.PI, ccw: false };
+  if (o === 3) return { start: -Math.PI / 2, end: Math.PI / 2, ccw: false };
+  return { start: Math.PI, end: 0, ccw: true };
+}
+
+function setMarkDash(lineStyle, weightPx) {
+  const ctx = drawingContext;
+  if (lineStyle === 'dashed') {
+    ctx.setLineDash([Math.max(weightPx * 3, 8), Math.max(weightPx * 2, 5)]);
+  } else if (lineStyle === 'dotted') {
+    ctx.setLineDash([Math.max(weightPx * 0.2, 1), Math.max(weightPx * 2, 4)]);
+  } else {
+    ctx.setLineDash([]);
+  }
+}
+
+function hatchFillScreen(screenPts, color, fillStyle, stepPx) {
+  if (!screenPts.length) return;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  screenPts.forEach((p) => {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  });
+  const ctx = drawingContext;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(screenPts[0].x, screenPts[0].y);
+  for (let i = 1; i < screenPts.length; i++) ctx.lineTo(screenPts[i].x, screenPts[i].y);
+  ctx.closePath();
+  ctx.clip();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = Math.max(stepPx * 0.2, 0.75);
+  ctx.setLineDash([]);
+  if (fillStyle === 'h' || fillStyle === 'cross') {
+    for (let y = minY; y <= maxY; y += stepPx) {
+      ctx.beginPath();
+      ctx.moveTo(minX, y);
+      ctx.lineTo(maxX, y);
+      ctx.stroke();
+    }
+  }
+  if (fillStyle === 'd' || fillStyle === 'cross') {
+    const span = Math.max(maxX - minX, maxY - minY) * 2;
+    for (let d = -span; d <= span; d += stepPx) {
+      ctx.beginPath();
+      ctx.moveTo(minX + d, minY);
+      ctx.lineTo(minX + d + span, maxY);
+      ctx.stroke();
+    }
+  }
+  if (fillStyle === 'dots') {
+    const dotR = Math.max(stepPx * 0.15, 0.6);
+    const dotStep = stepPx * (10 / 8);
+    for (let y = minY; y <= maxY; y += dotStep) {
+      for (let x = minX; x <= maxX; x += dotStep) {
+        ctx.beginPath();
+        ctx.arc(x, y, dotR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  ctx.restore();
+}
+
+function strokeScreenPolyline(screenPts, close) {
+  if (!screenPts.length) return;
+  beginShape();
+  screenPts.forEach((p) => vertex(p.x, p.y));
+  if (close) endShape(CLOSE);
+  else endShape();
+}
+
+function drawSketchMark(m, lng, lat, ftPerPx, geo) {
+  if (!m || !m.geom) return;
+  const g = m.geom;
+  const pivot = markLocalCenter(m);
+  const rot = m.rot || 0;
+  const color = m.color || '#1a1a1a';
+  const weightPx = Math.max((m.weight || 1) * ftPerPx * geo.pxPerFt, 0.5);
+  const hatchStep = MARK_HATCH_LINE_STEP * ftPerPx * geo.pxPerFt;
+
+  const toScreen = (fx, fy) => {
+    const r = rotateFieldPt({ x: fx, y: fy }, pivot, rot);
+    return fieldPointToScreen(r.x, r.y, lng, lat, ftPerPx, geo);
+  };
+
+  if (m.type === 'dot') {
+    const c = toScreen(g.cx, g.cy);
+    const edge = toScreen(g.cx + g.r, g.cy);
+    const rPx = Math.hypot(edge.x - c.x, edge.y - c.y);
+    noStroke();
+    fill(color);
+    circle(c.x, c.y, rPx * 2);
+    return;
+  }
+
+  if (m.type === 'line') {
+    if (m.stroke === false) return;
+    const a = toScreen(g.x1, g.y1);
+    const b = toScreen(g.x2, g.y2);
+    stroke(color);
+    strokeWeight(weightPx);
+    strokeCap(ROUND);
+    setMarkDash(m.lineStyle, weightPx);
+    line(a.x, a.y, b.x, b.y);
+    drawingContext.setLineDash([]);
+    return;
+  }
+
+  if (m.type === 'semicircle') {
+    if (m.stroke === false) return;
+    const samples = [];
+    const a = semiArcAngles(g.orient);
+    const steps = 32;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      let ang;
+      if (a.ccw) {
+        let delta = a.end - a.start;
+        if (delta > 0) delta -= Math.PI * 2;
+        ang = a.start + delta * t;
+      } else {
+        let delta = a.end - a.start;
+        if (delta < 0) delta += Math.PI * 2;
+        ang = a.start + delta * t;
+      }
+      samples.push(toScreen(g.cx + g.r * Math.cos(ang), g.cy + g.r * Math.sin(ang)));
+    }
+    noFill();
+    stroke(color);
+    strokeWeight(weightPx);
+    strokeCap(ROUND);
+    setMarkDash(m.lineStyle, weightPx);
+    beginShape();
+    samples.forEach((p) => vertex(p.x, p.y));
+    endShape();
+    drawingContext.setLineDash([]);
+    return;
+  }
+
+  if (m.type === 'circle') {
+    const samples = [];
+    for (let i = 0; i <= 48; i++) {
+      const t = (i / 48) * Math.PI * 2;
+      samples.push({
+        x: g.cx + g.r * Math.cos(t),
+        y: g.cy + g.r * Math.sin(t),
+      });
+    }
+    const screenPts = mapFieldPts(samples, lng, lat, ftPerPx, geo, pivot, rot);
+    if (m.fill === 'solid') {
+      noStroke();
+      fill(color);
+      strokeScreenPolyline(screenPts, true);
+    } else if (m.fill && m.fill !== 'none') {
+      hatchFillScreen(screenPts, color, m.fill, hatchStep);
+    }
+    if (m.stroke !== false) {
+      noFill();
+      stroke(color);
+      strokeWeight(weightPx);
+      drawingContext.setLineDash([]);
+      strokeScreenPolyline(screenPts, true);
+    }
+    return;
+  }
+
+  // triangle, rectangle, diamond (closed polygons via geom.pts)
+  if (!Array.isArray(g.pts) || !g.pts.length) return;
+  const screenPts = mapFieldPts(g.pts, lng, lat, ftPerPx, geo, pivot, rot);
+  if (m.fill === 'solid') {
+    noStroke();
+    fill(color);
+    strokeScreenPolyline(screenPts, true);
+  } else if (m.fill && m.fill !== 'none') {
+    hatchFillScreen(screenPts, color, m.fill, hatchStep);
+  }
+  if (m.stroke !== false) {
+    noFill();
+    stroke(color);
+    strokeWeight(weightPx);
+    drawingContext.setLineDash([]);
+    strokeScreenPolyline(screenPts, true);
+  }
+}
+
+const FALLBACK_DOT_COLOR = '#2a6049';
+const MISSING_LEXICON_COLOR = '#c45c26';
+
+function drawFallbackNotationDot(notation, geo) {
+  if (notation.lat == null || notation.lng == null) return;
+  const p = project(notation.lng, notation.lat, geo);
+  const rPx = Math.max(FALLBACK_DOT_RADIUS_FT * geo.pxPerFt, 2);
+  const missing = notation.lexiconLinkStatus === 'missing';
+
+  if (missing) {
+    noFill();
+    stroke(MISSING_LEXICON_COLOR);
+    strokeWeight(Math.max(rPx * 0.35, 1.5));
+    circle(p.x, p.y, rPx * 2);
+    const arm = rPx * 0.55;
+    line(p.x - arm, p.y - arm, p.x + arm, p.y + arm);
+    line(p.x + arm, p.y - arm, p.x - arm, p.y + arm);
+    return;
+  }
+
+  noStroke();
+  fill(FALLBACK_DOT_COLOR);
+  circle(p.x, p.y, rPx * 2);
+}
+
+function drawNotations(geo) {
+  const notations = getNotationsToDraw();
+  notations.forEach((notation) => {
+    if (notation.lat == null || notation.lng == null) return;
+
+    if (notation.lexiconLinkStatus === 'missing') {
+      drawFallbackNotationDot(notation, geo);
+      return;
+    }
+
+    const marks = notation.sketch && Array.isArray(notation.sketch.marks)
+      ? notation.sketch.marks
+      : null;
+    if (!marks || !marks.length) {
+      drawFallbackNotationDot(notation, geo);
+      return;
+    }
+    const ftPerPx = markFtPerFieldPx(notation.sketch);
+    marks.forEach((m) => drawSketchMark(m, notation.lng, notation.lat, ftPerPx, geo));
+  });
+}
+
+/** Sidebar preview: same mark geometry as the score, drawn in field space into the preview box. */
+window.renderSelectedNotationPreview = function renderSelectedNotationPreview(container, notation) {
+  if (!container) return;
+  container.innerHTML = '';
+
+  const cssW = 72;
+  const cssH = 54;
+  const canvas = document.createElement('canvas');
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  container.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.scale(dpr, dpr);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, cssW, cssH);
+
+  if (notation.lexiconLinkStatus === 'missing') {
+    const cx = cssW / 2;
+    const cy = cssH / 2;
+    const r = 10;
+    ctx.strokeStyle = MISSING_LEXICON_COLOR;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx - 5, cy - 5);
+    ctx.lineTo(cx + 5, cy + 5);
+    ctx.moveTo(cx + 5, cy - 5);
+    ctx.lineTo(cx - 5, cy + 5);
+    ctx.stroke();
+    return;
+  }
+
+  const marks = notation.sketch && Array.isArray(notation.sketch.marks)
+    ? notation.sketch.marks
+    : null;
+
+  if (!marks || !marks.length) {
+    ctx.fillStyle = FALLBACK_DOT_COLOR;
+    ctx.beginPath();
+    ctx.arc(cssW / 2, cssH / 2, 6, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+
+  const pad = 6;
+  const scale = Math.min((cssW - pad * 2) / MARK_FIELD_W, (cssH - pad * 2) / MARK_FIELD_H);
+  const ox = (cssW - MARK_FIELD_W * scale) / 2;
+  const oy = (cssH - MARK_FIELD_H * scale) / 2;
+
+  function toPreview(fx, fy) {
+    return { x: ox + fx * scale, y: oy + fy * scale };
+  }
+
+  function rotatePt(p, c, rot) {
+    if (!rot) return { x: p.x, y: p.y };
+    const dx = p.x - c.x;
+    const dy = p.y - c.y;
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos };
+  }
+
+  function previewHatch(pts, color, fillStyle, step) {
+    if (!pts.length) return;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    pts.forEach((p) => {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    });
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath();
+    ctx.clip();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]);
+    if (fillStyle === 'h' || fillStyle === 'cross') {
+      for (let y = minY; y <= maxY; y += step) {
+        ctx.beginPath();
+        ctx.moveTo(minX, y);
+        ctx.lineTo(maxX, y);
+        ctx.stroke();
+      }
+    }
+    if (fillStyle === 'd' || fillStyle === 'cross') {
+      const span = Math.max(maxX - minX, maxY - minY) * 2;
+      for (let d = -span; d <= span; d += step) {
+        ctx.beginPath();
+        ctx.moveTo(minX + d, minY);
+        ctx.lineTo(minX + d + span, maxY);
+        ctx.stroke();
+      }
+    }
+    if (fillStyle === 'dots') {
+      for (let y = minY; y <= maxY; y += step) {
+        for (let x = minX; x <= maxX; x += step) {
+          ctx.beginPath();
+          ctx.arc(x, y, 1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawPreviewMark(m) {
+    if (!m || !m.geom) return;
+    const g = m.geom;
+    const pivot = markLocalCenter(m);
+    const rot = m.rot || 0;
+    const color = m.color || '#1a1a1a';
+    const weight = Math.max((m.weight || 1) * scale, 0.75);
+
+    const mapPt = (fx, fy) => {
+      const r = rotatePt({ x: fx, y: fy }, pivot, rot);
+      return toPreview(r.x, r.y);
+    };
+
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = weight;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.setLineDash([]);
+
+    if (m.type === 'dot') {
+      const c = mapPt(g.cx, g.cy);
+      const edge = mapPt(g.cx + g.r, g.cy);
+      const r = Math.hypot(edge.x - c.x, edge.y - c.y);
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+
+    if (m.type === 'line') {
+      if (m.stroke === false) return;
+      const a = mapPt(g.x1, g.y1);
+      const b = mapPt(g.x2, g.y2);
+      if (m.lineStyle === 'dashed') ctx.setLineDash([Math.max(weight * 3, 4), Math.max(weight * 2, 3)]);
+      else if (m.lineStyle === 'dotted') ctx.setLineDash([Math.max(weight * 0.2, 1), Math.max(weight * 2, 3)]);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      return;
+    }
+
+    if (m.type === 'semicircle') {
+      if (m.stroke === false) return;
+      const a = semiArcAngles(g.orient);
+      if (m.lineStyle === 'dashed') ctx.setLineDash([Math.max(weight * 3, 4), Math.max(weight * 2, 3)]);
+      else if (m.lineStyle === 'dotted') ctx.setLineDash([Math.max(weight * 0.2, 1), Math.max(weight * 2, 3)]);
+      ctx.beginPath();
+      const steps = 32;
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        let ang;
+        if (a.ccw) {
+          let delta = a.end - a.start;
+          if (delta > 0) delta -= Math.PI * 2;
+          ang = a.start + delta * t;
+        } else {
+          let delta = a.end - a.start;
+          if (delta < 0) delta += Math.PI * 2;
+          ang = a.start + delta * t;
+        }
+        const p = mapPt(g.cx + g.r * Math.cos(ang), g.cy + g.r * Math.sin(ang));
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      return;
+    }
+
+    if (m.type === 'circle') {
+      const samples = [];
+      for (let i = 0; i <= 48; i++) {
+        const t = (i / 48) * Math.PI * 2;
+        samples.push(mapPt(g.cx + g.r * Math.cos(t), g.cy + g.r * Math.sin(t)));
+      }
+      if (m.fill === 'solid') {
+        ctx.beginPath();
+        ctx.moveTo(samples[0].x, samples[0].y);
+        for (let i = 1; i < samples.length; i++) ctx.lineTo(samples[i].x, samples[i].y);
+        ctx.closePath();
+        ctx.fill();
+      } else if (m.fill && m.fill !== 'none') {
+        previewHatch(samples, color, m.fill, Math.max(MARK_HATCH_LINE_STEP * scale, 3));
+      }
+      if (m.stroke !== false) {
+        ctx.beginPath();
+        ctx.moveTo(samples[0].x, samples[0].y);
+        for (let i = 1; i < samples.length; i++) ctx.lineTo(samples[i].x, samples[i].y);
+        ctx.closePath();
+        ctx.stroke();
+      }
+      return;
+    }
+
+    if (!Array.isArray(g.pts) || !g.pts.length) return;
+    const pts = g.pts.map((p) => mapPt(p.x, p.y));
+    if (m.fill === 'solid') {
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.closePath();
+      ctx.fill();
+    } else if (m.fill && m.fill !== 'none') {
+      previewHatch(pts, color, m.fill, Math.max(MARK_HATCH_LINE_STEP * scale, 3));
+    }
+    if (m.stroke !== false) {
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.closePath();
+      ctx.stroke();
+    }
+  }
+
+  marks.forEach(drawPreviewMark);
+};
+
 function updateFitStatus(geo) {
   const statusEl = document.getElementById('scaleFitStatus');
   if (!statusEl) return;
@@ -505,6 +1050,7 @@ function draw() {
   drawVegetation(geo);
   drawStreets(geo);
   drawBuildings(geo);
+  drawNotations(geo);
 
   if (scoreMode === 'print') {
     drawingContext.restore();

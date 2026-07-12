@@ -47,6 +47,8 @@ const PAGE_WIDTH_IN = 11.69;
 const PAGE_HEIGHT_IN = 16.54;
 const PAGE_OVERLAP_IN = 0.5;
 const PAGE_MARGIN_PX = 40;
+/** Atlas tiling only at 1:1000 and coarser; finer scales use free-pan single crop. */
+const ATLAS_MIN_SCALE_DENOM = 1000;
 
 let scoreMode = 'view';
 let panRX = 0;
@@ -257,6 +259,12 @@ function currentScaleDenominator() {
   return Number(parts[1]) || 500;
 }
 
+/** True when the current (or given) scale uses the multi-sheet atlas. */
+function isAtlasScale(scaleDenom) {
+  const denom = scaleDenom != null ? scaleDenom : currentScaleDenominator();
+  return denom >= ATLAS_MIN_SCALE_DENOM;
+}
+
 function getViewGeometry() {
   const pxPerFt = baseFitPxPerFt * viewZoom;
   return {
@@ -280,11 +288,13 @@ function getPrintGeometry() {
   const pageY = (height - pageH) / 2;
   const ftPerPagePixel = (scaleDenom / 12) / pxPerInch;
   const pxPerFt = 1 / ftPerPagePixel;
-  const sheet = getSelectedSheet();
+  const useAtlas = isAtlasScale(scaleDenom);
+  const sheet = useAtlas ? getSelectedSheet() : null;
   return {
     mode: 'print',
     scaleDenom,
     pxPerFt,
+    pxPerInch,
     pageW,
     pageH,
     pageX,
@@ -293,6 +303,7 @@ function getPrintGeometry() {
     centerY: pageY + pageH / 2,
     originRx: sheet ? sheet.centerRx : panRX,
     originRy: sheet ? sheet.centerRy : panRY,
+    atlasMode: useAtlas,
   };
 }
 
@@ -424,12 +435,13 @@ function computePrintAtlas(scaleDenom) {
 }
 
 function getCurrentAtlas() {
+  if (!isAtlasScale()) return null;
   return computePrintAtlas(currentScaleDenominator());
 }
 
 function getSelectedSheet() {
   const atlas = getCurrentAtlas();
-  if (!atlas.sheets.length) return null;
+  if (!atlas || !atlas.sheets.length) return null;
   let sheet = atlas.sheets.find((s) => s.id === selectedSheetId);
   if (sheet) return sheet;
   sheet = atlas.sheets.find((s) => s.col === selectedSheetCol && s.row === selectedSheetRow);
@@ -439,8 +451,9 @@ function getSelectedSheet() {
 
 /** Keep selection when scale/grid changes; clamp to nearest col/row if needed. */
 function refreshAtlasSelection() {
+  if (!isAtlasScale()) return null;
   const atlas = getCurrentAtlas();
-  if (!atlas.sheets.length) {
+  if (!atlas || !atlas.sheets.length) {
     selectedSheetId = null;
     selectedSheetCol = 0;
     selectedSheetRow = 0;
@@ -480,8 +493,9 @@ function selectAtlasSheet(sheet) {
 }
 
 function drawAtlasOverlay(geo) {
+  if (!isAtlasScale()) return;
   const atlas = getCurrentAtlas();
-  if (!atlas.sheets.length) return;
+  if (!atlas || !atlas.sheets.length) return;
   const selected = getSelectedSheet();
 
   atlas.sheets.forEach((sheet) => {
@@ -516,9 +530,62 @@ function drawAtlasOverlay(geo) {
   textAlign(CENTER, CENTER);
 }
 
-function hitTestSheetAt(mx, my) {
-  if (!scoreReady || scoreMode !== 'view') return null;
+/** 0.5" overlap strips on sheet edges that adjoin a neighbor (Print Preview, atlas only). */
+function drawPrintOverlapGuides(geo) {
+  if (!geo || !geo.atlasMode) return;
   const atlas = getCurrentAtlas();
+  const sheet = getSelectedSheet();
+  if (!atlas || !sheet) return;
+
+  const overlapPx = PAGE_OVERLAP_IN * (geo.pxPerInch || (geo.pageW / PAGE_WIDTH_IN));
+  if (!(overlapPx > 0)) return;
+
+  const hasWest = sheet.col > 0;
+  const hasEast = sheet.col < atlas.cols - 1;
+  const hasNorth = sheet.row > 0;
+  const hasSouth = sheet.row < atlas.rows - 1;
+  if (!hasWest && !hasEast && !hasNorth && !hasSouth) return;
+
+  push();
+  noStroke();
+  fill(26, 26, 26, 28);
+
+  if (hasWest) {
+    rect(geo.pageX, geo.pageY, overlapPx, geo.pageH);
+  }
+  if (hasEast) {
+    rect(geo.pageX + geo.pageW - overlapPx, geo.pageY, overlapPx, geo.pageH);
+  }
+  if (hasNorth) {
+    rect(geo.pageX, geo.pageY, geo.pageW, overlapPx);
+  }
+  if (hasSouth) {
+    rect(geo.pageX, geo.pageY + geo.pageH - overlapPx, geo.pageW, overlapPx);
+  }
+
+  stroke(26, 26, 26, 90);
+  strokeWeight(0.75);
+  drawingContext.setLineDash([4, 3]);
+  if (hasWest) {
+    line(geo.pageX + overlapPx, geo.pageY, geo.pageX + overlapPx, geo.pageY + geo.pageH);
+  }
+  if (hasEast) {
+    line(geo.pageX + geo.pageW - overlapPx, geo.pageY, geo.pageX + geo.pageW - overlapPx, geo.pageY + geo.pageH);
+  }
+  if (hasNorth) {
+    line(geo.pageX, geo.pageY + overlapPx, geo.pageX + geo.pageW, geo.pageY + overlapPx);
+  }
+  if (hasSouth) {
+    line(geo.pageX, geo.pageY + geo.pageH - overlapPx, geo.pageX + geo.pageW, geo.pageY + geo.pageH - overlapPx);
+  }
+  drawingContext.setLineDash([]);
+  pop();
+}
+
+function hitTestSheetAt(mx, my) {
+  if (!scoreReady || scoreMode !== 'view' || !isAtlasScale()) return null;
+  const atlas = getCurrentAtlas();
+  if (!atlas) return null;
   const geo = getViewGeometry();
   // Prefer later sheets only if overlapping; walk reverse so SE sheets win ties.
   for (let i = atlas.sheets.length - 1; i >= 0; i--) {
@@ -1254,9 +1321,31 @@ function updateFitStatus(geo) {
   const statusEl = document.getElementById('scaleFitStatus');
   if (!statusEl) return;
 
+  const denom = (geo && geo.scaleDenom) || currentScaleDenominator();
+
+  if (!isAtlasScale(denom)) {
+    if (scoreMode !== 'print') {
+      statusEl.textContent =
+        'Scale 1:' + denom + ' — free pan. Pan in View mode to choose the Print Preview crop.';
+      return;
+    }
+    const site = computeSiteBoundsFt();
+    const pageWidthFt = geo.pageW / geo.pxPerFt;
+    const pageHeightFt = geo.pageH / geo.pxPerFt;
+    if (site.widthFt <= pageWidthFt && site.heightFt <= pageHeightFt) {
+      statusEl.textContent = 'Full site fits on the page at 1:' + denom + '.';
+    } else {
+      statusEl.textContent = 'Showing a ' + Math.round(pageWidthFt) + ' by ' +
+        Math.round(pageHeightFt) + ' ft crop of a ' + Math.round(site.widthFt) +
+        ' by ' + Math.round(site.heightFt) + ' ft site at 1:' + denom +
+        '. Pan in View mode to choose a different area, then switch back to Print.';
+    }
+    return;
+  }
+
   const atlas = getCurrentAtlas();
   const sheet = getSelectedSheet();
-  if (!sheet) {
+  if (!atlas || !sheet) {
     statusEl.textContent = '';
     return;
   }
@@ -1271,7 +1360,7 @@ function draw() {
   background(255);
   if (!scoreReady) return;
 
-  refreshAtlasSelection();
+  if (isAtlasScale()) refreshAtlasSelection();
   const geo = scoreMode === 'print' ? getPrintGeometry() : getViewGeometry();
 
   if (scoreMode === 'print') {
@@ -1289,8 +1378,9 @@ function draw() {
   drawNotations(geo);
 
   if (scoreMode === 'print') {
+    drawPrintOverlapGuides(geo);
     drawingContext.restore();
-  } else {
+  } else if (isAtlasScale()) {
     drawAtlasOverlay(geo);
   }
 
@@ -1353,9 +1443,9 @@ function mousePressed() {
 
 function mouseDragged() {
   if (!isDragging || !scoreReady) return;
-  // Print crop is locked to the selected atlas sheet — no free pan in Print Preview.
-  if (scoreMode === 'print') return;
-  const geo = getViewGeometry();
+  // Atlas Print Preview is locked to the selected sheet; free-pan scales can pan in Print.
+  if (scoreMode === 'print' && isAtlasScale()) return;
+  const geo = scoreMode === 'print' ? getPrintGeometry() : getViewGeometry();
   const dxPx = mouseX - dragStartMouseX;
   const dyPx = mouseY - dragStartMouseY;
   if (Math.hypot(dxPx, dyPx) > CLICK_MOVE_THRESH_PX) pointerDidPan = true;
@@ -1377,7 +1467,7 @@ function mouseReleased() {
     return;
   }
 
-  if (scoreMode === 'view') {
+  if (scoreMode === 'view' && isAtlasScale()) {
     const sheet = hitTestSheetAt(mouseX, mouseY);
     if (sheet) selectAtlasSheet(sheet);
   }

@@ -1624,3 +1624,534 @@ function mouseWheel(event) {
   redraw();
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// SVG plotter export (selected atlas sheet → physical A3 page inches)
+// ---------------------------------------------------------------------------
+
+/**
+ * Site texture hatch spacing in page inches.
+ * On-screen character stamps use HATCH_PITCH (7px). A typical Sheet-mode page
+ * fit is ~50 px per inch, so 7/50 ≈ 0.14" on paper — used as the export
+ * parallel-line / street-tick pitch so density tracks the screen texture.
+ */
+const EXPORT_SITE_HATCH_IN = HATCH_PITCH / 50;
+const EXPORT_STROKE_IN = 0.012;
+const EXPORT_MARK_STROKE_SCALE = 1;
+
+function makeSheetPageXform(sheet, scaleDenom) {
+  const denom = scaleDenom || currentScaleDenominator();
+  const inchesPerFt = 12 / denom;
+  const ox = sheet.centerRx;
+  const oy = sheet.centerRy;
+  const cx = PAGE_WIDTH_IN / 2;
+  const cy = PAGE_HEIGHT_IN / 2;
+  return {
+    scaleDenom: denom,
+    inchesPerFt,
+    projectRxRy(rx, ry) {
+      return {
+        x: cx + (rx - ox) * inchesPerFt,
+        y: cy - (ry - oy) * inchesPerFt,
+      };
+    },
+    projectLngLat(lng, lat) {
+      const { rx, ry } = toRotatedFeet(lng, lat);
+      return this.projectRxRy(rx, ry);
+    },
+  };
+}
+
+function ringToPage(ring, xform) {
+  return ring.map(([lng, lat]) => xform.projectLngLat(lng, lat));
+}
+
+function svgNum(n) {
+  return (Math.round(n * 10000) / 10000).toString();
+}
+
+function svgPointsAttr(pts) {
+  return pts.map((p) => svgNum(p.x) + ',' + svgNum(p.y)).join(' ');
+}
+
+function svgPathFromPts(pts, close) {
+  if (!pts || !pts.length) return '';
+  let d = 'M ' + svgNum(pts[0].x) + ' ' + svgNum(pts[0].y);
+  for (let i = 1; i < pts.length; i++) {
+    d += ' L ' + svgNum(pts[i].x) + ' ' + svgNum(pts[i].y);
+  }
+  if (close) d += ' Z';
+  return d;
+}
+
+function svgEl(tag, attrs, body) {
+  let s = '<' + tag;
+  Object.keys(attrs).forEach((k) => {
+    if (attrs[k] == null || attrs[k] === '') return;
+    s += ' ' + k + '="' + attrs[k] + '"';
+  });
+  if (body == null) return s + '/>';
+  return s + '>' + body + '</' + tag + '>';
+}
+
+function fieldPointToPage(fx, fy, lng, lat, ftPerPx, xform) {
+  const anchor = xform.projectLngLat(lng, lat);
+  const dxFt = (fx - MARK_FIELD_W / 2) * ftPerPx;
+  const dyFt = (fy - MARK_FIELD_H / 2) * ftPerPx;
+  return {
+    x: anchor.x + dxFt * xform.inchesPerFt,
+    y: anchor.y + dyFt * xform.inchesPerFt,
+  };
+}
+
+function mapFieldPtsToPage(pts, lng, lat, ftPerPx, xform, pivot, rot) {
+  return pts.map((p) => {
+    const r = rotateFieldPt(p, pivot, rot);
+    return fieldPointToPage(r.x, r.y, lng, lat, ftPerPx, xform);
+  });
+}
+
+/** Horizontal hatch segments clipped to a closed ring (page inches). */
+function hatchLinesInPolygon(ring, spacingIn) {
+  const lines = [];
+  if (!ring || ring.length < 3 || !(spacingIn > 0)) return lines;
+  let minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity;
+  ring.forEach((p) => {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  });
+  const y0 = Math.floor(minY / spacingIn) * spacingIn;
+  for (let y = y0; y <= maxY + 1e-9; y += spacingIn) {
+    const xs = [];
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const yi = ring[i].y, yj = ring[j].y;
+      if ((yi > y) === (yj > y)) continue;
+      const t = (y - yi) / (yj - yi);
+      xs.push(ring[i].x + t * (ring[j].x - ring[i].x));
+    }
+    xs.sort((a, b) => a - b);
+    for (let k = 0; k + 1 < xs.length; k += 2) {
+      if (xs[k + 1] - xs[k] > 1e-6) {
+        lines.push({ x1: xs[k], y1: y, x2: xs[k + 1], y2: y });
+      }
+    }
+  }
+  return lines;
+}
+
+/** Short perpendicular ticks along a polyline (street texture). */
+function streetTextureTicks(pts, spacingIn, tickHalfIn) {
+  const ticks = [];
+  if (!pts || pts.length < 2 || !(spacingIn > 0)) return ticks;
+  let dist = 0;
+  let nextAt = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const x1 = pts[i].x, y1 = pts[i].y, x2 = pts[i + 1].x, y2 = pts[i + 1].y;
+    const segLen = Math.hypot(x2 - x1, y2 - y1);
+    if (segLen < 1e-9) continue;
+    const ux = (x2 - x1) / segLen;
+    const uy = (y2 - y1) / segLen;
+    const px = -uy;
+    const py = ux;
+    while (nextAt <= dist + segLen + 1e-9) {
+      const t = (nextAt - dist) / segLen;
+      if (t >= 0 && t <= 1) {
+        const x = x1 + (x2 - x1) * t;
+        const y = y1 + (y2 - y1) * t;
+        ticks.push({
+          x1: x - px * tickHalfIn,
+          y1: y - py * tickHalfIn,
+          x2: x + px * tickHalfIn,
+          y2: y + py * tickHalfIn,
+        });
+      }
+      nextAt += spacingIn;
+    }
+    dist += segLen;
+  }
+  return ticks;
+}
+
+/** Port of hatchFillScreen → SVG primitives in page inches (clip via clipPath). */
+function svgMarkHatchParts(pagePts, fillStyle, stepIn, clipId) {
+  if (!pagePts.length || fillStyle === 'none' || fillStyle === 'solid') return '';
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  pagePts.forEach((p) => {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  });
+  const parts = [];
+  const clipAttr = clipId ? ' clip-path="url(#' + clipId + ')"' : '';
+  parts.push('<g fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(Math.max(stepIn * 0.2, 0.006)) + '"' + clipAttr + '>');
+  if (fillStyle === 'h' || fillStyle === 'cross') {
+    for (let y = minY; y <= maxY; y += stepIn) {
+      parts.push(svgEl('line', { x1: svgNum(minX), y1: svgNum(y), x2: svgNum(maxX), y2: svgNum(y) }));
+    }
+  }
+  if (fillStyle === 'd' || fillStyle === 'cross') {
+    const span = Math.max(maxX - minX, maxY - minY) * 2;
+    for (let d = -span; d <= span; d += stepIn) {
+      parts.push(svgEl('line', {
+        x1: svgNum(minX + d), y1: svgNum(minY),
+        x2: svgNum(minX + d + span), y2: svgNum(maxY),
+      }));
+    }
+  }
+  if (fillStyle === 'dots') {
+    const dotR = Math.max(stepIn * 0.15, 0.004);
+    const dotStep = stepIn * (10 / 8);
+    parts.push('</g><g fill="#1a1a1a" stroke="none"' + clipAttr + '>');
+    for (let y = minY; y <= maxY; y += dotStep) {
+      for (let x = minX; x <= maxX; x += dotStep) {
+        parts.push(svgEl('circle', { cx: svgNum(x), cy: svgNum(y), r: svgNum(dotR) }));
+      }
+    }
+  }
+  parts.push('</g>');
+  return parts.join('');
+}
+
+function appendGeoLineStrings(features, xform, outPaths, outTexture) {
+  features.forEach((f) => {
+    if (!f.geometry) return;
+    const lines = f.geometry.type === 'MultiLineString'
+      ? f.geometry.coordinates
+      : [f.geometry.coordinates];
+    lines.forEach((line) => {
+      const pts = ringToPage(line, xform);
+      if (pts.length < 2) return;
+      const d = svgPathFromPts(pts, false);
+      if (d) outPaths.push(svgEl('path', { d: d }));
+      if (outTexture) {
+        streetTextureTicks(pts, EXPORT_SITE_HATCH_IN, EXPORT_SITE_HATCH_IN * 0.35).forEach((t) => {
+          outTexture.push(svgEl('line', {
+            x1: svgNum(t.x1), y1: svgNum(t.y1),
+            x2: svgNum(t.x2), y2: svgNum(t.y2),
+          }));
+        });
+      }
+    });
+  });
+}
+
+function appendGeoPolygons(features, xform, outOutlines, outHatch) {
+  features.forEach((f) => {
+    if (!f.geometry) return;
+    const polys = f.geometry.type === 'MultiPolygon'
+      ? f.geometry.coordinates
+      : [f.geometry.coordinates];
+    polys.forEach((poly) => {
+      const ring = ringToPage(poly[0], xform);
+      if (ring.length < 3) return;
+      const d = svgPathFromPts(ring, true);
+      if (d) outOutlines.push(svgEl('path', { d: d }));
+      hatchLinesInPolygon(ring, EXPORT_SITE_HATCH_IN).forEach((seg) => {
+        outHatch.push(svgEl('line', {
+          x1: svgNum(seg.x1), y1: svgNum(seg.y1),
+          x2: svgNum(seg.x2), y2: svgNum(seg.y2),
+        }));
+      });
+    });
+  });
+}
+
+function appendNotationMarksSvg(xform, defs, plotParts) {
+  const notations = getNotationsToDraw();
+  let clipSeq = 0;
+  notations.forEach((notation) => {
+    if (notation.lat == null || notation.lng == null) return;
+
+    if (notation.lexiconLinkStatus === 'missing') {
+      const p = xform.projectLngLat(notation.lng, notation.lat);
+      const r = Math.max(FALLBACK_DOT_RADIUS_FT * xform.inchesPerFt, 0.02);
+      plotParts.push(svgEl('circle', {
+        cx: svgNum(p.x), cy: svgNum(p.y), r: svgNum(r),
+        fill: 'none', stroke: '#1a1a1a', 'stroke-width': svgNum(EXPORT_STROKE_IN * 1.5),
+      }));
+      const arm = r * 0.55;
+      plotParts.push(svgEl('line', {
+        x1: svgNum(p.x - arm), y1: svgNum(p.y - arm),
+        x2: svgNum(p.x + arm), y2: svgNum(p.y + arm),
+      }));
+      plotParts.push(svgEl('line', {
+        x1: svgNum(p.x + arm), y1: svgNum(p.y - arm),
+        x2: svgNum(p.x - arm), y2: svgNum(p.y + arm),
+      }));
+      return;
+    }
+
+    const marks = notation.sketch && Array.isArray(notation.sketch.marks)
+      ? notation.sketch.marks
+      : null;
+    if (!marks || !marks.length) {
+      const p = xform.projectLngLat(notation.lng, notation.lat);
+      const r = Math.max(FALLBACK_DOT_RADIUS_FT * xform.inchesPerFt, 0.02);
+      plotParts.push(svgEl('circle', {
+        cx: svgNum(p.x), cy: svgNum(p.y), r: svgNum(r),
+        fill: 'none', stroke: '#1a1a1a', 'stroke-width': svgNum(EXPORT_STROKE_IN),
+      }));
+      return;
+    }
+
+    const ftPerPx = markFtPerFieldPx(notation.sketch);
+    const lng = notation.lng;
+    const lat = notation.lat;
+
+    marks.forEach((m) => {
+      if (!m || !m.geom) return;
+      const g = m.geom;
+      const pivot = markLocalCenter(m);
+      const rot = m.rot || 0;
+      const weightIn = Math.max((m.weight || 1) * ftPerPx * xform.inchesPerFt * EXPORT_MARK_STROKE_SCALE, 0.006);
+      const hatchStep = MARK_HATCH_LINE_STEP * ftPerPx * xform.inchesPerFt;
+
+      const toPage = (fx, fy) => {
+        const r = rotateFieldPt({ x: fx, y: fy }, pivot, rot);
+        return fieldPointToPage(r.x, r.y, lng, lat, ftPerPx, xform);
+      };
+
+      if (m.type === 'dot') {
+        const c = toPage(g.cx, g.cy);
+        const edge = toPage(g.cx + g.r, g.cy);
+        const rPx = Math.hypot(edge.x - c.x, edge.y - c.y);
+        plotParts.push(svgEl('circle', {
+          cx: svgNum(c.x), cy: svgNum(c.y), r: svgNum(rPx),
+          fill: 'none', stroke: '#1a1a1a', 'stroke-width': svgNum(weightIn),
+        }));
+        return;
+      }
+
+      if (m.type === 'line') {
+        if (m.stroke === false) return;
+        const a = toPage(g.x1, g.y1);
+        const b = toPage(g.x2, g.y2);
+        plotParts.push(svgEl('line', {
+          x1: svgNum(a.x), y1: svgNum(a.y),
+          x2: svgNum(b.x), y2: svgNum(b.y),
+          stroke: '#1a1a1a', 'stroke-width': svgNum(weightIn),
+          'stroke-linecap': 'round',
+        }));
+        return;
+      }
+
+      if (m.type === 'semicircle') {
+        if (m.stroke === false) return;
+        const samples = [];
+        const a = semiArcAngles(g.orient);
+        const steps = 32;
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          let ang;
+          if (a.ccw) {
+            let delta = a.end - a.start;
+            if (delta > 0) delta -= Math.PI * 2;
+            ang = a.start + delta * t;
+          } else {
+            let delta = a.end - a.start;
+            if (delta < 0) delta += Math.PI * 2;
+            ang = a.start + delta * t;
+          }
+          samples.push(toPage(g.cx + g.r * Math.cos(ang), g.cy + g.r * Math.sin(ang)));
+        }
+        const d = svgPathFromPts(samples, false);
+        if (d) {
+          plotParts.push(svgEl('path', {
+            d: d, fill: 'none', stroke: '#1a1a1a', 'stroke-width': svgNum(weightIn),
+            'stroke-linecap': 'round',
+          }));
+        }
+        return;
+      }
+
+      let pagePts = null;
+      if (m.type === 'circle') {
+        const samples = [];
+        for (let i = 0; i <= 48; i++) {
+          const t = (i / 48) * Math.PI * 2;
+          samples.push({ x: g.cx + g.r * Math.cos(t), y: g.cy + g.r * Math.sin(t) });
+        }
+        pagePts = mapFieldPtsToPage(samples, lng, lat, ftPerPx, xform, pivot, rot);
+      } else if (Array.isArray(g.pts) && g.pts.length) {
+        pagePts = mapFieldPtsToPage(g.pts, lng, lat, ftPerPx, xform, pivot, rot);
+      }
+      if (!pagePts || !pagePts.length) return;
+
+      const outlineD = svgPathFromPts(pagePts, true);
+      if (m.fill && m.fill !== 'none' && m.fill !== 'solid') {
+        clipSeq += 1;
+        const clipId = 'mark-clip-' + clipSeq;
+        defs.push(
+          '<clipPath id="' + clipId + '">' +
+          svgEl('path', { d: outlineD }) +
+          '</clipPath>'
+        );
+        plotParts.push(svgMarkHatchParts(pagePts, m.fill, hatchStep, clipId));
+      }
+      // solid → outline only (no filled polygon); other fills keep their stroke boundary
+      if (outlineD && (m.stroke !== false || m.fill === 'solid')) {
+        plotParts.push(svgEl('path', {
+          d: outlineD, fill: 'none', stroke: '#1a1a1a', 'stroke-width': svgNum(weightIn),
+        }));
+      }
+    });
+  });
+}
+
+function buildSelectedSheetSvgString(options) {
+  const opts = options || {};
+  const layerMode = opts.layerMode || 'all';
+  const includeGeom = layerMode === 'all' || layerMode === 'geometry';
+  const includeMarks = layerMode === 'all' || layerMode === 'marks';
+
+  if (scoreMode !== 'sheet') {
+    return { error: 'Switch to Sheet mode and select a sheet to export.' };
+  }
+  if (!isAtlasScale()) {
+    return { error: 'SVG export requires an atlas scale (1:1000 or coarser). Switch to Sheet mode at 1:1000 or coarser.' };
+  }
+  refreshAtlasSelection();
+  const sheet = getSelectedSheet();
+  if (!sheet) {
+    return { error: 'Switch to Sheet mode and select a sheet to export.' };
+  }
+
+  const scaleDenom = currentScaleDenominator();
+  const xform = makeSheetPageXform(sheet, scaleDenom);
+  const defs = [
+    '<clipPath id="sheet-clip"><rect x="0" y="0" width="' +
+    svgNum(PAGE_WIDTH_IN) + '" height="' + svgNum(PAGE_HEIGHT_IN) + '"/></clipPath>',
+  ];
+  const plotParts = [];
+
+  if (includeGeom) {
+    if (typeof state !== 'undefined' && state.layers && state.layers.contours && scoreLayers.contours.length) {
+      const contourPaths = [];
+      appendGeoLineStrings(scoreLayers.contours, xform, contourPaths, null);
+      if (contourPaths.length) {
+        plotParts.push('<g id="contours" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN * 0.6) + '">');
+        plotParts.push(contourPaths.join(''));
+        plotParts.push('</g>');
+      }
+    }
+
+    if (typeof state !== 'undefined' && state.layers && state.layers.streets && scoreLayers.streets.length) {
+      const streetPaths = [];
+      const streetTex = [];
+      appendGeoLineStrings(scoreLayers.streets, xform, streetPaths, streetTex);
+      if (streetPaths.length) {
+        plotParts.push('<g id="streets" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN) + '">');
+        plotParts.push(streetPaths.join(''));
+        plotParts.push('</g>');
+      }
+      if (streetTex.length) {
+        plotParts.push('<g id="streets-texture" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN * 0.7) + '">');
+        plotParts.push(streetTex.join(''));
+        plotParts.push('</g>');
+      }
+    }
+
+    if (typeof state !== 'undefined' && state.layers && state.layers.buildings && scoreLayers.buildings.length) {
+      const outlines = [];
+      const hatch = [];
+      appendGeoPolygons(scoreLayers.buildings, xform, outlines, hatch);
+      if (outlines.length) {
+        plotParts.push('<g id="buildings-outline" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN) + '">');
+        plotParts.push(outlines.join(''));
+        plotParts.push('</g>');
+      }
+      if (hatch.length) {
+        plotParts.push('<g id="buildings-texture" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN * 0.65) + '">');
+        plotParts.push(hatch.join(''));
+        plotParts.push('</g>');
+      }
+    }
+
+    if (typeof state !== 'undefined' && state.layers && state.layers.vegetation && scoreLayers.vegetation.length) {
+      const outlines = [];
+      const hatch = [];
+      appendGeoPolygons(scoreLayers.vegetation, xform, outlines, hatch);
+      if (outlines.length) {
+        plotParts.push('<g id="vegetation-outline" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN) + '">');
+        plotParts.push(outlines.join(''));
+        plotParts.push('</g>');
+      }
+      if (hatch.length) {
+        plotParts.push('<g id="vegetation-texture" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN * 0.65) + '">');
+        plotParts.push(hatch.join(''));
+        plotParts.push('</g>');
+      }
+    }
+  }
+
+  if (includeMarks) {
+    const markParts = [];
+    appendNotationMarksSvg(xform, defs, markParts);
+    if (markParts.length) {
+      plotParts.push('<g id="marks">');
+      plotParts.push(markParts.join(''));
+      plotParts.push('</g>');
+    }
+  }
+
+  const labels = [
+    svgEl('text', {
+      x: svgNum(0.35),
+      y: svgNum(0.45),
+      'font-family': 'Miniature, serif',
+      'font-size': '0.22',
+      fill: '#1a1a1a',
+    }, 'Sheet ' + sheet.label + ' · 1:' + scaleDenom),
+  ];
+
+  const svg =
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<svg xmlns="http://www.w3.org/2000/svg" ' +
+    'width="' + PAGE_WIDTH_IN + 'in" height="' + PAGE_HEIGHT_IN + 'in" ' +
+    'viewBox="0 0 ' + PAGE_WIDTH_IN + ' ' + PAGE_HEIGHT_IN + '">\n' +
+    '<defs>\n' + defs.join('\n') + '\n</defs>\n' +
+    '<g id="plot" clip-path="url(#sheet-clip)" fill="none" stroke="#1a1a1a" stroke-width="' +
+    svgNum(EXPORT_STROKE_IN) + '">\n' +
+    plotParts.join('\n') + '\n' +
+    '</g>\n' +
+    '<g id="labels">\n' + labels.join('\n') + '\n</g>\n' +
+    '</svg>\n';
+
+  return {
+    svg,
+    filename: 'collective-score-' + sheet.label + '-1-' + scaleDenom + '.svg',
+    sheet,
+    scaleDenom,
+  };
+}
+
+function downloadSvgString(svg, filename) {
+  const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || 'collective-score-sheet.svg';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+window.exportSelectedSheetSvg = function exportSelectedSheetSvg(options) {
+  const result = buildSelectedSheetSvgString(options);
+  if (result.error) {
+    console.warn('[exportSelectedSheetSvg]', result.error);
+    alert(result.error);
+    return null;
+  }
+  downloadSvgString(result.svg, result.filename);
+  console.log('[exportSelectedSheetSvg] exported', result.filename, {
+    sheet: result.sheet && result.sheet.label,
+    scaleDenom: result.scaleDenom,
+    siteHatchIn: EXPORT_SITE_HATCH_IN,
+  });
+  return result;
+};

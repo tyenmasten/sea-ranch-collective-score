@@ -2246,10 +2246,13 @@ function bindEvents() {
   }
 
   els.btnExport.addEventListener('click', () => {
-    console.log('Export SVG (stub):', {
-      layer: els.exportLayer.value,
-      scale: els.exportScale.value,
-    });
+    const layerMode = els.exportLayer ? els.exportLayer.value : 'all';
+    if (typeof window.exportSelectedSheetSvg === 'function') {
+      window.exportSelectedSheetSvg({ layerMode: layerMode });
+    } else {
+      console.warn('Export SVG: exportSelectedSheetSvg is not available yet.');
+      alert('SVG export is not ready. Wait for the score canvas to finish loading, then try again.');
+    }
   });
 
   els.btnScoreVisibility.addEventListener('click', () => {

@@ -89,9 +89,14 @@ function isPrintSurfaceMode() {
 const ROTATION_DEG = 42;
 const FT_PER_DEG_LAT = 364000;
 
-// A3 portrait (mm 297 × 420) in inches.
-const PAGE_WIDTH_IN = 11.69;
-const PAGE_HEIGHT_IN = 16.54;
+// A3 / A4 portrait page size (inches). Mutable via paper-size selector.
+const PAPER_SIZES = {
+  a3: { id: 'a3', label: 'A3', widthIn: 11.69, heightIn: 16.54 },
+  a4: { id: 'a4', label: 'A4', widthIn: 8.27, heightIn: 11.69 },
+};
+let paperSizeId = 'a3';
+let PAGE_WIDTH_IN = PAPER_SIZES.a3.widthIn;
+let PAGE_HEIGHT_IN = PAPER_SIZES.a3.heightIn;
 const PAGE_OVERLAP_IN = 0.5;
 const PAGE_MARGIN_PX = 40;
 /** Atlas tiling only at 1:1000 and coarser; finer scales use free-pan single crop. */
@@ -100,7 +105,7 @@ const ATLAS_MIN_SCALE_DENOM = 1000;
 /**
  * Shared content / crop-mark rectangle in page inches.
  * Inset PAGE_OVERLAP_IN (0.5") from every page edge — same constant as atlas step
- * (PAGE_*_IN - PAGE_OVERLAP_IN). Outer band is blank handling/glue margin.
+ * (PAGE_*_IN - 2×PAGE_OVERLAP_IN). Outer band is blank handling/glue margin.
  */
 function getContentRectInches() {
   const m = PAGE_OVERLAP_IN;
@@ -110,6 +115,19 @@ function getContentRectInches() {
     maxX: PAGE_WIDTH_IN - m,
     maxY: PAGE_HEIGHT_IN - m,
   };
+}
+
+function applyPaperSize(sizeId) {
+  const spec = PAPER_SIZES[sizeId] || PAPER_SIZES.a3;
+  paperSizeId = spec.id;
+  PAGE_WIDTH_IN = spec.widthIn;
+  PAGE_HEIGHT_IN = spec.heightIn;
+}
+
+function syncPaperSizeFromUI() {
+  const el = document.getElementById('exportPaperSize');
+  const id = el && el.value ? el.value : 'a3';
+  applyPaperSize(id);
 }
 
 let scoreMode = 'view';
@@ -204,6 +222,16 @@ function bindModeControls() {
   const scaleEl = document.getElementById('exportScale');
   if (scaleEl) {
     scaleEl.addEventListener('change', () => {
+      refreshAtlasSelection();
+      syncModeButtons();
+      redraw();
+    });
+  }
+  const paperEl = document.getElementById('exportPaperSize');
+  if (paperEl) {
+    syncPaperSizeFromUI();
+    paperEl.addEventListener('change', () => {
+      syncPaperSizeFromUI();
       refreshAtlasSelection();
       syncModeButtons();
       redraw();
@@ -2611,6 +2639,7 @@ function buildSelectedSheetSvgString(options) {
   }
 
   // Same geometry Sheet mode uses on screen (origin = sheet center, scaleDenom/12).
+  syncPaperSizeFromUI();
   const geo = getSheetGeometry();
   // Cull stamps to the shared content rect (0.5" inset), matching Sheet on-screen clip.
   const mPx = PAGE_OVERLAP_IN * geo.pxPerInch;

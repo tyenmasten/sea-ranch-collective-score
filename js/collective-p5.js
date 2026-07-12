@@ -754,22 +754,25 @@ function nearestOffsetGridPoint(x, y, offset) {
   return { gx, gy };
 }
 
-function drawStreets(geo) {
+/**
+ * Shared street character-stamp positions (same grid/char logic as on-screen).
+ * callback(ch, gx, gy, color) — gx/gy are in the same space as geo (screen px or export).
+ */
+function forEachStreetStamp(geo, callback) {
   if (!state.layers.streets) return;
-  noStroke();
-  textSize(HATCH_PITCH * 0.9);
-
   const offset = HATCH_PITCH / 2;
   const stepPx = HATCH_PITCH * 0.5;
   const drawnPoints = new Set();
-
   const roadFills = (window.categoryFills && window.categoryFills.streets) || {};
+  const maxX = (geo.clipMaxX != null) ? geo.clipMaxX : width;
+  const maxY = (geo.clipMaxY != null) ? geo.clipMaxY : height;
+  const minX = (geo.clipMinX != null) ? geo.clipMinX : 0;
+  const minY = (geo.clipMinY != null) ? geo.clipMinY : 0;
 
   scoreLayers.streets.forEach((f) => {
     if (!f.geometry) return;
     const category = (f.properties && f.properties.Class) || 'Local';
     const { char: ch, color } = normalizeFillEntry(roadFills[category]);
-    fill(color);
     const lines = f.geometry.type === 'MultiLineString'
       ? f.geometry.coordinates
       : [f.geometry.coordinates];
@@ -783,16 +786,27 @@ function drawStreets(geo) {
           const t = s / steps;
           const x = x1 + (x2 - x1) * t;
           const y = y1 + (y2 - y1) * t;
-          if (x < -HATCH_PITCH || x > width + HATCH_PITCH || y < -HATCH_PITCH || y > height + HATCH_PITCH) continue;
+          if (x < minX - HATCH_PITCH || x > maxX + HATCH_PITCH ||
+              y < minY - HATCH_PITCH || y > maxY + HATCH_PITCH) continue;
           const { gx, gy } = nearestOffsetGridPoint(x, y, offset);
           const key = gx + ',' + gy;
           if (!drawnPoints.has(key)) {
             drawnPoints.add(key);
-            text(ch, gx, gy);
+            callback(ch, gx, gy, color);
           }
         }
       }
     });
+  });
+}
+
+function drawStreets(geo) {
+  if (!state.layers.streets) return;
+  noStroke();
+  textSize(HATCH_PITCH * 0.9);
+  forEachStreetStamp(geo, (ch, gx, gy, color) => {
+    fill(color);
+    text(ch, gx, gy);
   });
 }
 
@@ -816,11 +830,16 @@ function drawContours(geo) {
   });
 }
 
-// Shared by drawBuildings and drawVegetation, since both are now categorized
-// character fills, just reading a different property and a different
-// character map.
-function drawCategorizedFill(geo, features, categoryField, fillGroupKey) {
+/**
+ * Shared building/vegetation character-stamp positions (same as on-screen).
+ * callback(ch, gx, gy, color) after optional outlineCallback(outerRing).
+ */
+function forEachCategorizedFillStamp(geo, features, categoryField, fillGroupKey, callback, outlineCallback) {
   const fills = (window.categoryFills && window.categoryFills[fillGroupKey]) || {};
+  const maxXBound = (geo.clipMaxX != null) ? geo.clipMaxX : width;
+  const maxYBound = (geo.clipMaxY != null) ? geo.clipMaxY : height;
+  const minXBound = (geo.clipMinX != null) ? geo.clipMinX : 0;
+  const minYBound = (geo.clipMinY != null) ? geo.clipMinY : 0;
 
   features.forEach((f) => {
     if (!f.geometry) return;
@@ -833,7 +852,52 @@ function drawCategorizedFill(geo, features, categoryField, fillGroupKey) {
 
     polys.forEach((poly) => {
       const outerRing = ringToScreen(poly[0], geo);
+      if (outlineCallback) outlineCallback(outerRing);
 
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      outerRing.forEach((p) => {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      });
+
+      if (maxX < minXBound || minX > maxXBound || maxY < minYBound || minY > maxYBound) return;
+
+      if (maxX - minX < HATCH_PITCH && maxY - minY < HATCH_PITCH) {
+        callback(ch, (minX + maxX) / 2, (minY + maxY) / 2, color);
+        return;
+      }
+
+      const gridStartX = Math.floor(minX / HATCH_PITCH) * HATCH_PITCH;
+      const gridStartY = Math.floor(minY / HATCH_PITCH) * HATCH_PITCH;
+      for (let gy = gridStartY; gy <= maxY; gy += HATCH_PITCH) {
+        for (let gx = gridStartX; gx <= maxX; gx += HATCH_PITCH) {
+          if (pointInPolygon(gx, gy, outerRing)) {
+            callback(ch, gx, gy, color);
+          }
+        }
+      }
+    });
+  });
+}
+
+// Shared by drawBuildings and drawVegetation, since both are now categorized
+// character fills, just reading a different property and a different
+// character map.
+function drawCategorizedFill(geo, features, categoryField, fillGroupKey) {
+  forEachCategorizedFillStamp(
+    geo,
+    features,
+    categoryField,
+    fillGroupKey,
+    (ch, gx, gy, color) => {
+      noStroke();
+      fill(color);
+      textSize(HATCH_PITCH * 0.9);
+      text(ch, gx, gy);
+    },
+    (outerRing) => {
       noFill();
       if (window.state && state.mapView && state.mapView.showOutlines) {
         const outlineColor = (window.layerColors && window.layerColors.outlines) || '#999999';
@@ -845,37 +909,8 @@ function drawCategorizedFill(geo, features, categoryField, fillGroupKey) {
       beginShape();
       outerRing.forEach((p) => vertex(p.x, p.y));
       endShape(CLOSE);
-
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      outerRing.forEach((p) => {
-        if (p.x < minX) minX = p.x;
-        if (p.x > maxX) maxX = p.x;
-        if (p.y < minY) minY = p.y;
-        if (p.y > maxY) maxY = p.y;
-      });
-
-      if (maxX < 0 || minX > width || maxY < 0 || minY > height) return;
-
-      noStroke();
-      fill(color);
-      textSize(HATCH_PITCH * 0.9);
-
-      if (maxX - minX < HATCH_PITCH && maxY - minY < HATCH_PITCH) {
-        text(ch, (minX + maxX) / 2, (minY + maxY) / 2);
-        return;
-      }
-
-      const gridStartX = Math.floor(minX / HATCH_PITCH) * HATCH_PITCH;
-      const gridStartY = Math.floor(minY / HATCH_PITCH) * HATCH_PITCH;
-      for (let gy = gridStartY; gy <= maxY; gy += HATCH_PITCH) {
-        for (let gx = gridStartX; gx <= maxX; gx += HATCH_PITCH) {
-          if (pointInPolygon(gx, gy, outerRing)) {
-            text(ch, gx, gy);
-          }
-        }
-      }
-    });
-  });
+    }
+  );
 }
 
 function drawBuildings(geo) {
@@ -1629,49 +1664,71 @@ function mouseWheel(event) {
 // SVG plotter export (selected atlas sheet → physical A3 page inches)
 // ---------------------------------------------------------------------------
 
-/**
- * Site texture hatch spacing in page inches.
- * On-screen character stamps use HATCH_PITCH (7px). A typical Sheet-mode page
- * fit is ~50 px per inch, so 7/50 ≈ 0.14" on paper — used as the export
- * parallel-line / street-tick pitch so density tracks the screen texture.
- */
-const EXPORT_SITE_HATCH_IN = HATCH_PITCH / 50;
 const EXPORT_STROKE_IN = 0.012;
 const EXPORT_MARK_STROKE_SCALE = 1;
 
-function makeSheetPageXform(sheet, scaleDenom) {
-  const denom = scaleDenom || currentScaleDenominator();
-  const inchesPerFt = 12 / denom;
-  const ox = sheet.centerRx;
-  const oy = sheet.centerRy;
-  const cx = PAGE_WIDTH_IN / 2;
-  const cy = PAGE_HEIGHT_IN / 2;
+/**
+ * Convert Sheet-mode screen pixels to page inches using the same page frame
+ * getSheetGeometry() uses (origin = sheet centerRx/centerRy, scaleDenom/12).
+ */
+function screenToPageInches(geo, sx, sy) {
   return {
-    scaleDenom: denom,
-    inchesPerFt,
-    projectRxRy(rx, ry) {
-      return {
-        x: cx + (rx - ox) * inchesPerFt,
-        y: cy - (ry - oy) * inchesPerFt,
-      };
-    },
-    projectLngLat(lng, lat) {
-      const { rx, ry } = toRotatedFeet(lng, lat);
-      return this.projectRxRy(rx, ry);
-    },
+    x: (sx - geo.pageX) / geo.pxPerInch,
+    y: (sy - geo.pageY) / geo.pxPerInch,
   };
 }
 
-function ringToPage(ring, xform) {
-  return ring.map(([lng, lat]) => xform.projectLngLat(lng, lat));
+function projectLngLatToPageInches(lng, lat, geo) {
+  const s = project(lng, lat, geo);
+  return screenToPageInches(geo, s.x, s.y);
+}
+
+function ringToPageInches(ring, geo) {
+  return ring.map(([lng, lat]) => projectLngLatToPageInches(lng, lat, geo));
+}
+
+function logExportCoordCheck(geo, sheet) {
+  const screenCenter = rotatedFeetToScreen(sheet.centerRx, sheet.centerRy, geo);
+  const pageCenter = screenToPageInches(geo, screenCenter.x, screenCenter.y);
+  const expected = { x: PAGE_WIDTH_IN / 2, y: PAGE_HEIGHT_IN / 2 };
+  let sample = null;
+  if (scoreLayers.buildings.length && scoreLayers.buildings[0].geometry) {
+    const f = scoreLayers.buildings[0];
+    const polys = f.geometry.type === 'MultiPolygon'
+      ? f.geometry.coordinates
+      : [f.geometry.coordinates];
+    const c0 = polys[0] && polys[0][0] && polys[0][0][0];
+    if (c0) {
+      const lng = c0[0];
+      const lat = c0[1];
+      const { rx, ry } = toRotatedFeet(lng, lat);
+      const screenPt = project(lng, lat, geo);
+      const pagePt = screenToPageInches(geo, screenPt.x, screenPt.y);
+      sample = {
+        lng, lat, rx, ry,
+        originRx: sheet.centerRx,
+        originRy: sheet.centerRy,
+        deltaFt: { x: rx - sheet.centerRx, y: ry - sheet.centerRy },
+        screenPx: screenPt,
+        pageIn: pagePt,
+        inchesPerFt: 12 / geo.scaleDenom,
+      };
+    }
+  }
+  console.log('[export svg] coord check', {
+    sheet: sheet.label,
+    scaleDenom: geo.scaleDenom,
+    sheetOriginFt: { centerRx: sheet.centerRx, centerRy: sheet.centerRy },
+    screenSheetCenterPx: screenCenter,
+    pageSheetCenterIn: pageCenter,
+    expectedPageCenterIn: expected,
+    pageFrame: { pageX: geo.pageX, pageY: geo.pageY, pxPerInch: geo.pxPerInch, pxPerFt: geo.pxPerFt },
+    buildingCornerSample: sample,
+  });
 }
 
 function svgNum(n) {
   return (Math.round(n * 10000) / 10000).toString();
-}
-
-function svgPointsAttr(pts) {
-  return pts.map((p) => svgNum(p.x) + ',' + svgNum(p.y)).join(' ');
 }
 
 function svgPathFromPts(pts, close) {
@@ -1694,84 +1751,29 @@ function svgEl(tag, attrs, body) {
   return s + '>' + body + '</' + tag + '>';
 }
 
-function fieldPointToPage(fx, fy, lng, lat, ftPerPx, xform) {
-  const anchor = xform.projectLngLat(lng, lat);
+function svgEscapeText(t) {
+  return String(t)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function fieldPointToPageInches(fx, fy, lng, lat, ftPerPx, geo) {
+  const anchor = projectLngLatToPageInches(lng, lat, geo);
   const dxFt = (fx - MARK_FIELD_W / 2) * ftPerPx;
   const dyFt = (fy - MARK_FIELD_H / 2) * ftPerPx;
+  const inchesPerFt = 12 / geo.scaleDenom;
   return {
-    x: anchor.x + dxFt * xform.inchesPerFt,
-    y: anchor.y + dyFt * xform.inchesPerFt,
+    x: anchor.x + dxFt * inchesPerFt,
+    y: anchor.y + dyFt * inchesPerFt,
   };
 }
 
-function mapFieldPtsToPage(pts, lng, lat, ftPerPx, xform, pivot, rot) {
+function mapFieldPtsToPageInches(pts, lng, lat, ftPerPx, geo, pivot, rot) {
   return pts.map((p) => {
     const r = rotateFieldPt(p, pivot, rot);
-    return fieldPointToPage(r.x, r.y, lng, lat, ftPerPx, xform);
+    return fieldPointToPageInches(r.x, r.y, lng, lat, ftPerPx, geo);
   });
-}
-
-/** Horizontal hatch segments clipped to a closed ring (page inches). */
-function hatchLinesInPolygon(ring, spacingIn) {
-  const lines = [];
-  if (!ring || ring.length < 3 || !(spacingIn > 0)) return lines;
-  let minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity;
-  ring.forEach((p) => {
-    if (p.x < minX) minX = p.x;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.y > maxY) maxY = p.y;
-  });
-  const y0 = Math.floor(minY / spacingIn) * spacingIn;
-  for (let y = y0; y <= maxY + 1e-9; y += spacingIn) {
-    const xs = [];
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const yi = ring[i].y, yj = ring[j].y;
-      if ((yi > y) === (yj > y)) continue;
-      const t = (y - yi) / (yj - yi);
-      xs.push(ring[i].x + t * (ring[j].x - ring[i].x));
-    }
-    xs.sort((a, b) => a - b);
-    for (let k = 0; k + 1 < xs.length; k += 2) {
-      if (xs[k + 1] - xs[k] > 1e-6) {
-        lines.push({ x1: xs[k], y1: y, x2: xs[k + 1], y2: y });
-      }
-    }
-  }
-  return lines;
-}
-
-/** Short perpendicular ticks along a polyline (street texture). */
-function streetTextureTicks(pts, spacingIn, tickHalfIn) {
-  const ticks = [];
-  if (!pts || pts.length < 2 || !(spacingIn > 0)) return ticks;
-  let dist = 0;
-  let nextAt = 0;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const x1 = pts[i].x, y1 = pts[i].y, x2 = pts[i + 1].x, y2 = pts[i + 1].y;
-    const segLen = Math.hypot(x2 - x1, y2 - y1);
-    if (segLen < 1e-9) continue;
-    const ux = (x2 - x1) / segLen;
-    const uy = (y2 - y1) / segLen;
-    const px = -uy;
-    const py = ux;
-    while (nextAt <= dist + segLen + 1e-9) {
-      const t = (nextAt - dist) / segLen;
-      if (t >= 0 && t <= 1) {
-        const x = x1 + (x2 - x1) * t;
-        const y = y1 + (y2 - y1) * t;
-        ticks.push({
-          x1: x - px * tickHalfIn,
-          y1: y - py * tickHalfIn,
-          x2: x + px * tickHalfIn,
-          y2: y + py * tickHalfIn,
-        });
-      }
-      nextAt += spacingIn;
-    }
-    dist += segLen;
-  }
-  return ticks;
 }
 
 /** Port of hatchFillScreen → SVG primitives in page inches (clip via clipPath). */
@@ -1815,59 +1817,108 @@ function svgMarkHatchParts(pagePts, fillStyle, stepIn, clipId) {
   return parts.join('');
 }
 
-function appendGeoLineStrings(features, xform, outPaths, outTexture) {
+function appendGeoLineStrings(features, geo, outPaths) {
   features.forEach((f) => {
     if (!f.geometry) return;
     const lines = f.geometry.type === 'MultiLineString'
       ? f.geometry.coordinates
       : [f.geometry.coordinates];
     lines.forEach((line) => {
-      const pts = ringToPage(line, xform);
+      const pts = ringToPageInches(line, geo);
       if (pts.length < 2) return;
       const d = svgPathFromPts(pts, false);
       if (d) outPaths.push(svgEl('path', { d: d }));
-      if (outTexture) {
-        streetTextureTicks(pts, EXPORT_SITE_HATCH_IN, EXPORT_SITE_HATCH_IN * 0.35).forEach((t) => {
-          outTexture.push(svgEl('line', {
-            x1: svgNum(t.x1), y1: svgNum(t.y1),
-            x2: svgNum(t.x2), y2: svgNum(t.y2),
-          }));
-        });
-      }
     });
   });
 }
 
-function appendGeoPolygons(features, xform, outOutlines, outHatch) {
+function appendGeoPolygonOutlines(features, geo, outOutlines) {
   features.forEach((f) => {
     if (!f.geometry) return;
     const polys = f.geometry.type === 'MultiPolygon'
       ? f.geometry.coordinates
       : [f.geometry.coordinates];
     polys.forEach((poly) => {
-      const ring = ringToPage(poly[0], xform);
+      const ring = ringToPageInches(poly[0], geo);
       if (ring.length < 3) return;
       const d = svgPathFromPts(ring, true);
       if (d) outOutlines.push(svgEl('path', { d: d }));
-      hatchLinesInPolygon(ring, EXPORT_SITE_HATCH_IN).forEach((seg) => {
-        outHatch.push(svgEl('line', {
-          x1: svgNum(seg.x1), y1: svgNum(seg.y1),
-          x2: svgNum(seg.x2), y2: svgNum(seg.y2),
-        }));
-      });
     });
   });
 }
 
-function appendNotationMarksSvg(xform, defs, plotParts) {
+function svgStampText(ch, pageX, pageY, color, fontIn) {
+  return svgEl('text', {
+    x: svgNum(pageX),
+    y: svgNum(pageY),
+    fill: color || '#1a1a1a',
+    'font-family': 'monospace',
+    'font-size': svgNum(fontIn),
+    'text-anchor': 'middle',
+    'dominant-baseline': 'middle',
+  }, svgEscapeText(ch));
+}
+
+/** Emit site texture as SVG <text> using the same stamp collectors as on-screen. */
+function appendSiteStampTexts(geo, plotParts) {
+  const fontIn = (HATCH_PITCH * 0.9) / geo.pxPerInch;
+
+  if (state.layers.streets && scoreLayers.streets.length) {
+    const streetParts = [];
+    forEachStreetStamp(geo, (ch, gx, gy, color) => {
+      const p = screenToPageInches(geo, gx, gy);
+      streetParts.push(svgStampText(ch, p.x, p.y, color, fontIn));
+    });
+    if (streetParts.length) {
+      plotParts.push('<g id="streets-texture">');
+      plotParts.push(streetParts.join(''));
+      plotParts.push('</g>');
+    }
+  }
+
+  if (state.layers.buildings && scoreLayers.buildings.length) {
+    const buildingParts = [];
+    forEachCategorizedFillStamp(
+      geo, scoreLayers.buildings, 'PropType', 'buildings',
+      (ch, gx, gy, color) => {
+        const p = screenToPageInches(geo, gx, gy);
+        buildingParts.push(svgStampText(ch, p.x, p.y, color, fontIn));
+      }
+    );
+    if (buildingParts.length) {
+      plotParts.push('<g id="buildings-texture">');
+      plotParts.push(buildingParts.join(''));
+      plotParts.push('</g>');
+    }
+  }
+
+  if (state.layers.vegetation && scoreLayers.vegetation.length) {
+    const vegParts = [];
+    forEachCategorizedFillStamp(
+      geo, scoreLayers.vegetation, 'LIFEFORM', 'vegetation',
+      (ch, gx, gy, color) => {
+        const p = screenToPageInches(geo, gx, gy);
+        vegParts.push(svgStampText(ch, p.x, p.y, color, fontIn));
+      }
+    );
+    if (vegParts.length) {
+      plotParts.push('<g id="vegetation-texture">');
+      plotParts.push(vegParts.join(''));
+      plotParts.push('</g>');
+    }
+  }
+}
+
+function appendNotationMarksSvg(geo, defs, plotParts) {
   const notations = getNotationsToDraw();
+  const inchesPerFt = 12 / geo.scaleDenom;
   let clipSeq = 0;
   notations.forEach((notation) => {
     if (notation.lat == null || notation.lng == null) return;
 
     if (notation.lexiconLinkStatus === 'missing') {
-      const p = xform.projectLngLat(notation.lng, notation.lat);
-      const r = Math.max(FALLBACK_DOT_RADIUS_FT * xform.inchesPerFt, 0.02);
+      const p = projectLngLatToPageInches(notation.lng, notation.lat, geo);
+      const r = Math.max(FALLBACK_DOT_RADIUS_FT * inchesPerFt, 0.02);
       plotParts.push(svgEl('circle', {
         cx: svgNum(p.x), cy: svgNum(p.y), r: svgNum(r),
         fill: 'none', stroke: '#1a1a1a', 'stroke-width': svgNum(EXPORT_STROKE_IN * 1.5),
@@ -1888,8 +1939,8 @@ function appendNotationMarksSvg(xform, defs, plotParts) {
       ? notation.sketch.marks
       : null;
     if (!marks || !marks.length) {
-      const p = xform.projectLngLat(notation.lng, notation.lat);
-      const r = Math.max(FALLBACK_DOT_RADIUS_FT * xform.inchesPerFt, 0.02);
+      const p = projectLngLatToPageInches(notation.lng, notation.lat, geo);
+      const r = Math.max(FALLBACK_DOT_RADIUS_FT * inchesPerFt, 0.02);
       plotParts.push(svgEl('circle', {
         cx: svgNum(p.x), cy: svgNum(p.y), r: svgNum(r),
         fill: 'none', stroke: '#1a1a1a', 'stroke-width': svgNum(EXPORT_STROKE_IN),
@@ -1906,12 +1957,12 @@ function appendNotationMarksSvg(xform, defs, plotParts) {
       const g = m.geom;
       const pivot = markLocalCenter(m);
       const rot = m.rot || 0;
-      const weightIn = Math.max((m.weight || 1) * ftPerPx * xform.inchesPerFt * EXPORT_MARK_STROKE_SCALE, 0.006);
-      const hatchStep = MARK_HATCH_LINE_STEP * ftPerPx * xform.inchesPerFt;
+      const weightIn = Math.max((m.weight || 1) * ftPerPx * inchesPerFt * EXPORT_MARK_STROKE_SCALE, 0.006);
+      const hatchStep = MARK_HATCH_LINE_STEP * ftPerPx * inchesPerFt;
 
       const toPage = (fx, fy) => {
         const r = rotateFieldPt({ x: fx, y: fy }, pivot, rot);
-        return fieldPointToPage(r.x, r.y, lng, lat, ftPerPx, xform);
+        return fieldPointToPageInches(r.x, r.y, lng, lat, ftPerPx, geo);
       };
 
       if (m.type === 'dot') {
@@ -1974,9 +2025,9 @@ function appendNotationMarksSvg(xform, defs, plotParts) {
           const t = (i / 48) * Math.PI * 2;
           samples.push({ x: g.cx + g.r * Math.cos(t), y: g.cy + g.r * Math.sin(t) });
         }
-        pagePts = mapFieldPtsToPage(samples, lng, lat, ftPerPx, xform, pivot, rot);
+        pagePts = mapFieldPtsToPageInches(samples, lng, lat, ftPerPx, geo, pivot, rot);
       } else if (Array.isArray(g.pts) && g.pts.length) {
-        pagePts = mapFieldPtsToPage(g.pts, lng, lat, ftPerPx, xform, pivot, rot);
+        pagePts = mapFieldPtsToPageInches(g.pts, lng, lat, ftPerPx, geo, pivot, rot);
       }
       if (!pagePts || !pagePts.length) return;
 
@@ -1991,7 +2042,6 @@ function appendNotationMarksSvg(xform, defs, plotParts) {
         );
         plotParts.push(svgMarkHatchParts(pagePts, m.fill, hatchStep, clipId));
       }
-      // solid → outline only (no filled polygon); other fills keep their stroke boundary
       if (outlineD && (m.stroke !== false || m.fill === 'solid')) {
         plotParts.push(svgEl('path', {
           d: outlineD, fill: 'none', stroke: '#1a1a1a', 'stroke-width': svgNum(weightIn),
@@ -2019,8 +2069,15 @@ function buildSelectedSheetSvgString(options) {
     return { error: 'Switch to Sheet mode and select a sheet to export.' };
   }
 
-  const scaleDenom = currentScaleDenominator();
-  const xform = makeSheetPageXform(sheet, scaleDenom);
+  // Same geometry Sheet mode uses on screen (origin = sheet center, scaleDenom/12).
+  const geo = getSheetGeometry();
+  // Cull stamps to the page rect (same area Sheet mode clips to).
+  geo.clipMinX = geo.pageX;
+  geo.clipMaxX = geo.pageX + geo.pageW;
+  geo.clipMinY = geo.pageY;
+  geo.clipMaxY = geo.pageY + geo.pageH;
+  logExportCoordCheck(geo, sheet);
+
   const defs = [
     '<clipPath id="sheet-clip"><rect x="0" y="0" width="' +
     svgNum(PAGE_WIDTH_IN) + '" height="' + svgNum(PAGE_HEIGHT_IN) + '"/></clipPath>',
@@ -2030,7 +2087,7 @@ function buildSelectedSheetSvgString(options) {
   if (includeGeom) {
     if (typeof state !== 'undefined' && state.layers && state.layers.contours && scoreLayers.contours.length) {
       const contourPaths = [];
-      appendGeoLineStrings(scoreLayers.contours, xform, contourPaths, null);
+      appendGeoLineStrings(scoreLayers.contours, geo, contourPaths);
       if (contourPaths.length) {
         plotParts.push('<g id="contours" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN * 0.6) + '">');
         plotParts.push(contourPaths.join(''));
@@ -2040,56 +2097,41 @@ function buildSelectedSheetSvgString(options) {
 
     if (typeof state !== 'undefined' && state.layers && state.layers.streets && scoreLayers.streets.length) {
       const streetPaths = [];
-      const streetTex = [];
-      appendGeoLineStrings(scoreLayers.streets, xform, streetPaths, streetTex);
+      appendGeoLineStrings(scoreLayers.streets, geo, streetPaths);
       if (streetPaths.length) {
         plotParts.push('<g id="streets" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN) + '">');
         plotParts.push(streetPaths.join(''));
-        plotParts.push('</g>');
-      }
-      if (streetTex.length) {
-        plotParts.push('<g id="streets-texture" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN * 0.7) + '">');
-        plotParts.push(streetTex.join(''));
         plotParts.push('</g>');
       }
     }
 
     if (typeof state !== 'undefined' && state.layers && state.layers.buildings && scoreLayers.buildings.length) {
       const outlines = [];
-      const hatch = [];
-      appendGeoPolygons(scoreLayers.buildings, xform, outlines, hatch);
+      appendGeoPolygonOutlines(scoreLayers.buildings, geo, outlines);
       if (outlines.length) {
         plotParts.push('<g id="buildings-outline" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN) + '">');
         plotParts.push(outlines.join(''));
-        plotParts.push('</g>');
-      }
-      if (hatch.length) {
-        plotParts.push('<g id="buildings-texture" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN * 0.65) + '">');
-        plotParts.push(hatch.join(''));
         plotParts.push('</g>');
       }
     }
 
     if (typeof state !== 'undefined' && state.layers && state.layers.vegetation && scoreLayers.vegetation.length) {
       const outlines = [];
-      const hatch = [];
-      appendGeoPolygons(scoreLayers.vegetation, xform, outlines, hatch);
+      appendGeoPolygonOutlines(scoreLayers.vegetation, geo, outlines);
       if (outlines.length) {
         plotParts.push('<g id="vegetation-outline" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN) + '">');
         plotParts.push(outlines.join(''));
         plotParts.push('</g>');
       }
-      if (hatch.length) {
-        plotParts.push('<g id="vegetation-texture" fill="none" stroke="#1a1a1a" stroke-width="' + svgNum(EXPORT_STROKE_IN * 0.65) + '">');
-        plotParts.push(hatch.join(''));
-        plotParts.push('</g>');
-      }
     }
+
+    // Character stamps — same forEach* collectors as on-screen drawStreets / drawCategorizedFill
+    appendSiteStampTexts(geo, plotParts);
   }
 
   if (includeMarks) {
     const markParts = [];
-    appendNotationMarksSvg(xform, defs, markParts);
+    appendNotationMarksSvg(geo, defs, markParts);
     if (markParts.length) {
       plotParts.push('<g id="marks">');
       plotParts.push(markParts.join(''));
@@ -2104,7 +2146,7 @@ function buildSelectedSheetSvgString(options) {
       'font-family': 'Miniature, serif',
       'font-size': '0.22',
       fill: '#1a1a1a',
-    }, 'Sheet ' + sheet.label + ' · 1:' + scaleDenom),
+    }, 'Sheet ' + sheet.label + ' · 1:' + geo.scaleDenom),
   ];
 
   const svg =
@@ -2122,9 +2164,9 @@ function buildSelectedSheetSvgString(options) {
 
   return {
     svg,
-    filename: 'collective-score-' + sheet.label + '-1-' + scaleDenom + '.svg',
+    filename: 'collective-score-' + sheet.label + '-1-' + geo.scaleDenom + '.svg',
     sheet,
-    scaleDenom,
+    scaleDenom: geo.scaleDenom,
   };
 }
 
@@ -2151,7 +2193,6 @@ window.exportSelectedSheetSvg = function exportSelectedSheetSvg(options) {
   console.log('[exportSelectedSheetSvg] exported', result.filename, {
     sheet: result.sheet && result.sheet.label,
     scaleDenom: result.scaleDenom,
-    siteHatchIn: EXPORT_SITE_HATCH_IN,
   });
   return result;
 };

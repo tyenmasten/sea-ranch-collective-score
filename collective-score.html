@@ -2389,6 +2389,9 @@ function bindEvents() {
     state.layers.contours = !state.layers.contours;
     els.toggleContours.classList.toggle('on', state.layers.contours);
     els.toggleContours.setAttribute('aria-pressed', state.layers.contours);
+    if (state.layers.contours && window.loadContoursLayer) {
+      window.loadContoursLayer();
+    }
     applyLayerVisibility();
     if (window.redraw) redraw();
     saveScoreSettings();
@@ -2648,6 +2651,9 @@ function loadScoreSettings() {
       applyLayerVisibility();
       if (state.layers.vegetation && window.loadVegetationLayer) {
         window.loadVegetationLayer();
+      }
+      if (state.layers.contours && window.loadContoursLayer) {
+        window.loadContoursLayer();
       }
       if (window.redraw) redraw();
       return docSnap.exists ? docSnap.data() : null;

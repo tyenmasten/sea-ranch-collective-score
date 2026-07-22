@@ -252,31 +252,13 @@ async function loadScoreLayers() {
     const buildings = await buildingsRes.json();
     const prepared = prepareSiteGeoJSON(streets, buildings);
 
-    let contourFeatures = [];
-    try {
-      const contoursRes = await fetch('geojson/contours-1m.geojson');
-      if (contoursRes.ok) {
-        const contours = await contoursRes.json();
-        if (contours && contours.features) {
-          contourFeatures = contours.features;
-          if (featuresNeedStatePlaneTransform(contourFeatures)) {
-            const fit = fitStatePlaneToWgs84(prepared.streets.features);
-            contourFeatures = transformStatePlaneWithFit(contourFeatures, fit);
-          }
-        }
-      }
-    } catch (_) {
-      // Contours are optional, absence should not block streets and buildings.
-    }
-
     scoreLayers.streets = prepared.streets.features;
     scoreLayers.buildings = prepared.buildings.features;
-    scoreLayers.contours = contourFeatures;
+    // Contours load only when the Contours toggle is on (see loadContoursLayer).
 
     const bounds = computeLngLatBounds([
       ...scoreLayers.streets,
       ...scoreLayers.buildings,
-      ...scoreLayers.contours,
     ]);
     scoreCentroid = {
       lng: (bounds.minLng + bounds.maxLng) / 2,
@@ -295,6 +277,35 @@ async function loadScoreLayers() {
 
 let vegetationLoaded = false;
 let vegetationLoading = false;
+let contoursLoaded = false;
+let contoursLoading = false;
+
+// Only called when the Contours toggle is switched on — the file may be
+// absent, and drawing is already gated on state.layers.contours.
+window.loadContoursLayer = async function loadContoursLayer() {
+  if (contoursLoaded || contoursLoading) return;
+  contoursLoading = true;
+  try {
+    const contoursRes = await fetch('geojson/contours-1m.geojson');
+    if (contoursRes.ok) {
+      const contours = await contoursRes.json();
+      if (contours && contours.features) {
+        let contourFeatures = contours.features;
+        if (featuresNeedStatePlaneTransform(contourFeatures)) {
+          const fit = fitStatePlaneToWgs84(scoreLayers.streets);
+          contourFeatures = transformStatePlaneWithFit(contourFeatures, fit);
+        }
+        scoreLayers.contours = contourFeatures;
+        contoursLoaded = true;
+      }
+    }
+  } catch (_) {
+    // Contours are optional; absence should not block the rest of the score.
+  } finally {
+    contoursLoading = false;
+    redraw();
+  }
+};
 
 // Only called when the Vegetation toggle is actually switched on, rather
 // than automatically after the page loads, since this file is large and
@@ -855,22 +866,31 @@ function nearestOffsetGridPoint(x, y, pitch, offset) {
 }
 
 /**
- * Stamp grid pitch in rotated feet so spacing on the page is MARK_GRID_MM
- * at the active scale (finer scales → fewer world samples; coarser → more).
+ * Stamp grid pitch in rotated feet.
+ * Sheet / Print Preview / SVG export: fixed MARK_GRID_MM on the page at scaleDenom.
+ * View / Grid: ~HATCH_PITCH screen px via geo.pxPerFt (zoom-aware browsing density).
  */
 function texturePitchFt(geo) {
-  const denom = (geo && geo.scaleDenom) || currentScaleDenominator();
-  return MARK_GRID_IN * (denom / 12);
+  if (isPrintSurfaceMode()) {
+    const denom = (geo && geo.scaleDenom) || currentScaleDenominator();
+    return MARK_GRID_IN * (denom / 12);
+  }
+  return HATCH_PITCH / Math.max(geo && geo.pxPerFt, 1e-9);
 }
 
 /**
- * Field px → feet so a BASE_MARK_FIELD_SPAN-wide mark reads as MARK_SIZE_MM
- * on the printed page at the active scale.
+ * Field px → feet for base-layer mark size.
+ * Sheet / Print / export: MARK_SIZE_MM on the page at scaleDenom.
+ * View / Grid: ~HATCH_PITCH*0.85 screen px (same as pre-fixed-mm browsing).
  */
 function baseLayerFtPerFieldPx(geo) {
-  const denom = (geo && geo.scaleDenom) || currentScaleDenominator();
-  const inchesPerFt = 12 / denom;
-  return MARK_SIZE_IN / (BASE_MARK_FIELD_SPAN * inchesPerFt);
+  if (isPrintSurfaceMode()) {
+    const denom = (geo && geo.scaleDenom) || currentScaleDenominator();
+    const inchesPerFt = 12 / denom;
+    return MARK_SIZE_IN / (BASE_MARK_FIELD_SPAN * inchesPerFt);
+  }
+  const desiredFt = (HATCH_PITCH * 0.85) / Math.max(geo && geo.pxPerFt, 1e-9);
+  return desiredFt / BASE_MARK_FIELD_SPAN;
 }
 
 function stampInClip(geo, lng, lat) {

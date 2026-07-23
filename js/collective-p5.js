@@ -107,42 +107,65 @@ function layerGridPhaseIndex(layerKey) {
   return GRID_PHASE_INDEX[phase] != null ? GRID_PHASE_INDEX[phase] : 0;
 }
 
+/** Triangular lattice constant — Math.SQRT3 is not reliably available; use Math.sqrt(3). */
+const SQRT3 = Math.sqrt(3);
+
 /** Triangular lattice point: i*v1 + j*v2 with v1=(p,0), v2=(p/2, p√3/2). */
 function hexLatticePoint(i, j, pitch) {
   return {
     x: i * pitch + j * (pitch * 0.5),
-    y: j * (pitch * Math.SQRT3 * 0.5),
+    y: j * (pitch * SQRT3 * 0.5),
   };
 }
 
 function nearestHexPhasePoint(x, y, pitch, phaseIndex) {
-  const rowH = pitch * Math.SQRT3 * 0.5;
+  const rowH = pitch * SQRT3 * 0.5;
   const jApprox = y / rowH;
   const iApprox = (x - jApprox * (pitch * 0.5)) / pitch;
   const iBase = Math.floor(iApprox);
   const jBase = Math.floor(jApprox);
-  let bestX = x;
-  let bestY = y;
+  let bestX = null;
+  let bestY = null;
   let bestDist = Infinity;
-  for (let dj = -2; dj <= 2; dj++) {
-    for (let di = -2; di <= 2; di++) {
+  let bestI = Math.round(iApprox);
+  let bestJ = Math.round(jApprox);
+  for (let dj = -3; dj <= 3; dj++) {
+    for (let di = -3; di <= 3; di++) {
       const i = iBase + di;
       const j = jBase + dj;
       if (((i + j) % 3 + 3) % 3 !== phaseIndex) continue;
       const p = hexLatticePoint(i, j, pitch);
+      if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
       const d = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y);
       if (d < bestDist) {
         bestDist = d;
         bestX = p.x;
         bestY = p.y;
+        bestI = i;
+        bestJ = j;
       }
     }
+  }
+  // Fail closed: never return the raw sample point. If the search window
+  // somehow missed every phase match, snap indices to the nearest cell of
+  // this phase and use that lattice point.
+  if (bestX == null || bestY == null || !Number.isFinite(bestX) || !Number.isFinite(bestY)) {
+    let i = bestI;
+    let j = bestJ;
+    const target = ((phaseIndex % 3) + 3) % 3;
+    let guard = 0;
+    while (((i + j) % 3 + 3) % 3 !== target && guard < 3) {
+      i += 1;
+      guard += 1;
+    }
+    const p = hexLatticePoint(i, j, pitch);
+    return { gx: p.x, gy: p.y };
   }
   return { gx: bestX, gy: bestY };
 }
 
 function forEachHexPhaseInBounds(minX, maxX, minY, maxY, pitch, phaseIndex, callback) {
-  const rowH = pitch * Math.SQRT3 * 0.5;
+  const rowH = pitch * SQRT3 * 0.5;
   const pad = pitch * 2;
   const jMin = Math.floor((minY - pad) / rowH);
   const jMax = Math.ceil((maxY + pad) / rowH);

@@ -279,14 +279,21 @@ nav {
 }
 
 .fill-expand-toggle {
-  width: 18px;
-  height: 18px;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
   border: none;
   background: none;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 14px;
+  line-height: 1;
   color: var(--dim);
   transition: transform 0.15s ease;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
 .fill-expand-toggle.open {
@@ -569,6 +576,36 @@ nav {
   color: var(--ink);
   margin-bottom: 6px;
   outline: none;
+}
+
+.section-block select.layer-phase-select,
+.section-block select.fill-scale-select,
+.section-block select.fill-rotation-select {
+  width: auto;
+  margin-bottom: 0;
+  padding: 0 4px;
+  height: 22px;
+  font-size: 10px;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.section-block select.layer-phase-select {
+  width: 42px;
+  min-width: 42px;
+  max-width: 42px;
+}
+
+.section-block select.fill-scale-select {
+  width: 52px;
+  min-width: 52px;
+  max-width: 52px;
+}
+
+.section-block select.fill-rotation-select {
+  width: 54px;
+  min-width: 54px;
+  max-width: 54px;
 }
 
 .section-block select:focus,

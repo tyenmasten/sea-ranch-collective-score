@@ -50,6 +50,20 @@ const CROP_MARK_RADIUS_IN = CROP_MARK_RADIUS_MM / MM_PER_IN;
 const CROP_MARK_CROSS_IN = CROP_MARK_CROSS_MM / MM_PER_IN;
 const CROP_MARK_STROKE_IN = 0.2 / MM_PER_IN;
 
+const FILL_SCALE_OPTIONS = [1, 0.75, 0.5, 0.25];
+const FILL_ROTATION_OPTIONS = [0, 45, 90, 135];
+const GRID_PHASE_INDEX = { A: 0, B: 1, C: 2 };
+
+function clampFillScale(val) {
+  const n = Number(val);
+  return FILL_SCALE_OPTIONS.indexOf(n) >= 0 ? n : 1;
+}
+
+function clampFillRotation(val) {
+  const n = Number(val);
+  return FILL_ROTATION_OPTIONS.indexOf(n) >= 0 ? n : 0;
+}
+
 function normalizeFillEntry(entry) {
   const legacyChar = {
     '=': 'double-tick', '+': 'cross', '-': 'tick', '.': 'dot',
@@ -62,10 +76,19 @@ function normalizeFillEntry(entry) {
   };
   const known = (id) =>
     !!(window.BASE_MARK_LIBRARY && window.BASE_MARK_LIBRARY.some((m) => m.id === id));
-  if (!entry) return { markId: DEFAULT_MARK_ID, color: '#1a1a1a' };
+  if (!entry) {
+    return { markId: DEFAULT_MARK_ID, color: '#1a1a1a', scale: 1, rotation: 0 };
+  }
   if (typeof entry === 'string') {
-    if (known(entry)) return { markId: entry, color: '#1a1a1a' };
-    return { markId: legacyChar[entry] || DEFAULT_MARK_ID, color: '#1a1a1a' };
+    if (known(entry)) {
+      return { markId: entry, color: '#1a1a1a', scale: 1, rotation: 0 };
+    }
+    return {
+      markId: legacyChar[entry] || DEFAULT_MARK_ID,
+      color: '#1a1a1a',
+      scale: 1,
+      rotation: 0,
+    };
   }
   let markId = DEFAULT_MARK_ID;
   if (entry.markId && known(entry.markId)) markId = entry.markId;
@@ -73,7 +96,66 @@ function normalizeFillEntry(entry) {
   return {
     markId: markId,
     color: entry.color || '#1a1a1a',
+    scale: clampFillScale(entry.scale),
+    rotation: clampFillRotation(entry.rotation),
   };
+}
+
+function layerGridPhaseIndex(layerKey) {
+  const g = window.layerGrid && window.layerGrid[layerKey];
+  const phase = (g && g.gridPhase) || 'A';
+  return GRID_PHASE_INDEX[phase] != null ? GRID_PHASE_INDEX[phase] : 0;
+}
+
+/** Triangular lattice point: i*v1 + j*v2 with v1=(p,0), v2=(p/2, p√3/2). */
+function hexLatticePoint(i, j, pitch) {
+  return {
+    x: i * pitch + j * (pitch * 0.5),
+    y: j * (pitch * Math.SQRT3 * 0.5),
+  };
+}
+
+function nearestHexPhasePoint(x, y, pitch, phaseIndex) {
+  const rowH = pitch * Math.SQRT3 * 0.5;
+  const jApprox = y / rowH;
+  const iApprox = (x - jApprox * (pitch * 0.5)) / pitch;
+  const iBase = Math.floor(iApprox);
+  const jBase = Math.floor(jApprox);
+  let bestX = x;
+  let bestY = y;
+  let bestDist = Infinity;
+  for (let dj = -2; dj <= 2; dj++) {
+    for (let di = -2; di <= 2; di++) {
+      const i = iBase + di;
+      const j = jBase + dj;
+      if (((i + j) % 3 + 3) % 3 !== phaseIndex) continue;
+      const p = hexLatticePoint(i, j, pitch);
+      const d = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y);
+      if (d < bestDist) {
+        bestDist = d;
+        bestX = p.x;
+        bestY = p.y;
+      }
+    }
+  }
+  return { gx: bestX, gy: bestY };
+}
+
+function forEachHexPhaseInBounds(minX, maxX, minY, maxY, pitch, phaseIndex, callback) {
+  const rowH = pitch * Math.SQRT3 * 0.5;
+  const pad = pitch * 2;
+  const jMin = Math.floor((minY - pad) / rowH);
+  const jMax = Math.ceil((maxY + pad) / rowH);
+  for (let j = jMin; j <= jMax; j++) {
+    const iMin = Math.floor((minX - pad - j * (pitch * 0.5)) / pitch);
+    const iMax = Math.ceil((maxX + pad - j * (pitch * 0.5)) / pitch);
+    for (let i = iMin; i <= iMax; i++) {
+      if (((i + j) % 3 + 3) % 3 !== phaseIndex) continue;
+      const p = hexLatticePoint(i, j, pitch);
+      if (p.x < minX - pad || p.x > maxX + pad || p.y < minY - pad || p.y > maxY + pad) continue;
+      callback(p.x, p.y);
+    }
+  }
 }
 
 function getBaseMarkDef(markId) {
@@ -893,12 +975,18 @@ function baseLayerFtPerFieldPx(geo) {
   return desiredFt / BASE_MARK_FIELD_SPAN;
 }
 
+/** Clip padding covers full mark size, √2 for 45°/135° rotation. */
+function stampClipPadPx(geo) {
+  const basePx = (geo.pxPerInch != null)
+    ? (MARK_SIZE_IN * geo.pxPerInch)
+    : HATCH_PITCH;
+  return basePx * Math.SQRT2;
+}
+
 function stampInClip(geo, lng, lat) {
   if (geo.clipMinX == null) return true;
   const p = project(lng, lat, geo);
-  const padPx = (geo.pxPerInch != null)
-    ? (MARK_SIZE_IN * 0.6 * geo.pxPerInch)
-    : HATCH_PITCH * 2;
+  const padPx = stampClipPadPx(geo);
   return p.x >= geo.clipMinX - padPx && p.x <= geo.clipMaxX + padPx &&
     p.y >= geo.clipMinY - padPx && p.y <= geo.clipMaxY + padPx;
 }
@@ -911,13 +999,13 @@ function ringToRotatedFeet(ring) {
 }
 
 /**
- * Shared base-layer stamp positions in rotated-feet space.
- * callback(markDef, color, lng, lat, category) — same path for screen draw and SVG export.
+ * Shared base-layer stamp positions in rotated-feet space on the isometric lattice.
+ * callback(markDef, color, lng, lat, category, scale, rotation)
  */
 function forEachStreetMarkStamp(geo, features, callback) {
   if (!state.layers.streets) return;
   const pitch = texturePitchFt(geo);
-  const offset = pitch / 2;
+  const phaseIndex = layerGridPhaseIndex('streets');
   const stepFt = pitch * 0.5;
   const drawnPoints = new Set();
   const roadFills = (window.categoryFills && window.categoryFills.streets) || {};
@@ -926,7 +1014,7 @@ function forEachStreetMarkStamp(geo, features, callback) {
   list.forEach((f) => {
     if (!f.geometry) return;
     const category = (f.properties && f.properties.Class) || 'Local';
-    const { markId, color } = normalizeFillEntry(roadFills[category]);
+    const { markId, color, scale, rotation } = normalizeFillEntry(roadFills[category]);
     const markDef = getBaseMarkDef(markId);
     if (!markDef) return;
     const lines = f.geometry.type === 'MultiLineString'
@@ -942,13 +1030,13 @@ function forEachStreetMarkStamp(geo, features, callback) {
           const t = s / steps;
           const x = x1 + (x2 - x1) * t;
           const y = y1 + (y2 - y1) * t;
-          const { gx, gy } = nearestOffsetGridPoint(x, y, pitch, offset);
+          const { gx, gy } = nearestHexPhasePoint(x, y, pitch, phaseIndex);
           const key = gx.toFixed(3) + ',' + gy.toFixed(3);
           if (drawnPoints.has(key)) continue;
           drawnPoints.add(key);
           const { lng, lat } = fromRotatedFeet(gx, gy);
           if (!stampInClip(geo, lng, lat)) continue;
-          callback(markDef, color, lng, lat, category);
+          callback(markDef, color, lng, lat, category, scale, rotation);
         }
       }
     });
@@ -958,6 +1046,7 @@ function forEachStreetMarkStamp(geo, features, callback) {
 function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey, callback, outlineCallback) {
   const fills = (window.categoryFills && window.categoryFills[fillGroupKey]) || {};
   const pitch = texturePitchFt(geo);
+  const phaseIndex = layerGridPhaseIndex(fillGroupKey);
   const list = features || [];
 
   list.forEach((f) => {
@@ -967,7 +1056,7 @@ function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey,
       : [f.geometry.coordinates];
 
     const category = (f.properties && f.properties[categoryField]) || 'Other';
-    const { markId, color } = normalizeFillEntry(fills[category]);
+    const { markId, color, scale, rotation } = normalizeFillEntry(fills[category]);
     const markDef = getBaseMarkDef(markId);
     if (!markDef) return;
 
@@ -986,21 +1075,20 @@ function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey,
       if (maxX - minX < pitch && maxY - minY < pitch) {
         const cx = (minX + maxX) / 2;
         const cy = (minY + maxY) / 2;
-        const { lng, lat } = fromRotatedFeet(cx, cy);
-        if (stampInClip(geo, lng, lat)) callback(markDef, color, lng, lat, category);
+        const { gx, gy } = nearestHexPhasePoint(cx, cy, pitch, phaseIndex);
+        const { lng, lat } = fromRotatedFeet(gx, gy);
+        if (stampInClip(geo, lng, lat)) {
+          callback(markDef, color, lng, lat, category, scale, rotation);
+        }
         return;
       }
 
-      const gridStartX = Math.floor(minX / pitch) * pitch;
-      const gridStartY = Math.floor(minY / pitch) * pitch;
-      for (let gy = gridStartY; gy <= maxY; gy += pitch) {
-        for (let gx = gridStartX; gx <= maxX; gx += pitch) {
-          if (!pointInPolygon(gx, gy, outerFt)) continue;
-          const { lng, lat } = fromRotatedFeet(gx, gy);
-          if (!stampInClip(geo, lng, lat)) continue;
-          callback(markDef, color, lng, lat, category);
-        }
-      }
+      forEachHexPhaseInBounds(minX, maxX, minY, maxY, pitch, phaseIndex, (gx, gy) => {
+        if (!pointInPolygon(gx, gy, outerFt)) return;
+        const { lng, lat } = fromRotatedFeet(gx, gy);
+        if (!stampInClip(geo, lng, lat)) return;
+        callback(markDef, color, lng, lat, category, scale, rotation);
+      });
     });
   });
 }
@@ -1050,13 +1138,18 @@ function forEachBaseLayerStamp(geo, callback, options) {
   }
 }
 
-function drawBaseLayerMarkAt(markDef, color, lng, lat, geo) {
+function drawBaseLayerMarkAt(markDef, color, lng, lat, geo, scale, rotationDeg) {
   if (!markDef || !Array.isArray(markDef.marks)) return;
-  const ftPerPx = baseLayerFtPerFieldPx(geo);
+  const s = clampFillScale(scale);
+  const rotExtra = (clampFillRotation(rotationDeg) * Math.PI) / 180;
+  // Geometry scales with s; stroke weight compensated so screen stroke stays fixed.
+  const ftPerPx = baseLayerFtPerFieldPx(geo) * s;
+  const strokeWeight = BASE_MARK_STROKE_WEIGHT / Math.max(s, 1e-6);
   markDef.marks.forEach((m) => {
     const colored = Object.assign({}, m, {
       color: color || m.color || '#1a1a1a',
-      weight: BASE_MARK_STROKE_WEIGHT,
+      weight: strokeWeight,
+      rot: (m.rot || 0) + rotExtra,
     });
     drawSketchMark(colored, lng, lat, ftPerPx, geo);
   });
@@ -1064,8 +1157,8 @@ function drawBaseLayerMarkAt(markDef, color, lng, lat, geo) {
 
 function drawBaseLayerMarks(geo) {
   const drawOutlines = !isPrintSurfaceMode();
-  forEachBaseLayerStamp(geo, (markDef, color, lng, lat) => {
-    drawBaseLayerMarkAt(markDef, color, lng, lat, geo);
+  forEachBaseLayerStamp(geo, (markDef, color, lng, lat, category, scale, rotation) => {
+    drawBaseLayerMarkAt(markDef, color, lng, lat, geo, scale, rotation);
   }, { drawOutlines: drawOutlines });
 }
 
@@ -2473,12 +2566,16 @@ function emitSketchMarkSvg(m, lng, lat, ftPerPx, geo, defs, clipState, options) 
   return out;
 }
 
-function pushMarkFrags(parts, markDef, color, lng, lat, ftPerPx, geo, defs, clipState, emitOpts) {
+function pushMarkFrags(parts, markDef, color, lng, lat, ftPerPxBase, geo, defs, clipState, emitOpts, scale, rotationDeg) {
   if (!markDef || !Array.isArray(markDef.marks)) return;
+  const s = clampFillScale(scale);
+  const rotExtra = (clampFillRotation(rotationDeg) * Math.PI) / 180;
+  const ftPerPx = ftPerPxBase * s;
   markDef.marks.forEach((m) => {
     const colored = Object.assign({}, m, {
       color: color || m.color || '#1a1a1a',
       weight: BASE_MARK_STROKE_WEIGHT,
+      rot: (m.rot || 0) + rotExtra,
     });
     const frags = emitSketchMarkSvg(
       colored, lng, lat, ftPerPx, geo, defs, clipState,
@@ -2493,10 +2590,10 @@ function appendOneBaseLayerSvg(geo, defs, plotParts, layerId, label, fillGroupKe
   const ftPerPx = baseLayerFtPerFieldPx(geo);
   const clips = clipState || { seq: 0 };
   const byCat = {};
-  stampIterator((markDef, color, lng, lat, category) => {
+  stampIterator((markDef, color, lng, lat, category, scale, rotation) => {
     const cat = category || 'Other';
     if (!byCat[cat]) byCat[cat] = [];
-    pushMarkFrags(byCat[cat], markDef, color, lng, lat, ftPerPx, geo, defs, clips, {});
+    pushMarkFrags(byCat[cat], markDef, color, lng, lat, ftPerPx, geo, defs, clips, {}, scale, rotation);
   });
 
   const present = Object.keys(byCat);

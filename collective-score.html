@@ -379,6 +379,42 @@ nav {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 210px;
+}
+
+.layer-phase-select,
+.fill-scale-select,
+.fill-rotation-select {
+  font-family: 'Media77', sans-serif;
+  font-size: 10px;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--ink);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.layer-phase-select {
+  width: 42px;
+}
+
+.fill-scale-select {
+  width: 52px;
+}
+
+.fill-rotation-select {
+  width: 54px;
+}
+
+.layer-phase-select:disabled,
+.fill-scale-select:disabled,
+.fill-rotation-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .layer-row-controls {
@@ -892,6 +928,11 @@ nav {
                 <div class="layer-row">
                   <span class="layer-name">Streets</span>
                   <div class="fill-layer-controls">
+                    <select class="layer-phase-select" id="phaseStreets" data-layer-grid="streets" aria-label="Streets grid phase">
+                      <option value="A">A</option>
+                      <option value="B">B</option>
+                      <option value="C">C</option>
+                    </select>
                     <button type="button" class="fill-expand-toggle" id="expandStreets" aria-label="Expand road symbols">▾</button>
                     <button type="button" class="layer-toggle on" id="toggleStreets" aria-pressed="true" aria-label="Toggle streets"></button>
                   </div>
@@ -903,6 +944,11 @@ nav {
                 <div class="layer-row">
                   <span class="layer-name">Buildings</span>
                   <div class="fill-layer-controls">
+                    <select class="layer-phase-select" id="phaseBuildings" data-layer-grid="buildings" aria-label="Buildings grid phase">
+                      <option value="A">A</option>
+                      <option value="B">B</option>
+                      <option value="C">C</option>
+                    </select>
                     <button type="button" class="fill-expand-toggle" id="expandBuildings" aria-label="Expand building fill symbols">▾</button>
                     <button type="button" class="layer-toggle on" id="toggleBuildings" aria-pressed="true" aria-label="Toggle buildings"></button>
                   </div>
@@ -914,6 +960,11 @@ nav {
                 <div class="layer-row">
                   <span class="layer-name">Vegetation</span>
                   <div class="fill-layer-controls">
+                    <select class="layer-phase-select" id="phaseVegetation" data-layer-grid="vegetation" aria-label="Vegetation grid phase">
+                      <option value="A">A</option>
+                      <option value="B">B</option>
+                      <option value="C">C</option>
+                    </select>
                     <button type="button" class="fill-expand-toggle" id="expandVegetation" aria-label="Expand vegetation fill symbols">▾</button>
                     <button type="button" class="layer-toggle" id="toggleVegetation" aria-pressed="false" aria-label="Toggle vegetation"></button>
                   </div>
@@ -944,15 +995,36 @@ nav {
               <p class="note" style="margin-bottom:8px;">Ready for when the underlying GeoJSON is added, these do not yet affect the map.</p>
               <div class="layer-row">
                 <span class="layer-name">Parcels</span>
-                <button type="button" class="layer-toggle" id="toggleParcels" aria-pressed="false" aria-label="Toggle parcels"></button>
+                <div class="layer-row-controls">
+                  <select class="layer-phase-select" id="phaseParcels" data-layer-grid="parcels" aria-label="Parcels grid phase">
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="C">C</option>
+                  </select>
+                  <button type="button" class="layer-toggle" id="toggleParcels" aria-pressed="false" aria-label="Toggle parcels"></button>
+                </div>
               </div>
               <div class="layer-row">
                 <span class="layer-name">Coastal Edge</span>
-                <button type="button" class="layer-toggle" id="toggleCoastalEdge" aria-pressed="false" aria-label="Toggle coastal edge"></button>
+                <div class="layer-row-controls">
+                  <select class="layer-phase-select" id="phaseCoastalEdge" data-layer-grid="coastalEdge" aria-label="Coastal edge grid phase">
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="C">C</option>
+                  </select>
+                  <button type="button" class="layer-toggle" id="toggleCoastalEdge" aria-pressed="false" aria-label="Toggle coastal edge"></button>
+                </div>
               </div>
               <div class="layer-row">
                 <span class="layer-name">Public Land</span>
-                <button type="button" class="layer-toggle" id="togglePublicLand" aria-pressed="false" aria-label="Toggle public land"></button>
+                <div class="layer-row-controls">
+                  <select class="layer-phase-select" id="phasePublicLand" data-layer-grid="publicLand" aria-label="Public land grid phase">
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="C">C</option>
+                  </select>
+                  <button type="button" class="layer-toggle" id="togglePublicLand" aria-pressed="false" aria-label="Toggle public land"></button>
+                </div>
               </div>
             </div>
 
@@ -2182,7 +2254,7 @@ function bindEvents() {
   function fillEntriesFromMarkIds(markMap) {
     const out = {};
     Object.keys(markMap).forEach((key) => {
-      out[key] = { markId: markMap[key], color: DEFAULT_FILL_COLOR };
+      out[key] = { markId: markMap[key], color: DEFAULT_FILL_COLOR, scale: 1, rotation: 0 };
     });
     return out;
   }
@@ -2203,12 +2275,25 @@ function bindEvents() {
     return fallback || DEFAULT_FILL_COLOR;
   }
 
+  function getFillScale(entry) {
+    const allowed = [1, 0.75, 0.5, 0.25];
+    const n = entry && typeof entry === 'object' ? Number(entry.scale) : 1;
+    return allowed.indexOf(n) >= 0 ? n : 1;
+  }
+
+  function getFillRotation(entry) {
+    const allowed = [0, 45, 90, 135];
+    const n = entry && typeof entry === 'object' ? Number(entry.rotation) : 0;
+    return allowed.indexOf(n) >= 0 ? n : 0;
+  }
+
   function setFillMarkId(groupKey, cat, markId, defaults) {
     const prev = window.categoryFills[groupKey][cat];
-    const color = getFillColor(prev, DEFAULT_FILL_COLOR);
     window.categoryFills[groupKey][cat] = {
       markId: markId || defaults[cat] || DEFAULT_MARK_ID,
-      color,
+      color: getFillColor(prev, DEFAULT_FILL_COLOR),
+      scale: getFillScale(prev),
+      rotation: getFillRotation(prev),
     };
   }
 
@@ -2217,6 +2302,28 @@ function bindEvents() {
     window.categoryFills[groupKey][cat] = {
       markId: getFillMarkId(prev, defaults[cat] || DEFAULT_MARK_ID),
       color: color || DEFAULT_FILL_COLOR,
+      scale: getFillScale(prev),
+      rotation: getFillRotation(prev),
+    };
+  }
+
+  function setFillScale(groupKey, cat, scale, defaults) {
+    const prev = window.categoryFills[groupKey][cat];
+    window.categoryFills[groupKey][cat] = {
+      markId: getFillMarkId(prev, defaults[cat] || DEFAULT_MARK_ID),
+      color: getFillColor(prev, DEFAULT_FILL_COLOR),
+      scale: getFillScale({ scale: scale }),
+      rotation: getFillRotation(prev),
+    };
+  }
+
+  function setFillRotation(groupKey, cat, rotation, defaults) {
+    const prev = window.categoryFills[groupKey][cat];
+    window.categoryFills[groupKey][cat] = {
+      markId: getFillMarkId(prev, defaults[cat] || DEFAULT_MARK_ID),
+      color: getFillColor(prev, DEFAULT_FILL_COLOR),
+      scale: getFillScale(prev),
+      rotation: getFillRotation({ rotation: rotation }),
     };
   }
 
@@ -2234,6 +2341,15 @@ function bindEvents() {
   window.layerColors = {
     contours: '#dddddd',
     outlines: '#999999',
+  };
+
+  window.layerGrid = {
+    streets: { gridPhase: 'A' },
+    buildings: { gridPhase: 'C' },
+    vegetation: { gridPhase: 'B' },
+    parcels: { gridPhase: 'A' },
+    coastalEdge: { gridPhase: 'C' },
+    publicLand: { gridPhase: 'B' },
   };
 
   function buildFillCategoryRows(containerId, categories, groupKey, defaults) {
@@ -2296,8 +2412,64 @@ function bindEvents() {
         saveScoreSettings();
       });
 
+      const scaleSelect = document.createElement('select');
+      scaleSelect.className = 'fill-scale-select';
+      scaleSelect.dataset.fillGroup = groupKey;
+      scaleSelect.dataset.fillCategory = cat;
+      scaleSelect.setAttribute('aria-label', cat + ' scale');
+      [
+        { value: '1', label: '100%' },
+        { value: '0.75', label: '75%' },
+        { value: '0.5', label: '50%' },
+        { value: '0.25', label: '25%' },
+      ].forEach((opt) => {
+        const o = document.createElement('option');
+        o.value = opt.value;
+        o.textContent = opt.label;
+        scaleSelect.appendChild(o);
+      });
+      scaleSelect.value = String(getFillScale(window.categoryFills[groupKey][cat]));
+      scaleSelect.addEventListener('change', () => {
+        if (!isFacultyUser()) {
+          scaleSelect.value = String(getFillScale(window.categoryFills[groupKey][cat]));
+          return;
+        }
+        setFillScale(groupKey, cat, Number(scaleSelect.value), defaults);
+        if (window.redraw) redraw();
+        saveScoreSettings();
+      });
+
+      const rotSelect = document.createElement('select');
+      rotSelect.className = 'fill-rotation-select';
+      rotSelect.dataset.fillGroup = groupKey;
+      rotSelect.dataset.fillCategory = cat;
+      rotSelect.setAttribute('aria-label', cat + ' rotation');
+      [
+        { value: '0', label: '0°' },
+        { value: '45', label: '45°' },
+        { value: '90', label: '90°' },
+        { value: '135', label: '135°' },
+      ].forEach((opt) => {
+        const o = document.createElement('option');
+        o.value = opt.value;
+        o.textContent = opt.label;
+        rotSelect.appendChild(o);
+      });
+      rotSelect.value = String(getFillRotation(window.categoryFills[groupKey][cat]));
+      rotSelect.addEventListener('change', () => {
+        if (!isFacultyUser()) {
+          rotSelect.value = String(getFillRotation(window.categoryFills[groupKey][cat]));
+          return;
+        }
+        setFillRotation(groupKey, cat, Number(rotSelect.value), defaults);
+        if (window.redraw) redraw();
+        saveScoreSettings();
+      });
+
       controls.appendChild(picker);
       controls.appendChild(colorInput);
+      controls.appendChild(scaleSelect);
+      controls.appendChild(rotSelect);
       row.appendChild(label);
       row.appendChild(controls);
       container.appendChild(row);
@@ -2324,6 +2496,22 @@ function bindEvents() {
   }
   bindLayerColorPicker('colorContours', 'contours');
   bindLayerColorPicker('colorOutlines', 'outlines');
+
+  document.querySelectorAll('.layer-phase-select[data-layer-grid]').forEach((sel) => {
+    const key = sel.dataset.layerGrid;
+    if (!window.layerGrid[key]) window.layerGrid[key] = { gridPhase: 'A' };
+    sel.value = window.layerGrid[key].gridPhase || 'A';
+    sel.addEventListener('change', () => {
+      if (!isFacultyUser()) {
+        sel.value = (window.layerGrid[key] && window.layerGrid[key].gridPhase) || 'A';
+        return;
+      }
+      const phase = sel.value === 'B' || sel.value === 'C' ? sel.value : 'A';
+      window.layerGrid[key] = { gridPhase: phase };
+      if (window.redraw) redraw();
+      saveScoreSettings();
+    });
+  });
 
   const FILL_EXPAND_GROUPS = [
     { btnId: 'expandStreets', listId: 'streetsFillList' },
@@ -2463,6 +2651,14 @@ function collectScoreSettingsPayload() {
       contours: (window.layerColors && window.layerColors.contours) || '#dddddd',
       outlines: (window.layerColors && window.layerColors.outlines) || '#999999',
     },
+    layerGrid: JSON.parse(JSON.stringify(window.layerGrid || {
+      streets: { gridPhase: 'A' },
+      buildings: { gridPhase: 'C' },
+      vegetation: { gridPhase: 'B' },
+      parcels: { gridPhase: 'A' },
+      coastalEdge: { gridPhase: 'C' },
+      publicLand: { gridPhase: 'B' },
+    })),
     updatedAt: new Date().toISOString(),
   };
 }
@@ -2480,10 +2676,18 @@ function normalizeIncomingFillEntry(val, defaultMarkId) {
     'h': 'circle', 'y': 'cross', 'b': 'double-tick', 'd': 'tick',
     'r': 'diagonal-tick', 't': 'circle',
   };
+  const clampScale = (s) => {
+    const n = Number(s);
+    return [1, 0.75, 0.5, 0.25].indexOf(n) >= 0 ? n : 1;
+  };
+  const clampRot = (r) => {
+    const n = Number(r);
+    return [0, 45, 90, 135].indexOf(n) >= 0 ? n : 0;
+  };
   if (val == null) return null;
   if (typeof val === 'string') {
-    if (known(val)) return { markId: val, color: '#1a1a1a' };
-    return { markId: legacyChar[val] || fallback, color: '#1a1a1a' };
+    if (known(val)) return { markId: val, color: '#1a1a1a', scale: 1, rotation: 0 };
+    return { markId: legacyChar[val] || fallback, color: '#1a1a1a', scale: 1, rotation: 0 };
   }
   if (typeof val === 'object') {
     let markId = fallback;
@@ -2492,6 +2696,8 @@ function normalizeIncomingFillEntry(val, defaultMarkId) {
     return {
       markId: markId,
       color: val.color || '#1a1a1a',
+      scale: clampScale(val.scale),
+      rotation: clampRot(val.rotation),
     };
   }
   return null;
@@ -2530,6 +2736,24 @@ function applyScoreSettingsData(data) {
     if (typeof data.layerColors.outlines === 'string') {
       window.layerColors.outlines = data.layerColors.outlines;
     }
+  }
+  if (data.layerGrid && typeof data.layerGrid === 'object') {
+    if (!window.layerGrid) {
+      window.layerGrid = {
+        streets: { gridPhase: 'A' },
+        buildings: { gridPhase: 'C' },
+        vegetation: { gridPhase: 'B' },
+        parcels: { gridPhase: 'A' },
+        coastalEdge: { gridPhase: 'C' },
+        publicLand: { gridPhase: 'B' },
+      };
+    }
+    Object.keys(data.layerGrid).forEach((key) => {
+      const entry = data.layerGrid[key];
+      if (!entry || typeof entry !== 'object') return;
+      const phase = entry.gridPhase === 'B' || entry.gridPhase === 'C' ? entry.gridPhase : 'A';
+      window.layerGrid[key] = { gridPhase: phase };
+    });
   }
 }
 
@@ -2580,6 +2804,34 @@ function syncLayerControlsFromState() {
     input.value = (entry && typeof entry === 'object' && entry.color) || '#1a1a1a';
   });
 
+  document.querySelectorAll('.fill-scale-select[data-fill-group]').forEach((sel) => {
+    const group = sel.dataset.fillGroup;
+    const cat = sel.dataset.fillCategory;
+    const entry = window.categoryFills && window.categoryFills[group]
+      ? window.categoryFills[group][cat]
+      : null;
+    const scale = (entry && typeof entry === 'object' && [1, 0.75, 0.5, 0.25].indexOf(Number(entry.scale)) >= 0)
+      ? Number(entry.scale) : 1;
+    sel.value = String(scale);
+  });
+
+  document.querySelectorAll('.fill-rotation-select[data-fill-group]').forEach((sel) => {
+    const group = sel.dataset.fillGroup;
+    const cat = sel.dataset.fillCategory;
+    const entry = window.categoryFills && window.categoryFills[group]
+      ? window.categoryFills[group][cat]
+      : null;
+    const rot = (entry && typeof entry === 'object' && [0, 45, 90, 135].indexOf(Number(entry.rotation)) >= 0)
+      ? Number(entry.rotation) : 0;
+    sel.value = String(rot);
+  });
+
+  document.querySelectorAll('.layer-phase-select[data-layer-grid]').forEach((sel) => {
+    const key = sel.dataset.layerGrid;
+    const phase = (window.layerGrid && window.layerGrid[key] && window.layerGrid[key].gridPhase) || 'A';
+    sel.value = phase === 'B' || phase === 'C' ? phase : 'A';
+  });
+
   const colorContours = document.getElementById('colorContours');
   const colorOutlines = document.getElementById('colorOutlines');
   if (colorContours && window.layerColors) colorContours.value = window.layerColors.contours || '#dddddd';
@@ -2603,7 +2855,9 @@ function applyLayerEditingGate() {
     el.disabled = !canEdit;
     el.title = canEdit ? '' : 'Only faculty can change shared layer settings';
   });
-  document.querySelectorAll('.fill-mark-btn, .fill-color-input').forEach((el) => {
+  document.querySelectorAll(
+    '.fill-mark-btn, .fill-color-input, .fill-scale-select, .fill-rotation-select, .layer-phase-select'
+  ).forEach((el) => {
     el.disabled = !canEdit;
     if (!canEdit) {
       el.title = 'Only faculty can change shared layer settings';

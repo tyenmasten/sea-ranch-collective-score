@@ -1419,6 +1419,8 @@ const FALLBACK_DOT_RADIUS_FT = 3;
 
 function getNotationsToDraw() {
   if (typeof state === 'undefined' || !state || !Array.isArray(state.notations)) return [];
+  // Master layer gate — stacks with author/status filters (filteredNotations).
+  if (state.layers && state.layers.notations === false) return [];
   if (Array.isArray(state.filteredNotations)) return state.filteredNotations;
   return state.notations;
 }

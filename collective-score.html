@@ -1028,6 +1028,12 @@ nav {
                   <button type="button" class="layer-toggle" id="toggleOutlines" aria-pressed="false" aria-label="Toggle polygon outlines"></button>
                 </div>
               </div>
+              <div class="layer-row">
+                <span class="layer-name">Student Notations</span>
+                <div class="layer-row-controls">
+                  <button type="button" class="layer-toggle on" id="toggleNotations" aria-pressed="true" aria-label="Toggle student notations"></button>
+                </div>
+              </div>
             </div>
 
             <div class="sep"></div>
@@ -1354,6 +1360,7 @@ const state = {
     buildings: true,
     vegetation: false,
     contours: false,
+    notations: true,
     parcels: false,
     coastalEdge: false,
     publicLand: false,
@@ -1409,6 +1416,7 @@ const ELEMENT_IDS = {
   toggleParcels: 'toggleParcels',
   toggleCoastalEdge: 'toggleCoastalEdge',
   togglePublicLand: 'togglePublicLand',
+  toggleNotations: 'toggleNotations',
   mapRotation: 'mapRotation',
   toggleNorthArrow: 'toggleNorthArrow',
 };
@@ -2705,6 +2713,18 @@ function bindEvents() {
     });
   }
 
+  els.toggleNotations = document.getElementById('toggleNotations');
+  if (els.toggleNotations) {
+    els.toggleNotations.addEventListener('click', () => {
+      if (!isFacultyUser()) return;
+      state.layers.notations = !state.layers.notations;
+      els.toggleNotations.classList.toggle('on', state.layers.notations);
+      els.toggleNotations.setAttribute('aria-pressed', state.layers.notations);
+      if (window.redraw) redraw();
+      saveScoreSettings();
+    });
+  }
+
   els.btnExport.addEventListener('click', () => {
     const layerMode = els.exportLayer ? els.exportLayer.value : 'all';
     if (typeof window.exportSelectedSheetSvg === 'function') {
@@ -2745,6 +2765,7 @@ function collectScoreSettingsPayload() {
       buildings: !!state.layers.buildings,
       vegetation: !!state.layers.vegetation,
       contours: !!state.layers.contours,
+      notations: !!state.layers.notations,
       parcels: !!state.layers.parcels,
       coastalEdge: !!state.layers.coastalEdge,
       publicLand: !!state.layers.publicLand,
@@ -2874,6 +2895,7 @@ function syncLayerControlsFromState() {
     [els.toggleBuildings, state.layers.buildings],
     [els.toggleVegetation || document.getElementById('toggleVegetation'), state.layers.vegetation],
     [els.toggleContours, state.layers.contours],
+    [els.toggleNotations || document.getElementById('toggleNotations'), state.layers.notations],
     [els.toggleParcels, state.layers.parcels],
     [els.toggleCoastalEdge, state.layers.coastalEdge],
     [els.togglePublicLand, state.layers.publicLand],
@@ -2967,6 +2989,7 @@ function applyLayerEditingGate() {
     els.toggleBuildings,
     els.toggleVegetation || document.getElementById('toggleVegetation'),
     els.toggleContours,
+    els.toggleNotations || document.getElementById('toggleNotations'),
     els.toggleParcels,
     els.toggleCoastalEdge,
     els.togglePublicLand,

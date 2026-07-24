@@ -318,6 +318,13 @@ nav {
   gap: 4px;
 }
 
+.fill-category-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .fill-category-name {
   font-size: 10px;
   color: var(--dim);
@@ -325,6 +332,8 @@ nav {
   white-space: normal;
   overflow: visible;
   word-break: break-word;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .fill-mark-picker {
@@ -2293,7 +2302,13 @@ function bindEvents() {
   function fillEntriesFromMarkIds(markMap) {
     const out = {};
     Object.keys(markMap).forEach((key) => {
-      out[key] = { markId: markMap[key], color: DEFAULT_FILL_COLOR, scale: 1, rotation: 0 };
+      out[key] = {
+        markId: markMap[key],
+        color: DEFAULT_FILL_COLOR,
+        scale: 1,
+        rotation: 0,
+        enabled: true,
+      };
     });
     return out;
   }
@@ -2326,6 +2341,11 @@ function bindEvents() {
     return allowed.indexOf(n) >= 0 ? n : 0;
   }
 
+  function getFillEnabled(entry) {
+    // Legacy entries without the field default to on.
+    return !(entry && typeof entry === 'object' && entry.enabled === false);
+  }
+
   function setFillMarkId(groupKey, cat, markId, defaults) {
     const prev = window.categoryFills[groupKey][cat];
     window.categoryFills[groupKey][cat] = {
@@ -2333,6 +2353,7 @@ function bindEvents() {
       color: getFillColor(prev, DEFAULT_FILL_COLOR),
       scale: getFillScale(prev),
       rotation: getFillRotation(prev),
+      enabled: getFillEnabled(prev),
     };
   }
 
@@ -2343,6 +2364,7 @@ function bindEvents() {
       color: color || DEFAULT_FILL_COLOR,
       scale: getFillScale(prev),
       rotation: getFillRotation(prev),
+      enabled: getFillEnabled(prev),
     };
   }
 
@@ -2353,6 +2375,7 @@ function bindEvents() {
       color: getFillColor(prev, DEFAULT_FILL_COLOR),
       scale: getFillScale({ scale: scale }),
       rotation: getFillRotation(prev),
+      enabled: getFillEnabled(prev),
     };
   }
 
@@ -2363,6 +2386,18 @@ function bindEvents() {
       color: getFillColor(prev, DEFAULT_FILL_COLOR),
       scale: getFillScale(prev),
       rotation: getFillRotation({ rotation: rotation }),
+      enabled: getFillEnabled(prev),
+    };
+  }
+
+  function setFillEnabled(groupKey, cat, enabled, defaults) {
+    const prev = window.categoryFills[groupKey][cat];
+    window.categoryFills[groupKey][cat] = {
+      markId: getFillMarkId(prev, defaults[cat] || DEFAULT_MARK_ID),
+      color: getFillColor(prev, DEFAULT_FILL_COLOR),
+      scale: getFillScale(prev),
+      rotation: getFillRotation(prev),
+      enabled: !!enabled,
     };
   }
 
@@ -2399,10 +2434,34 @@ function bindEvents() {
       const row = document.createElement('div');
       row.className = 'fill-category-row';
 
+      const heading = document.createElement('div');
+      heading.className = 'fill-category-heading';
+
       const label = document.createElement('span');
       label.className = 'fill-category-name';
       label.textContent = cat;
       label.title = cat;
+
+      const enabledOn = getFillEnabled(window.categoryFills[groupKey][cat]);
+      const enabledToggle = document.createElement('button');
+      enabledToggle.type = 'button';
+      enabledToggle.className = 'layer-toggle fill-category-toggle' + (enabledOn ? ' on' : '');
+      enabledToggle.dataset.fillGroup = groupKey;
+      enabledToggle.dataset.fillCategory = cat;
+      enabledToggle.setAttribute('aria-pressed', enabledOn ? 'true' : 'false');
+      enabledToggle.setAttribute('aria-label', 'Toggle ' + cat);
+      enabledToggle.addEventListener('click', () => {
+        if (!isFacultyUser()) return;
+        const next = !getFillEnabled(window.categoryFills[groupKey][cat]);
+        setFillEnabled(groupKey, cat, next, defaults);
+        enabledToggle.classList.toggle('on', next);
+        enabledToggle.setAttribute('aria-pressed', next ? 'true' : 'false');
+        if (window.redraw) redraw();
+        saveScoreSettings();
+      });
+
+      heading.appendChild(label);
+      heading.appendChild(enabledToggle);
 
       const controls = document.createElement('div');
       controls.className = 'fill-category-controls';
@@ -2509,7 +2568,7 @@ function bindEvents() {
       controls.appendChild(colorInput);
       controls.appendChild(scaleSelect);
       controls.appendChild(rotSelect);
-      row.appendChild(label);
+      row.appendChild(heading);
       row.appendChild(controls);
       container.appendChild(row);
     });
@@ -2730,8 +2789,8 @@ function normalizeIncomingFillEntry(val, defaultMarkId) {
   };
   if (val == null) return null;
   if (typeof val === 'string') {
-    if (known(val)) return { markId: val, color: '#1a1a1a', scale: 1, rotation: 0 };
-    return { markId: legacyChar[val] || fallback, color: '#1a1a1a', scale: 1, rotation: 0 };
+    if (known(val)) return { markId: val, color: '#1a1a1a', scale: 1, rotation: 0, enabled: true };
+    return { markId: legacyChar[val] || fallback, color: '#1a1a1a', scale: 1, rotation: 0, enabled: true };
   }
   if (typeof val === 'object') {
     let markId = fallback;
@@ -2742,6 +2801,8 @@ function normalizeIncomingFillEntry(val, defaultMarkId) {
       color: val.color || '#1a1a1a',
       scale: clampScale(val.scale),
       rotation: clampRot(val.rotation),
+      // Legacy objects without enabled default to on.
+      enabled: val.enabled !== false,
     };
   }
   return null;
@@ -2871,6 +2932,17 @@ function syncLayerControlsFromState() {
     sel.value = String(rot);
   });
 
+  document.querySelectorAll('.fill-category-toggle[data-fill-group]').forEach((btn) => {
+    const group = btn.dataset.fillGroup;
+    const cat = btn.dataset.fillCategory;
+    const entry = window.categoryFills && window.categoryFills[group]
+      ? window.categoryFills[group][cat]
+      : null;
+    const on = !(entry && typeof entry === 'object' && entry.enabled === false);
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+
   document.querySelectorAll('.layer-phase-select[data-layer-grid]').forEach((sel) => {
     const key = sel.dataset.layerGrid;
     const phase = (window.layerGrid && window.layerGrid[key] && window.layerGrid[key].gridPhase) || 'A';
@@ -2901,7 +2973,7 @@ function applyLayerEditingGate() {
     el.title = canEdit ? '' : 'Only faculty can change shared layer settings';
   });
   document.querySelectorAll(
-    '.fill-mark-btn, .fill-color-input, .fill-scale-select, .fill-rotation-select, .layer-phase-select'
+    '.fill-mark-btn, .fill-color-input, .fill-scale-select, .fill-rotation-select, .layer-phase-select, .fill-category-toggle'
   ).forEach((el) => {
     el.disabled = !canEdit;
     if (!canEdit) {

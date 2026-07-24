@@ -81,18 +81,21 @@ function normalizeFillEntry(entry) {
   };
   const known = (id) =>
     !!(window.BASE_MARK_LIBRARY && window.BASE_MARK_LIBRARY.some((m) => m.id === id));
+  // Legacy string/missing entries default to enabled; only explicit false disables.
+  const enabled = !(entry && typeof entry === 'object' && entry.enabled === false);
   if (!entry) {
-    return { markId: DEFAULT_MARK_ID, color: '#1a1a1a', scale: 1, rotation: 0 };
+    return { markId: DEFAULT_MARK_ID, color: '#1a1a1a', scale: 1, rotation: 0, enabled: true };
   }
   if (typeof entry === 'string') {
     if (known(entry)) {
-      return { markId: entry, color: '#1a1a1a', scale: 1, rotation: 0 };
+      return { markId: entry, color: '#1a1a1a', scale: 1, rotation: 0, enabled: true };
     }
     return {
       markId: legacyChar[entry] || DEFAULT_MARK_ID,
       color: '#1a1a1a',
       scale: 1,
       rotation: 0,
+      enabled: true,
     };
   }
   let markId = DEFAULT_MARK_ID;
@@ -103,6 +106,7 @@ function normalizeFillEntry(entry) {
     color: entry.color || '#1a1a1a',
     scale: clampFillScale(entry.scale),
     rotation: clampFillRotation(entry.rotation),
+    enabled: enabled,
   };
 }
 
@@ -1221,7 +1225,8 @@ function forEachStreetMarkStamp(geo, features, callback) {
   list.forEach((f) => {
     if (!f.geometry) return;
     const category = (f.properties && f.properties.Class) || 'Local';
-    const { markId, color, scale, rotation } = normalizeFillEntry(roadFills[category]);
+    const { markId, color, scale, rotation, enabled } = normalizeFillEntry(roadFills[category]);
+    if (!enabled) return;
     const markDef = getBaseMarkDef(markId);
     if (!markDef) return;
     const lines = f.geometry.type === 'MultiLineString'
@@ -1271,7 +1276,8 @@ function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey,
       : [f.geometry.coordinates];
 
     const category = (f.properties && f.properties[categoryField]) || 'Other';
-    const { markId, color, scale, rotation } = normalizeFillEntry(fills[category]);
+    const { markId, color, scale, rotation, enabled } = normalizeFillEntry(fills[category]);
+    if (!enabled) return;
     const markDef = getBaseMarkDef(markId);
     if (!markDef) return;
 
@@ -2870,18 +2876,24 @@ function appendOneBaseLayerSvg(geo, defs, plotParts, layerId, label, fillGroupKe
     pushMarkFrags(byCat[cat], markDef, color, lng, lat, ftPerPx, geo, defs, clips, {}, scale, rotation);
   });
 
-  const present = Object.keys(byCat);
-  if (!present.length) return;
+  const fills = (window.categoryFills && window.categoryFills[fillGroupKey]) || {};
+  const catEnabled = (cat) => normalizeFillEntry(fills[cat]).enabled !== false;
 
+  const present = Object.keys(byCat);
   const defaults = (window.DEFAULT_CATEGORY_MARKS && window.DEFAULT_CATEGORY_MARKS[fillGroupKey]) || {};
   const preferred = Object.keys(defaults);
-  const ordered = preferred.filter((c) => byCat[c])
-    .concat(present.filter((c) => preferred.indexOf(c) < 0).sort());
+  // Enabled cats with stamps + known disabled cats (empty groups) so Inkscape structure stays intact.
+  const ordered = [];
+  preferred.forEach((c) => {
+    if (byCat[c] || !catEnabled(c)) ordered.push(c);
+  });
+  present.filter((c) => preferred.indexOf(c) < 0).sort().forEach((c) => ordered.push(c));
+  if (!ordered.length) return;
 
   plotParts.push(svgLayerOpen(layerId, label));
   ordered.forEach((cat) => {
     plotParts.push(svgLayerOpen(svgCategorySubId(layerId, cat), cat));
-    plotParts.push(byCat[cat].join(''));
+    if (byCat[cat] && byCat[cat].length) plotParts.push(byCat[cat].join(''));
     plotParts.push(svgLayerClose());
   });
   plotParts.push(svgLayerClose());

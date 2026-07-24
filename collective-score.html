@@ -2160,6 +2160,8 @@ function bindEvents() {
   const MARK_REACH_DIAG = MARK_REACH / Math.sqrt(2); // half-length along 45° for diagonal-tick
   const MARK_REACH_CHEV_X = MARK_REACH * Math.sqrt(3) / 2;
   const MARK_REACH_CHEV_Y = MARK_REACH * 0.5;
+  // Inner bullseye ≈ 0.2mm on page when tip-to-tip is 5mm (≤ half of 0.5mm pen → solid).
+  const MARK_DOT_INNER_REACH = MARK_REACH * (0.2 / 2.5);
 
   function mkLine(x1, y1, x2, y2) {
     return {
@@ -2179,8 +2181,11 @@ function bindEvents() {
     {
       id: 'dot',
       name: 'Dot',
-      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="#1a1a1a"/></svg>',
-      marks: [{ type: 'dot', geom: { cx: BMC.x, cy: BMC.y, r: MARK_REACH }, color: '#1a1a1a', fill: 'solid', stroke: false, rot: 0 }],
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="#1a1a1a" stroke-width="1.5"/><circle cx="8" cy="8" r="0.44" fill="none" stroke="#1a1a1a" stroke-width="1.5"/></svg>',
+      marks: [
+        { type: 'circle', geom: { cx: BMC.x, cy: BMC.y, r: MARK_REACH }, color: '#1a1a1a', fill: 'none', stroke: true, weight: 1, rot: 0 },
+        { type: 'circle', geom: { cx: BMC.x, cy: BMC.y, r: MARK_DOT_INNER_REACH }, color: '#1a1a1a', fill: 'none', stroke: true, weight: 1, rot: 0 },
+      ],
     },
     {
       id: 'tick',

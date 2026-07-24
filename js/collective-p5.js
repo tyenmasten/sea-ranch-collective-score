@@ -33,7 +33,7 @@ const DEFAULT_MARK_ID = 'dot';
 const MM_PER_IN = 25.4;
 const MARK_GRID_MM = 5.0;
 const MARK_SIZE_MM = MARK_GRID_MM;
-const MARK_STROKE_MM = 0.25;
+const MARK_STROKE_MM = 0.5;
 const MARK_SIZE_IN = MARK_SIZE_MM / MM_PER_IN;
 const MARK_GRID_IN = MARK_GRID_MM / MM_PER_IN;
 const MARK_STROKE_IN = MARK_STROKE_MM / MM_PER_IN;
@@ -2329,18 +2329,14 @@ function emitClippedCircleSvg(cx, cy, radius, color, weightIn, filled, rect) {
   const r = rect || getContentRectInches();
   if (circleOutsideRect(cx, cy, radius, r)) return [];
   if (circleFullyInRect(cx, cy, radius, r)) {
-    if (filled) {
-      return [svgEl('circle', {
-        cx: svgNum(cx), cy: svgNum(cy), r: svgNum(radius),
-        fill: color || '#1a1a1a', stroke: 'none',
-      })];
-    }
+    // Always stroke (never fill-only): plotters ignore fill and need stroke geometry.
+    // Former "filled" dots become a stroked circle outline at the same radius.
     return [svgEl('circle', {
       cx: svgNum(cx), cy: svgNum(cy), r: svgNum(radius),
       fill: 'none', stroke: color || '#1a1a1a', 'stroke-width': svgNum(weightIn),
     })];
   }
-  // Partial: stroke as clipped polyline (filled dots become stroked outline when cut).
+  // Partial: stroke as clipped polyline (no SVG clip-path).
   return emitClippedPolylineSvg(sampleCirclePagePts(cx, cy, radius, 64), color, weightIn, r);
 }
 
@@ -2617,9 +2613,12 @@ function captionStringPathsAt(str, startX, startY, heightIn, color) {
       }));
       if (pts.length === 1) {
         const r = Math.max(heightIn * 0.04, 0.004);
+        // Stroked outline (not fill-only) so plotters can trace the mid-dot.
         out.push(svgEl('circle', {
           cx: svgNum(pts[0].x), cy: svgNum(pts[0].y), r: svgNum(r),
-          fill: color || '#1a1a1a', stroke: 'none',
+          fill: 'none',
+          stroke: color || '#1a1a1a',
+          'stroke-width': svgNum(strokeW),
         }));
         return;
       }

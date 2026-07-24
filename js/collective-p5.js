@@ -52,7 +52,7 @@ const CROP_MARK_STROKE_IN = 0.2 / MM_PER_IN;
 
 const FILL_SCALE_OPTIONS = [1, 0.75, 0.5, 0.25];
 const FILL_ROTATION_OPTIONS = [0, 45, 90, 135];
-const GRID_PHASE_INDEX = { A: 0, B: 1, C: 2 };
+const GRID_PHASE_INDEX = { A: 0, B: 1 };
 
 function clampFillScale(val) {
   const n = Number(val);
@@ -103,7 +103,9 @@ function normalizeFillEntry(entry) {
 
 function layerGridPhaseIndex(layerKey) {
   const g = window.layerGrid && window.layerGrid[layerKey];
-  const phase = (g && g.gridPhase) || 'A';
+  let phase = (g && g.gridPhase) || 'A';
+  // Legacy Phase C (from the old 3-phase system) maps to A.
+  if (phase !== 'A' && phase !== 'B') phase = 'A';
   return GRID_PHASE_INDEX[phase] != null ? GRID_PHASE_INDEX[phase] : 0;
 }
 
@@ -133,7 +135,7 @@ function nearestHexPhasePoint(x, y, pitch, phaseIndex) {
     for (let di = -3; di <= 3; di++) {
       const i = iBase + di;
       const j = jBase + dj;
-      if (((j % 3) + 3) % 3 !== phaseIndex) continue;
+      if (((j % 2) + 2) % 2 !== phaseIndex) continue;
       const p = hexLatticePoint(i, j, pitch);
       if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
       const d = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y);
@@ -152,9 +154,9 @@ function nearestHexPhasePoint(x, y, pitch, phaseIndex) {
   if (bestX == null || bestY == null || !Number.isFinite(bestX) || !Number.isFinite(bestY)) {
     let i = bestI;
     let j = bestJ;
-    const target = ((phaseIndex % 3) + 3) % 3;
+    const target = ((phaseIndex % 2) + 2) % 2;
     let guard = 0;
-    while (((j % 3) + 3) % 3 !== target && guard < 3) {
+    while (((j % 2) + 2) % 2 !== target && guard < 2) {
       j += 1;
       guard += 1;
     }
@@ -173,7 +175,7 @@ function forEachHexPhaseInBounds(minX, maxX, minY, maxY, pitch, phaseIndex, call
     const iMin = Math.floor((minX - pad - j * (pitch * 0.5)) / pitch);
     const iMax = Math.ceil((maxX + pad - j * (pitch * 0.5)) / pitch);
     for (let i = iMin; i <= iMax; i++) {
-      if (((j % 3) + 3) % 3 !== phaseIndex) continue;
+      if (((j % 2) + 2) % 2 !== phaseIndex) continue;
       const p = hexLatticePoint(i, j, pitch);
       if (p.x < minX - pad || p.x > maxX + pad || p.y < minY - pad || p.y > maxY + pad) continue;
       callback(p.x, p.y);

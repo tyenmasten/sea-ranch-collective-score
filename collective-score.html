@@ -968,7 +968,6 @@ nav {
                     <select class="layer-phase-select" id="phaseStreets" data-layer-grid="streets" aria-label="Streets grid phase">
                       <option value="A">A</option>
                       <option value="B">B</option>
-                      <option value="C">C</option>
                     </select>
                     <button type="button" class="fill-expand-toggle" id="expandStreets" aria-label="Expand road symbols">▾</button>
                     <button type="button" class="layer-toggle on" id="toggleStreets" aria-pressed="true" aria-label="Toggle streets"></button>
@@ -984,7 +983,6 @@ nav {
                     <select class="layer-phase-select" id="phaseBuildings" data-layer-grid="buildings" aria-label="Buildings grid phase">
                       <option value="A">A</option>
                       <option value="B">B</option>
-                      <option value="C">C</option>
                     </select>
                     <button type="button" class="fill-expand-toggle" id="expandBuildings" aria-label="Expand building fill symbols">▾</button>
                     <button type="button" class="layer-toggle on" id="toggleBuildings" aria-pressed="true" aria-label="Toggle buildings"></button>
@@ -1000,7 +998,6 @@ nav {
                     <select class="layer-phase-select" id="phaseVegetation" data-layer-grid="vegetation" aria-label="Vegetation grid phase">
                       <option value="A">A</option>
                       <option value="B">B</option>
-                      <option value="C">C</option>
                     </select>
                     <button type="button" class="fill-expand-toggle" id="expandVegetation" aria-label="Expand vegetation fill symbols">▾</button>
                     <button type="button" class="layer-toggle" id="toggleVegetation" aria-pressed="false" aria-label="Toggle vegetation"></button>
@@ -1036,7 +1033,6 @@ nav {
                   <select class="layer-phase-select" id="phaseParcels" data-layer-grid="parcels" aria-label="Parcels grid phase">
                     <option value="A">A</option>
                     <option value="B">B</option>
-                    <option value="C">C</option>
                   </select>
                   <button type="button" class="layer-toggle" id="toggleParcels" aria-pressed="false" aria-label="Toggle parcels"></button>
                 </div>
@@ -1047,7 +1043,6 @@ nav {
                   <select class="layer-phase-select" id="phaseCoastalEdge" data-layer-grid="coastalEdge" aria-label="Coastal edge grid phase">
                     <option value="A">A</option>
                     <option value="B">B</option>
-                    <option value="C">C</option>
                   </select>
                   <button type="button" class="layer-toggle" id="toggleCoastalEdge" aria-pressed="false" aria-label="Toggle coastal edge"></button>
                 </div>
@@ -1058,7 +1053,6 @@ nav {
                   <select class="layer-phase-select" id="phasePublicLand" data-layer-grid="publicLand" aria-label="Public land grid phase">
                     <option value="A">A</option>
                     <option value="B">B</option>
-                    <option value="C">C</option>
                   </select>
                   <button type="button" class="layer-toggle" id="togglePublicLand" aria-pressed="false" aria-label="Toggle public land"></button>
                 </div>
@@ -2382,10 +2376,10 @@ function bindEvents() {
 
   window.layerGrid = {
     streets: { gridPhase: 'A' },
-    buildings: { gridPhase: 'C' },
+    buildings: { gridPhase: 'A' },
     vegetation: { gridPhase: 'B' },
     parcels: { gridPhase: 'A' },
-    coastalEdge: { gridPhase: 'C' },
+    coastalEdge: { gridPhase: 'A' },
     publicLand: { gridPhase: 'B' },
   };
 
@@ -2537,13 +2531,18 @@ function bindEvents() {
   document.querySelectorAll('.layer-phase-select[data-layer-grid]').forEach((sel) => {
     const key = sel.dataset.layerGrid;
     if (!window.layerGrid[key]) window.layerGrid[key] = { gridPhase: 'A' };
-    sel.value = window.layerGrid[key].gridPhase || 'A';
+    // Migrate legacy Phase C → A for the two-phase lattice.
+    if (window.layerGrid[key].gridPhase !== 'A' && window.layerGrid[key].gridPhase !== 'B') {
+      window.layerGrid[key] = { gridPhase: 'A' };
+    }
+    sel.value = window.layerGrid[key].gridPhase === 'B' ? 'B' : 'A';
     sel.addEventListener('change', () => {
       if (!isFacultyUser()) {
-        sel.value = (window.layerGrid[key] && window.layerGrid[key].gridPhase) || 'A';
+        const cur = (window.layerGrid[key] && window.layerGrid[key].gridPhase) || 'A';
+        sel.value = cur === 'B' ? 'B' : 'A';
         return;
       }
-      const phase = sel.value === 'B' || sel.value === 'C' ? sel.value : 'A';
+      const phase = sel.value === 'B' ? 'B' : 'A';
       window.layerGrid[key] = { gridPhase: phase };
       if (window.redraw) redraw();
       saveScoreSettings();
@@ -2690,10 +2689,10 @@ function collectScoreSettingsPayload() {
     },
     layerGrid: JSON.parse(JSON.stringify(window.layerGrid || {
       streets: { gridPhase: 'A' },
-      buildings: { gridPhase: 'C' },
+      buildings: { gridPhase: 'A' },
       vegetation: { gridPhase: 'B' },
       parcels: { gridPhase: 'A' },
-      coastalEdge: { gridPhase: 'C' },
+      coastalEdge: { gridPhase: 'A' },
       publicLand: { gridPhase: 'B' },
     })),
     updatedAt: new Date().toISOString(),
@@ -2778,17 +2777,18 @@ function applyScoreSettingsData(data) {
     if (!window.layerGrid) {
       window.layerGrid = {
         streets: { gridPhase: 'A' },
-        buildings: { gridPhase: 'C' },
+        buildings: { gridPhase: 'A' },
         vegetation: { gridPhase: 'B' },
         parcels: { gridPhase: 'A' },
-        coastalEdge: { gridPhase: 'C' },
+        coastalEdge: { gridPhase: 'A' },
         publicLand: { gridPhase: 'B' },
       };
     }
     Object.keys(data.layerGrid).forEach((key) => {
       const entry = data.layerGrid[key];
       if (!entry || typeof entry !== 'object') return;
-      const phase = entry.gridPhase === 'B' || entry.gridPhase === 'C' ? entry.gridPhase : 'A';
+      // Two-phase system (A/B). Legacy Phase C from the old 3-phase lattice maps to A.
+      const phase = entry.gridPhase === 'B' ? 'B' : 'A';
       window.layerGrid[key] = { gridPhase: phase };
     });
   }
@@ -2866,7 +2866,7 @@ function syncLayerControlsFromState() {
   document.querySelectorAll('.layer-phase-select[data-layer-grid]').forEach((sel) => {
     const key = sel.dataset.layerGrid;
     const phase = (window.layerGrid && window.layerGrid[key] && window.layerGrid[key].gridPhase) || 'A';
-    sel.value = phase === 'B' || phase === 'C' ? phase : 'A';
+    sel.value = phase === 'B' ? 'B' : 'A';
   });
 
   const colorContours = document.getElementById('colorContours');

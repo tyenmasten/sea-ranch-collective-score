@@ -494,28 +494,67 @@ function computeLngLatBounds(features) {
   return { minLng, maxLng, minLat, maxLat };
 }
 
-/** Buildings AABB center in rotated-feet (View/Grid pan origin). */
+/**
+ * Area-weighted centroid of building polygons in rotated-feet space.
+ * Each polygon's own centroid is weighted by its area, then averaged —
+ * reflects building mass concentration, not AABB midpoint of outermost extent.
+ * Used as View/Grid pan origin (panRX/panRY).
+ */
 function computeBuildingsCenterFt() {
-  let minRx = Infinity, maxRx = -Infinity, minRy = Infinity, maxRy = -Infinity;
+  let sumA = 0;
+  let sumX = 0;
+  let sumY = 0;
+
+  function accumulateRing(ringLngLat) {
+    if (!ringLngLat || ringLngLat.length < 3) return;
+    const pts = [];
+    for (let i = 0; i < ringLngLat.length; i++) {
+      const c = ringLngLat[i];
+      if (!c || c.length < 2) continue;
+      const p = toRotatedFeet(c[0], c[1]);
+      pts.push(p);
+    }
+    if (pts.length < 3) return;
+    // Close ring if needed for shoelace.
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+    if (first.rx !== last.rx || first.ry !== last.ry) pts.push({ rx: first.rx, ry: first.ry });
+
+    let twiceArea = 0;
+    let cx = 0;
+    let cy = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const x0 = pts[i].rx;
+      const y0 = pts[i].ry;
+      const x1 = pts[i + 1].rx;
+      const y1 = pts[i + 1].ry;
+      const cross = x0 * y1 - x1 * y0;
+      twiceArea += cross;
+      cx += (x0 + x1) * cross;
+      cy += (y0 + y1) * cross;
+    }
+    if (Math.abs(twiceArea) < 1e-12) return;
+    const area = Math.abs(twiceArea) * 0.5;
+    const centroidX = cx / (3 * twiceArea);
+    const centroidY = cy / (3 * twiceArea);
+    sumA += area;
+    sumX += centroidX * area;
+    sumY += centroidY * area;
+  }
+
   (scoreLayers.buildings || []).forEach((f) => {
     if (!f.geometry) return;
-    (function walk(coords) {
-      if (typeof coords[0] === 'number') {
-        const { rx, ry } = toRotatedFeet(coords[0], coords[1]);
-        if (rx < minRx) minRx = rx;
-        if (rx > maxRx) maxRx = rx;
-        if (ry < minRy) minRy = ry;
-        if (ry > maxRy) maxRy = ry;
-        return;
-      }
-      coords.forEach(walk);
-    })(f.geometry.coordinates);
+    const polys = f.geometry.type === 'MultiPolygon'
+      ? f.geometry.coordinates
+      : [f.geometry.coordinates];
+    polys.forEach((poly) => {
+      if (!poly || !poly[0]) return;
+      accumulateRing(poly[0]); // outer ring only
+    });
   });
-  if (!isFinite(minRx)) return { rx: 0, ry: 0 };
-  return {
-    rx: (minRx + maxRx) / 2,
-    ry: (minRy + maxRy) / 2,
-  };
+
+  if (sumA < 1e-12) return { rx: 0, ry: 0 };
+  return { rx: sumX / sumA, ry: sumY / sumA };
 }
 
 function computeBaseFitScale(bounds) {

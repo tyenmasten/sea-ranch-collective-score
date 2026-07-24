@@ -1009,9 +1009,13 @@ function drawAtlasOverlay(geo) {
   const atlas = getCurrentAtlas();
   if (!atlas || !atlas.sheets.length) return;
   const selected = getSelectedSheet();
-  // Grid mode is fitted to the whole atlas — size labels for legibility.
-  const labelSize = scoreMode === 'grid' ? 16 : 11;
-  const selectedSize = scoreMode === 'grid' ? 18 : 13;
+  // Margin band in rotated feet (same PAGE_OVERLAP_IN used for content inset / step).
+  const marginFt = PAGE_OVERLAP_IN * ((geo.scaleDenom || atlas.scaleDenom || currentScaleDenominator()) / 12);
+  const marginPx = marginFt * geo.pxPerFt;
+  // Grid overlay has no crop marks — BR margin center is clear.
+  // Cap label to ~55% of margin so it stays inside the band.
+  const labelSize = Math.max(7, Math.min(scoreMode === 'grid' ? 14 : 11, marginPx * 0.55));
+  const selectedSize = Math.max(labelSize, Math.min(scoreMode === 'grid' ? 16 : 13, marginPx * 0.7));
 
   atlas.sheets.forEach((sheet) => {
     const b = sheet.boundsFt;
@@ -1031,21 +1035,26 @@ function drawAtlasOverlay(geo) {
     vertex(sw.x, sw.y);
     endShape(CLOSE);
 
-    const cx = (nw.x + se.x) / 2;
-    const cy = (nw.y + se.y) / 2;
+    // Bottom-right margin: midway between content edge and page edge
+    // (page SE = maxRx, minRy in rotated-feet; Y increases north).
+    const labelFt = {
+      rx: b.maxX - marginFt * 0.5,
+      ry: b.minY + marginFt * 0.5,
+    };
+    const lp = rotatedFeetToScreen(labelFt.rx, labelFt.ry, geo);
     noStroke();
     fill(isSelected ? '#1a1a1a' : '#666666');
     textAlign(CENTER, CENTER);
     textSize(isSelected ? selectedSize : labelSize);
     textFont('Miniature, serif');
-    text(sheet.label, cx, cy);
+    text(sheet.label, lp.x, lp.y);
   });
 
   textFont('monospace');
   textAlign(CENTER, CENTER);
 }
 
-/** 0.5" overlap strips on sheet edges that adjoin a neighbor (Sheet mode). */
+/** Overlap strips on sheet edges that adjoin a neighbor (Sheet mode). */
 function drawPrintOverlapGuides(geo) {
   if (!geo || !geo.atlasMode) return;
   const atlas = getCurrentAtlas();
@@ -2029,7 +2038,7 @@ function draw() {
   const pageModes = scoreMode === 'print' || scoreMode === 'sheet';
 
   if (pageModes) {
-    // Cull + clip to the shared content rect (0.5" inset), not the full page.
+    // Cull + clip to the shared content rect (PAGE_OVERLAP_IN inset), not the full page.
     const mPx = PAGE_OVERLAP_IN * geo.pxPerInch;
     geo.clipMinX = geo.pageX + mPx;
     geo.clipMaxX = geo.pageX + geo.pageW - mPx;
@@ -2631,24 +2640,69 @@ function captionStringPathsAt(str, startX, startY, heightIn, color) {
   return out;
 }
 
+function captionStringWidthIn(str, heightIn) {
+  let w = 0;
+  for (let i = 0; i < str.length; i++) {
+    const glyph = getCaptionGlyph(str.charAt(i));
+    w += (glyph.w || 0.5) * heightIn * 1.08;
+  }
+  return w;
+}
+
 function sheetCaptionText(sheet, scaleDenom) {
   return 'SHEET ' + sheet.label + ' · 1:' + scaleDenom;
+}
+
+/**
+ * Sheet/SVG caption layout in page inches: stacked below the bottom-right crop mark,
+ * fully inside the bottom margin band (clear of content and of the crop arms).
+ */
+function sheetCaptionLayoutInches(sheet, scaleDenom) {
+  const caption = sheetCaptionText(sheet, scaleDenom);
+  const heightIn = 0.18;
+  const gapIn = 0.05; // clear air between crop arm tip and label top
+  const m = PAGE_OVERLAP_IN;
+  const cropX = PAGE_WIDTH_IN - m;
+  const cropY = PAGE_HEIGHT_IN - m;
+  const arm = CROP_MARK_CROSS_IN;
+  const widthIn = captionStringWidthIn(caption, heightIn);
+  // Vertical center: below crop arm, keep glyph inside [pageH - m, pageH].
+  let startY = cropY + arm + gapIn + heightIn * 0.5;
+  const minY = (PAGE_HEIGHT_IN - m) + heightIn * 0.5 + 0.01;
+  const maxY = PAGE_HEIGHT_IN - heightIn * 0.5 - 0.02;
+  if (startY < minY) startY = minY;
+  if (startY > maxY) startY = maxY;
+  // Horizontally center under the BR crop; keep inside the page.
+  let startX = cropX - widthIn * 0.5;
+  const pad = 0.04;
+  if (startX < pad) startX = pad;
+  if (startX + widthIn > PAGE_WIDTH_IN - pad) startX = PAGE_WIDTH_IN - pad - widthIn;
+  return {
+    caption: caption,
+    heightIn: heightIn,
+    startX: startX,
+    startY: startY,
+    cropX: cropX,
+    cropY: cropY,
+    widthIn: widthIn,
+  };
 }
 
 function drawSheetCaption(geo) {
   const sheet = getSelectedSheet();
   if (!sheet || !geo.pxPerInch) return;
-  const caption = sheetCaptionText(sheet, geo.scaleDenom);
-  const heightPx = 0.22 * geo.pxPerInch;
-  let x = geo.pageX + 0.35 * geo.pxPerInch;
-  const startY = geo.pageY + 0.45 * geo.pxPerInch;
+  const layout = sheetCaptionLayoutInches(sheet, geo.scaleDenom);
+  const px = geo.pxPerInch;
+  const heightPx = layout.heightIn * px;
+  let x = geo.pageX + layout.startX * px;
+  const startY = geo.pageY + layout.startY * px;
   stroke('#1a1a1a');
   strokeWeight(Math.max(heightPx * 0.08, 0.8));
   strokeCap(ROUND);
   strokeJoin(ROUND);
   noFill();
-  for (let i = 0; i < caption.length; i++) {
-    const glyph = getCaptionGlyph(caption.charAt(i));
+  for (let i = 0; i < layout.caption.length; i++) {
+    const glyph = getCaptionGlyph(layout.caption.charAt(i));
     const w = (glyph.w || 0.5) * heightPx;
     (glyph.strokes || []).forEach((seg) => {
       if (!seg.length) return;
@@ -2986,7 +3040,7 @@ function buildSelectedSheetSvgString(options) {
   // Same geometry Sheet mode uses on screen (origin = sheet center, scaleDenom/12).
   syncPaperSizeFromUI();
   const geo = getSheetGeometry();
-  // Cull stamps to the shared content rect (0.5" inset), matching Sheet on-screen clip.
+  // Cull stamps to the shared content rect (PAGE_OVERLAP_IN inset), matching Sheet on-screen clip.
   const mPx = PAGE_OVERLAP_IN * geo.pxPerInch;
   geo.clipMinX = geo.pageX + mPx;
   geo.clipMaxX = geo.pageX + geo.pageW - mPx;
@@ -3033,8 +3087,10 @@ function buildSelectedSheetSvgString(options) {
 
   appendCropMarksSvg(plotParts);
 
-  const caption = sheetCaptionText(sheet, geo.scaleDenom);
-  const labels = captionStringPathsAt(caption, 0.35, 0.45, 0.22, '#1a1a1a');
+  const layout = sheetCaptionLayoutInches(sheet, geo.scaleDenom);
+  const labels = captionStringPathsAt(
+    layout.caption, layout.startX, layout.startY, layout.heightIn, '#1a1a1a'
+  );
 
   const svg =
     '<?xml version="1.0" encoding="UTF-8"?>\n' +

@@ -718,7 +718,7 @@ function getSheetGeometry() {
   };
 }
 
-/** Whole atlas extent fitted to the canvas (Grid mode). Fixed; no pan. */
+/** Atlas overview: fit-to-extent baseline × viewZoom, pan via panRX/panRY (same as View). */
 function getGridGeometry() {
   const scaleDenom = currentScaleDenominator();
   const atlas = getCurrentAtlas();
@@ -741,9 +741,8 @@ function getGridGeometry() {
   const pad = PAGE_MARGIN_PX;
   const availW = Math.max(width - pad * 2, 1);
   const availH = Math.max(height - pad * 2, 1);
-  // Fit scale from full atlas/site extent (unchanged). Camera origin is panRX/panRY
-  // (buildings-centered at load) — same viewport as View; does not retile the atlas.
-  const pxPerFt = Math.min(availW / widthFt, availH / heightFt);
+  const fitPxPerFt = Math.min(availW / widthFt, availH / heightFt);
+  const pxPerFt = fitPxPerFt * viewZoom;
   return {
     mode: 'grid',
     scaleDenom,
@@ -1009,13 +1008,9 @@ function drawAtlasOverlay(geo) {
   const atlas = getCurrentAtlas();
   if (!atlas || !atlas.sheets.length) return;
   const selected = getSelectedSheet();
-  // Margin band in rotated feet (same PAGE_OVERLAP_IN used for content inset / step).
-  const marginFt = PAGE_OVERLAP_IN * ((geo.scaleDenom || atlas.scaleDenom || currentScaleDenominator()) / 12);
-  const marginPx = marginFt * geo.pxPerFt;
-  // Grid overlay has no crop marks — BR margin center is clear.
-  // Cap label to ~55% of margin so it stays inside the band.
-  const labelSize = Math.max(7, Math.min(scoreMode === 'grid' ? 14 : 11, marginPx * 0.55));
-  const selectedSize = Math.max(labelSize, Math.min(scoreMode === 'grid' ? 16 : 13, marginPx * 0.7));
+  // Teal — distinct from gray grid lines / black selection stroke.
+  const labelFill = '#1a8a94';
+  const labelFillSelected = '#0d5c63';
 
   atlas.sheets.forEach((sheet) => {
     const b = sheet.boundsFt;
@@ -1035,19 +1030,18 @@ function drawAtlasOverlay(geo) {
     vertex(sw.x, sw.y);
     endShape(CLOSE);
 
-    // Bottom-right margin: midway between content edge and page edge
-    // (page SE = maxRx, minRy in rotated-feet; Y increases north).
-    const labelFt = {
-      rx: b.maxX - marginFt * 0.5,
-      ry: b.minY + marginFt * 0.5,
-    };
-    const lp = rotatedFeetToScreen(labelFt.rx, labelFt.ry, geo);
+    const cx = (nw.x + se.x) / 2;
+    const cy = (nw.y + se.y) / 2;
+    const cellW = Math.max(Math.abs(se.x - nw.x), Math.abs(sw.x - ne.x), 1);
+    const cellH = Math.max(Math.abs(sw.y - nw.y), Math.abs(se.y - ne.y), 1);
+    // Large cell-centered labels; scale with zoom so they stay legible.
+    const labelSize = Math.max(14, Math.min(64, Math.min(cellW, cellH) * 0.32));
     noStroke();
-    fill(isSelected ? '#1a1a1a' : '#666666');
+    fill(isSelected ? labelFillSelected : labelFill);
     textAlign(CENTER, CENTER);
-    textSize(isSelected ? selectedSize : labelSize);
+    textSize(labelSize);
     textFont('Miniature, serif');
-    text(sheet.label, lp.x, lp.y);
+    text(sheet.label, cx, cy);
   });
 
   textFont('monospace');
@@ -2131,8 +2125,8 @@ function mousePressed() {
 
 function mouseDragged() {
   if (!isDragging || !scoreReady) return;
-  // Grid and Sheet are fixed; only View and free-pan Print Preview can pan.
-  if (scoreMode === 'grid' || scoreMode === 'sheet') return;
+  // Sheet is fixed; View, Grid, and free-pan Print Preview can pan.
+  if (scoreMode === 'sheet') return;
   const geo = getActiveGeometry();
   const dxPx = mouseX - dragStartMouseX;
   const dyPx = mouseY - dragStartMouseY;
@@ -2163,7 +2157,7 @@ function mouseReleased() {
 
 function mouseWheel(event) {
   if (!isPointerInCanvas(mouseX, mouseY)) return true;
-  if (scoreMode !== 'view') return false;
+  if (scoreMode !== 'view' && scoreMode !== 'grid') return false;
   const factor = event.delta > 0 ? 0.9 : 1.1;
   viewZoom = Math.min(40, Math.max(0.1, viewZoom * factor));
   redraw();
@@ -2655,7 +2649,7 @@ function sheetCaptionText(sheet, scaleDenom) {
 
 /**
  * Sheet/SVG caption layout in page inches: stacked below the bottom-right crop mark,
- * fully inside the bottom margin band (clear of content and of the crop arms).
+ * horizontally centered in the right margin band (PAGE_OVERLAP_IN strip).
  */
 function sheetCaptionLayoutInches(sheet, scaleDenom) {
   const caption = sheetCaptionText(sheet, scaleDenom);
@@ -2664,6 +2658,7 @@ function sheetCaptionLayoutInches(sheet, scaleDenom) {
   const m = PAGE_OVERLAP_IN;
   const cropX = PAGE_WIDTH_IN - m;
   const cropY = PAGE_HEIGHT_IN - m;
+  const marginCenterX = PAGE_WIDTH_IN - m * 0.5;
   const arm = CROP_MARK_CROSS_IN;
   const widthIn = captionStringWidthIn(caption, heightIn);
   // Vertical center: below crop arm, keep glyph inside [pageH - m, pageH].
@@ -2672,8 +2667,8 @@ function sheetCaptionLayoutInches(sheet, scaleDenom) {
   const maxY = PAGE_HEIGHT_IN - heightIn * 0.5 - 0.02;
   if (startY < minY) startY = minY;
   if (startY > maxY) startY = maxY;
-  // Horizontally center under the BR crop; keep inside the page.
-  let startX = cropX - widthIn * 0.5;
+  // Horizontally center on the right margin band (not under the crop at content edge).
+  let startX = marginCenterX - widthIn * 0.5;
   const pad = 0.04;
   if (startX < pad) startX = pad;
   if (startX + widthIn > PAGE_WIDTH_IN - pad) startX = PAGE_WIDTH_IN - pad - widthIn;
@@ -2684,6 +2679,7 @@ function sheetCaptionLayoutInches(sheet, scaleDenom) {
     startY: startY,
     cropX: cropX,
     cropY: cropY,
+    marginCenterX: marginCenterX,
     widthIn: widthIn,
   };
 }

@@ -854,9 +854,9 @@ function computeBuildingsBoundsFt() {
 }
 
 /**
- * Atlas sheet grid. Anchored so the buildings AABB is centered in the sheet
- * layout; union still expands far enough to cover the full site extent.
- * Shared by Grid mode, Sheet mode, and SVG export.
+ * Atlas sheet grid sized to the buildings AABB only (minimal sheet count).
+ * Buildings box is centered in the union so leftover whole-sheet padding is
+ * even on both sides. Shared by Grid, Sheet, and SVG export.
  */
 function computePrintAtlas(scaleDenom) {
   const denom = scaleDenom || currentScaleDenominator();
@@ -867,16 +867,19 @@ function computePrintAtlas(scaleDenom) {
   const stepWFt = (PAGE_WIDTH_IN - 2 * PAGE_OVERLAP_IN) * (denom / 12);
   const stepHFt = (PAGE_HEIGHT_IN - 2 * PAGE_OVERLAP_IN) * (denom / 12);
 
-  // Anchor: buildings AABB midpoint (fallback to site center if no buildings).
-  const anchorRx = buildings ? buildings.centerRx : (site.minRx + site.maxRx) / 2;
-  const anchorRy = buildings ? buildings.centerRy : (site.minRy + site.maxRy) / 2;
+  // Cover target: buildings AABB (fallback to site if no buildings).
+  const coverMinRx = buildings ? buildings.minRx : site.minRx;
+  const coverMaxRx = buildings ? buildings.maxRx : site.maxRx;
+  const coverMinRy = buildings ? buildings.minRy : site.minRy;
+  const coverMaxRy = buildings ? buildings.maxRy : site.maxRy;
+  const coverW = Math.max(coverMaxRx - coverMinRx, 1);
+  const coverH = Math.max(coverMaxRy - coverMinRy, 1);
+  const anchorRx = (coverMinRx + coverMaxRx) / 2;
+  const anchorRy = (coverMinRy + coverMaxRy) / 2;
 
-  // Half-extents from anchor to site edges — union must be at least 2× each
-  // so the site is covered while the anchor sits at the union center.
-  const halfW = Math.max(anchorRx - site.minRx, site.maxRx - anchorRx);
-  const halfH = Math.max(anchorRy - site.minRy, site.maxRy - anchorRy);
-  const needW = Math.max(2 * halfW, pageWFt);
-  const needH = Math.max(2 * halfH, pageHFt);
+  // Minimal union of whole sheets that contains the cover box.
+  const needW = Math.max(coverW, pageWFt);
+  const needH = Math.max(coverH, pageHFt);
 
   let cols = 1;
   let unionW = pageWFt;
@@ -891,6 +894,7 @@ function computePrintAtlas(scaleDenom) {
     unionH = (rows - 1) * stepHFt + pageHFt;
   }
 
+  // Center cover in the union → leftover padding split evenly both sides.
   const originMinX = anchorRx - unionW / 2;
   const originMaxY = anchorRy + unionH / 2;
   const fitsOne = cols === 1 && rows === 1;

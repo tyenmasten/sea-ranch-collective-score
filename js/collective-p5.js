@@ -670,17 +670,17 @@ function getGridGeometry() {
   const pad = PAGE_MARGIN_PX;
   const availW = Math.max(width - pad * 2, 1);
   const availH = Math.max(height - pad * 2, 1);
+  // Fit scale from full atlas/site extent (unchanged). Camera origin is panRX/panRY
+  // (buildings-centered at load) — same viewport as View; does not retile the atlas.
   const pxPerFt = Math.min(availW / widthFt, availH / heightFt);
-  // Same fit scale as before (full site); pan/origin centered on buildings.
-  const buildingsCenter = computeBuildingsCenterFt();
   return {
     mode: 'grid',
     scaleDenom,
     pxPerFt,
     centerX: width / 2,
     centerY: height / 2,
-    originRx: buildingsCenter.rx,
-    originRy: buildingsCenter.ry,
+    originRx: panRX,
+    originRy: panRY,
   };
 }
 

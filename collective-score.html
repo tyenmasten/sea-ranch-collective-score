@@ -2147,6 +2147,11 @@ function bindEvents() {
 
   // Field-space center for default base marks (same coord system as lexicon sketch.marks).
   const BMC = { x: 300, y: 400 };
+  /** Characteristic reach (center→tip) in field units; tip-to-tip = BASE_MARK_FIELD_SPAN (=30). */
+  const MARK_REACH = 15;
+  const MARK_REACH_DIAG = MARK_REACH / Math.sqrt(2); // half-length along 45° for diagonal-tick
+  const MARK_REACH_CHEV_X = MARK_REACH * Math.sqrt(3) / 2;
+  const MARK_REACH_CHEV_Y = MARK_REACH * 0.5;
 
   function mkLine(x1, y1, x2, y2) {
     return {
@@ -2160,70 +2165,74 @@ function bindEvents() {
     };
   }
 
-  /** Shared default mark library — geometry matches lexicon sketch.marks shape. */
+  /** Shared default mark library — geometry matches lexicon sketch.marks shape.
+   *  Each shape's characteristic reach from center is MARK_REACH (= pitch/2 on page). */
   window.BASE_MARK_LIBRARY = [
     {
       id: 'dot',
       name: 'Dot',
-      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.5" fill="#1a1a1a"/></svg>',
-      marks: [{ type: 'dot', geom: { cx: BMC.x, cy: BMC.y, r: 8 }, color: '#1a1a1a', fill: 'solid', stroke: false, rot: 0 }],
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="#1a1a1a"/></svg>',
+      marks: [{ type: 'dot', geom: { cx: BMC.x, cy: BMC.y, r: MARK_REACH }, color: '#1a1a1a', fill: 'solid', stroke: false, rot: 0 }],
     },
     {
       id: 'tick',
       name: 'Tick',
-      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="8" y1="3" x2="8" y2="13" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/></svg>',
-      marks: [mkLine(BMC.x, BMC.y - 16, BMC.x, BMC.y + 16)],
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="8" y1="2.5" x2="8" y2="13.5" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/></svg>',
+      marks: [mkLine(BMC.x, BMC.y - MARK_REACH, BMC.x, BMC.y + MARK_REACH)],
     },
     {
       id: 'chevron',
       name: 'Chevron',
-      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><polyline points="3,11 8,4 13,11" fill="none" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><polyline points="2.5,11.5 8,2.5 13.5,11.5" fill="none" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
       marks: [
-        mkLine(BMC.x - 14, BMC.y + 10, BMC.x, BMC.y - 14),
-        mkLine(BMC.x, BMC.y - 14, BMC.x + 14, BMC.y + 10),
+        mkLine(BMC.x - MARK_REACH_CHEV_X, BMC.y + MARK_REACH_CHEV_Y, BMC.x, BMC.y - MARK_REACH),
+        mkLine(BMC.x, BMC.y - MARK_REACH, BMC.x + MARK_REACH_CHEV_X, BMC.y + MARK_REACH_CHEV_Y),
       ],
     },
     {
       id: 'cross',
       name: 'Cross',
-      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="3" y1="3" x2="13" y2="13" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/><line x1="13" y1="3" x2="3" y2="13" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/></svg>',
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="8" y1="2.5" x2="8" y2="13.5" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/><line x1="2.5" y1="8" x2="13.5" y2="8" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/></svg>',
       marks: [
-        mkLine(BMC.x - 14, BMC.y - 14, BMC.x + 14, BMC.y + 14),
-        mkLine(BMC.x + 14, BMC.y - 14, BMC.x - 14, BMC.y + 14),
+        mkLine(BMC.x - MARK_REACH, BMC.y, BMC.x + MARK_REACH, BMC.y),
+        mkLine(BMC.x, BMC.y - MARK_REACH, BMC.x, BMC.y + MARK_REACH),
       ],
     },
     {
       id: 'circle',
       name: 'Circle',
       previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="#1a1a1a" stroke-width="1.5"/></svg>',
-      marks: [{ type: 'circle', geom: { cx: BMC.x, cy: BMC.y, r: 14 }, color: '#1a1a1a', fill: 'none', stroke: true, weight: 1, rot: 0 }],
+      marks: [{ type: 'circle', geom: { cx: BMC.x, cy: BMC.y, r: MARK_REACH }, color: '#1a1a1a', fill: 'none', stroke: true, weight: 1, rot: 0 }],
     },
     {
       id: 'diagonal-tick',
       name: 'Diagonal tick',
-      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="4" y1="12" x2="12" y2="4" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/></svg>',
-      marks: [mkLine(BMC.x - 12, BMC.y + 12, BMC.x + 12, BMC.y - 12)],
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="3.5" y1="12.5" x2="12.5" y2="3.5" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/></svg>',
+      marks: [mkLine(
+        BMC.x - MARK_REACH_DIAG, BMC.y + MARK_REACH_DIAG,
+        BMC.x + MARK_REACH_DIAG, BMC.y - MARK_REACH_DIAG
+      )],
     },
     {
       id: 'double-tick',
       name: 'Double tick',
-      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="5.5" y1="3" x2="5.5" y2="13" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/><line x1="10.5" y1="3" x2="10.5" y2="13" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/></svg>',
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="5.5" y1="2.5" x2="5.5" y2="13.5" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/><line x1="10.5" y1="2.5" x2="10.5" y2="13.5" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/></svg>',
       marks: [
-        mkLine(BMC.x - 6, BMC.y - 16, BMC.x - 6, BMC.y + 16),
-        mkLine(BMC.x + 6, BMC.y - 16, BMC.x + 6, BMC.y + 16),
+        mkLine(BMC.x - 6, BMC.y - MARK_REACH, BMC.x - 6, BMC.y + MARK_REACH),
+        mkLine(BMC.x + 6, BMC.y - MARK_REACH, BMC.x + 6, BMC.y + MARK_REACH),
       ],
     },
     {
       id: 'triangle',
       name: 'Triangle',
-      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><polygon points="8,2.5 13.5,13.5 2.5,13.5" fill="none" stroke="#1a1a1a" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><polygon points="8,2.5 13.25,12.25 2.75,12.25" fill="none" stroke="#1a1a1a" stroke-width="1.4" stroke-linejoin="round"/></svg>',
       marks: [{
         type: 'triangle',
         geom: {
           pts: [
-            { x: BMC.x, y: BMC.y - 16 },
-            { x: BMC.x + 14, y: BMC.y + 12 },
-            { x: BMC.x - 14, y: BMC.y + 12 },
+            { x: BMC.x, y: BMC.y - MARK_REACH },
+            { x: BMC.x + MARK_REACH_CHEV_X, y: BMC.y + MARK_REACH_CHEV_Y },
+            { x: BMC.x - MARK_REACH_CHEV_X, y: BMC.y + MARK_REACH_CHEV_Y },
           ],
         },
         color: '#1a1a1a',

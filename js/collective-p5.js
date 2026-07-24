@@ -224,14 +224,14 @@ function isPrintSurfaceMode() {
 const ROTATION_DEG = 42;
 const FT_PER_DEG_LAT = 364000;
 
-// A3 / A4 portrait page size (inches). Mutable via paper-size selector.
+// Portrait page sizes (inches). Mutable via paper-size selector.
 const PAPER_SIZES = {
-  a3: { id: 'a3', label: 'A3', widthIn: 11.69, heightIn: 16.54 },
-  a4: { id: 'a4', label: 'A4', widthIn: 8.27, heightIn: 11.69 },
+  '11x14': { id: '11x14', label: '11×14', widthIn: 11, heightIn: 14 },
+  '9x12': { id: '9x12', label: '9×12', widthIn: 9, heightIn: 12 },
 };
-let paperSizeId = 'a3';
-let PAGE_WIDTH_IN = PAPER_SIZES.a3.widthIn;
-let PAGE_HEIGHT_IN = PAPER_SIZES.a3.heightIn;
+let paperSizeId = '11x14';
+let PAGE_WIDTH_IN = PAPER_SIZES['11x14'].widthIn;
+let PAGE_HEIGHT_IN = PAPER_SIZES['11x14'].heightIn;
 const PAGE_OVERLAP_IN = 0.5;
 const PAGE_MARGIN_PX = 40;
 /** Atlas tiling only at 1:1000 and coarser; finer scales use free-pan single crop. */
@@ -253,7 +253,7 @@ function getContentRectInches() {
 }
 
 function applyPaperSize(sizeId) {
-  const spec = PAPER_SIZES[sizeId] || PAPER_SIZES.a3;
+  const spec = PAPER_SIZES[sizeId] || PAPER_SIZES['11x14'];
   paperSizeId = spec.id;
   PAGE_WIDTH_IN = spec.widthIn;
   PAGE_HEIGHT_IN = spec.heightIn;
@@ -261,7 +261,7 @@ function applyPaperSize(sizeId) {
 
 function syncPaperSizeFromUI() {
   const el = document.getElementById('exportPaperSize');
-  const id = el && el.value ? el.value : 'a3';
+  const id = el && el.value ? el.value : '11x14';
   applyPaperSize(id);
 }
 

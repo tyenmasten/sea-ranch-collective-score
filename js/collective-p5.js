@@ -26,14 +26,13 @@ let scoreLayers = { streets: [], buildings: [], contours: [], vegetation: [] };
 let scoreCentroid = null;
 let scoreReady = false;
 
-const HATCH_PITCH = 7;
 const DEFAULT_MARK_ID = 'dot';
 
 // Fixed physical texture on the printed page (independent of map scale).
-// Brick grid pitch 3mm (~1/8"); mark tip-to-tip = pitch so reach = pitch/2 = row gap.
+// Single source: MARK_GRID_MM. Tip-to-tip = pitch → reach = pitch/2 = row gap.
 const MM_PER_IN = 25.4;
-const MARK_GRID_MM = 3.0;
-const MARK_SIZE_MM = 3.0;
+const MARK_GRID_MM = 5.0;
+const MARK_SIZE_MM = MARK_GRID_MM;
 const MARK_STROKE_MM = 0.25;
 const MARK_SIZE_IN = MARK_SIZE_MM / MM_PER_IN;
 const MARK_GRID_IN = MARK_GRID_MM / MM_PER_IN;
@@ -42,6 +41,12 @@ const MARK_STROKE_IN = MARK_STROKE_MM / MM_PER_IN;
 const BASE_MARK_FIELD_SPAN = 30;
 /** drawSketchMark weight so stroke ≈ MARK_STROKE_IN on the page at any scale. */
 const BASE_MARK_STROKE_WEIGHT = (MARK_STROKE_IN * BASE_MARK_FIELD_SPAN) / MARK_SIZE_IN;
+
+/**
+ * View/Grid on-screen pitch (px). Scaled with MARK_GRID_MM so browsing density
+ * stays proportional to Sheet/Print (was 7px when print pitch was 3mm).
+ */
+const HATCH_PITCH = 7 * (MARK_GRID_MM / 3);
 
 // Corner crop / registration marks (centers sit on content-rect corners).
 const CROP_MARK_RADIUS_MM = 1.5;   // 3mm diameter circle

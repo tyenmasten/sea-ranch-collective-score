@@ -403,11 +403,30 @@ async function loadScoreLayers() {
     computeBaseFitScale(bounds);
     // Pan origin: buildings cluster center (fit scale still uses full site bounds above).
     const buildingsCenter = computeBuildingsCenterFt();
+    console.log('[buildings-center] computeBuildingsCenterFt()', {
+      rx: buildingsCenter.rx,
+      ry: buildingsCenter.ry,
+      finite: Number.isFinite(buildingsCenter.rx) && Number.isFinite(buildingsCenter.ry),
+      buildingCount: (scoreLayers.buildings || []).length,
+      scoreCentroid: scoreCentroid,
+    });
     panRX = buildingsCenter.rx;
     panRY = buildingsCenter.ry;
+    console.log('[buildings-center] pan set after load', { panRX: panRX, panRY: panRY });
     scoreReady = true;
     if (statusEl) statusEl.style.display = 'none';
     redraw();
+    console.log('[buildings-center] pan after first redraw', { panRX: panRX, panRY: panRY });
+    // Catch late overwrites (Firestore, other init) within the next couple frames/ticks.
+    setTimeout(() => {
+      console.log('[buildings-center] pan +50ms', { panRX: panRX, panRY: panRY });
+    }, 50);
+    setTimeout(() => {
+      console.log('[buildings-center] pan +500ms', { panRX: panRX, panRY: panRY });
+    }, 500);
+    setTimeout(() => {
+      console.log('[buildings-center] pan +2000ms', { panRX: panRX, panRY: panRY });
+    }, 2000);
   } catch (err) {
     console.error(err);
     if (statusEl) statusEl.textContent = 'Unable to load site layers.';
@@ -553,8 +572,21 @@ function computeBuildingsCenterFt() {
     });
   });
 
-  if (sumA < 1e-12) return { rx: 0, ry: 0 };
-  return { rx: sumX / sumA, ry: sumY / sumA };
+  if (sumA < 1e-12) {
+    console.warn('[buildings-center] computeBuildingsCenterFt fallback {0,0}', {
+      sumA: sumA,
+      buildingCount: (scoreLayers.buildings || []).length,
+    });
+    return { rx: 0, ry: 0 };
+  }
+  const result = { rx: sumX / sumA, ry: sumY / sumA };
+  console.log('[buildings-center] centroid internals', {
+    sumA: sumA,
+    sumX: sumX,
+    sumY: sumY,
+    result: result,
+  });
+  return result;
 }
 
 function computeBaseFitScale(bounds) {
@@ -789,45 +821,87 @@ function computeSiteBoundsFt() {
   };
 }
 
+/** Buildings literal AABB in rotated-feet (atlas grid centering anchor). */
+function computeBuildingsBoundsFt() {
+  let minRx = Infinity, maxRx = -Infinity, minRy = Infinity, maxRy = -Infinity;
+  (scoreLayers.buildings || []).forEach((f) => {
+    if (!f.geometry) return;
+    (function walk(coords) {
+      if (typeof coords[0] === 'number') {
+        const { rx, ry } = toRotatedFeet(coords[0], coords[1]);
+        if (rx < minRx) minRx = rx;
+        if (rx > maxRx) maxRx = rx;
+        if (ry < minRy) minRy = ry;
+        if (ry > maxRy) maxRy = ry;
+        return;
+      }
+      coords.forEach(walk);
+    })(f.geometry.coordinates);
+  });
+  if (!isFinite(minRx)) {
+    return null;
+  }
+  return {
+    minRx: minRx,
+    maxRx: maxRx,
+    minRy: minRy,
+    maxRy: maxRy,
+    widthFt: Math.max(maxRx - minRx, 1),
+    heightFt: Math.max(maxRy - minRy, 1),
+    centerRx: (minRx + maxRx) / 2,
+    centerRy: (minRy + maxRy) / 2,
+  };
+}
+
+/**
+ * Atlas sheet grid. Anchored so the buildings AABB is centered in the sheet
+ * layout; union still expands far enough to cover the full site extent.
+ * Shared by Grid mode, Sheet mode, and SVG export.
+ */
 function computePrintAtlas(scaleDenom) {
   const denom = scaleDenom || currentScaleDenominator();
   const site = computeSiteBoundsFt();
+  const buildings = computeBuildingsBoundsFt();
   const pageWFt = PAGE_WIDTH_IN * (denom / 12);
   const pageHFt = PAGE_HEIGHT_IN * (denom / 12);
   const stepWFt = (PAGE_WIDTH_IN - 2 * PAGE_OVERLAP_IN) * (denom / 12);
   const stepHFt = (PAGE_HEIGHT_IN - 2 * PAGE_OVERLAP_IN) * (denom / 12);
 
-  let cols = 1;
-  let rows = 1;
-  const fitsOne =
-    site.widthFt <= pageWFt && site.heightFt <= pageHFt;
+  // Anchor: buildings AABB midpoint (fallback to site center if no buildings).
+  const anchorRx = buildings ? buildings.centerRx : (site.minRx + site.maxRx) / 2;
+  const anchorRy = buildings ? buildings.centerRy : (site.minRy + site.maxRy) / 2;
 
-  if (!fitsOne) {
-    cols = Math.max(1, Math.ceil(site.widthFt / stepWFt));
-    rows = Math.max(1, Math.ceil(site.heightFt / stepHFt));
+  // Half-extents from anchor to site edges — union must be at least 2× each
+  // so the site is covered while the anchor sits at the union center.
+  const halfW = Math.max(anchorRx - site.minRx, site.maxRx - anchorRx);
+  const halfH = Math.max(anchorRy - site.minRy, site.maxRy - anchorRy);
+  const needW = Math.max(2 * halfW, pageWFt);
+  const needH = Math.max(2 * halfH, pageHFt);
+
+  let cols = 1;
+  let unionW = pageWFt;
+  while (unionW < needW - 1e-9) {
+    cols += 1;
+    unionW = (cols - 1) * stepWFt + pageWFt;
   }
+  let rows = 1;
+  let unionH = pageHFt;
+  while (unionH < needH - 1e-9) {
+    rows += 1;
+    unionH = (rows - 1) * stepHFt + pageHFt;
+  }
+
+  const originMinX = anchorRx - unionW / 2;
+  const originMaxY = anchorRy + unionH / 2;
+  const fitsOne = cols === 1 && rows === 1;
 
   const sheets = [];
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
-      let minX;
-      let maxY;
-      let maxX;
-      let minY;
-      if (fitsOne) {
-        const cx = (site.minRx + site.maxRx) / 2;
-        const cy = (site.minRy + site.maxRy) / 2;
-        minX = cx - pageWFt / 2;
-        maxX = cx + pageWFt / 2;
-        minY = cy - pageHFt / 2;
-        maxY = cy + pageHFt / 2;
-      } else {
-        // A1 at northwest: cols increase east, rows increase south.
-        minX = site.minRx + col * stepWFt;
-        maxY = site.maxRy - row * stepHFt;
-        maxX = minX + pageWFt;
-        minY = maxY - pageHFt;
-      }
+      const minX = originMinX + col * stepWFt;
+      const maxY = originMaxY - row * stepHFt;
+      const maxX = minX + pageWFt;
+      const minY = maxY - pageHFt;
       const centerRx = (minX + maxX) / 2;
       const centerRy = (minY + maxY) / 2;
       const label = sheetLabel(col, row);
@@ -853,6 +927,13 @@ function computePrintAtlas(scaleDenom) {
     stepHFt,
     fitsOne,
     site,
+    buildings,
+    anchorRx,
+    anchorRy,
+    originMinX,
+    originMaxY,
+    unionW,
+    unionH,
     sheets,
   };
 }
@@ -1925,6 +2006,22 @@ function draw() {
 
   if (isAtlasScale()) refreshAtlasSelection();
   const geo = getActiveGeometry();
+  if (!window.__buildingsCenterDrawLogged) {
+    window.__buildingsCenterDrawLogged = true;
+    console.log('[buildings-center] first draw geometry origin', {
+      scoreMode: scoreMode,
+      originRx: geo.originRx,
+      originRy: geo.originRy,
+      panRX: panRX,
+      panRY: panRY,
+      pxPerFt: geo.pxPerFt,
+      // Approximate on-screen shift vs site AABB midpoint (ft → px).
+      approxShiftPxFromZero: {
+        x: -panRX * geo.pxPerFt,
+        y: panRY * geo.pxPerFt,
+      },
+    });
+  }
   const pageModes = scoreMode === 'print' || scoreMode === 'sheet';
 
   if (pageModes) {

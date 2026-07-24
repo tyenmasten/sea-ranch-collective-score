@@ -166,21 +166,175 @@ function nearestHexPhasePoint(x, y, pitch, phaseIndex) {
   return { gx: bestX, gy: bestY };
 }
 
+/** Nearest lattice point of either phase (used for full-row coverage within a layer). */
+function nearestHexLatticePoint(x, y, pitch) {
+  const rowH = pitch * SQRT3 * 0.5;
+  const jApprox = y / rowH;
+  const iApprox = (x - jApprox * (pitch * 0.5)) / pitch;
+  const iBase = Math.floor(iApprox);
+  const jBase = Math.floor(jApprox);
+  let bestX = null;
+  let bestY = null;
+  let bestDist = Infinity;
+  let bestI = Math.round(iApprox);
+  let bestJ = Math.round(jApprox);
+  for (let dj = -2; dj <= 2; dj++) {
+    for (let di = -2; di <= 2; di++) {
+      const i = iBase + di;
+      const j = jBase + dj;
+      const p = hexLatticePoint(i, j, pitch);
+      if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+      const d = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y);
+      if (d < bestDist) {
+        bestDist = d;
+        bestX = p.x;
+        bestY = p.y;
+        bestI = i;
+        bestJ = j;
+      }
+    }
+  }
+  if (bestX == null || bestY == null || !Number.isFinite(bestX) || !Number.isFinite(bestY)) {
+    const p = hexLatticePoint(bestI, bestJ, pitch);
+    return { gx: p.x, gy: p.y, j: bestJ };
+  }
+  return { gx: bestX, gy: bestY, j: bestJ };
+}
+
+function latticeRowPhaseFromY(gy, pitch) {
+  const rowH = pitch * SQRT3 * 0.5;
+  const j = Math.round(gy / rowH);
+  return ((j % 2) + 2) % 2;
+}
+
+function latticeKey(gx, gy) {
+  return gx.toFixed(3) + ',' + gy.toFixed(3);
+}
+
 function forEachHexPhaseInBounds(minX, maxX, minY, maxY, pitch, phaseIndex, callback) {
   const rowH = pitch * SQRT3 * 0.5;
   const pad = pitch * 2;
   const jMin = Math.floor((minY - pad) / rowH);
   const jMax = Math.ceil((maxY + pad) / rowH);
   for (let j = jMin; j <= jMax; j++) {
+    if (phaseIndex != null && ((j % 2) + 2) % 2 !== phaseIndex) continue;
     const iMin = Math.floor((minX - pad - j * (pitch * 0.5)) / pitch);
     const iMax = Math.ceil((maxX + pad - j * (pitch * 0.5)) / pitch);
     for (let i = iMin; i <= iMax; i++) {
-      if (((j % 2) + 2) % 2 !== phaseIndex) continue;
       const p = hexLatticePoint(i, j, pitch);
       if (p.x < minX - pad || p.x > maxX + pad || p.y < minY - pad || p.y > maxY + pad) continue;
-      callback(p.x, p.y);
+      callback(p.x, p.y, j);
     }
   }
+}
+
+/** All lattice points in bounds (both phase rows). */
+function forEachHexLatticeInBounds(minX, maxX, minY, maxY, pitch, callback) {
+  forEachHexPhaseInBounds(minX, maxX, minY, maxY, pitch, null, callback);
+}
+
+const BASE_LAYER_CLAIM_PRIORITY = ['buildings', 'streets', 'vegetation'];
+
+function layerClaimPriorityWinner(owners) {
+  for (let i = 0; i < BASE_LAYER_CLAIM_PRIORITY.length; i++) {
+    if (owners.indexOf(BASE_LAYER_CLAIM_PRIORITY[i]) >= 0) return BASE_LAYER_CLAIM_PRIORITY[i];
+  }
+  return owners[0];
+}
+
+/**
+ * True if layerKey should stamp at this lattice point given which layers
+ * claim the point. Solo claims always stamp (both rows). Multi-layer claims
+ * defer to the layer whose assigned phase matches the row (j%2); ties use
+ * buildings > streets > vegetation.
+ */
+function shouldStampLayerAt(layerKey, key, gy, pitch, claims) {
+  const owners = [];
+  if (claims.streets && claims.streets.has(key)) owners.push('streets');
+  if (claims.buildings && claims.buildings.has(key)) owners.push('buildings');
+  if (claims.vegetation && claims.vegetation.has(key)) owners.push('vegetation');
+  if (!owners.length) return false;
+  if (owners.length === 1) return owners[0] === layerKey;
+  const rowPhase = latticeRowPhaseFromY(gy, pitch);
+  const matching = owners.filter((k) => layerGridPhaseIndex(k) === rowPhase);
+  if (matching.length === 1) return matching[0] === layerKey;
+  if (matching.length > 1) return layerClaimPriorityWinner(matching) === layerKey;
+  return layerClaimPriorityWinner(owners) === layerKey;
+}
+
+/**
+ * Build lattice-key claim sets for active base layers (geometry coverage only,
+ * both phases). Shared by screen draw and SVG export so arbitration matches.
+ */
+function buildBaseLayerClaimSets(geo, streets, buildings, vegetation) {
+  const pitch = texturePitchFt(geo);
+  const claims = {
+    streets: new Set(),
+    buildings: new Set(),
+    vegetation: new Set(),
+  };
+
+  if (state.layers.streets) {
+    const stepFt = pitch * 0.5;
+    const list = streets || scoreLayers.streets;
+    list.forEach((f) => {
+      if (!f.geometry) return;
+      const lines = f.geometry.type === 'MultiLineString'
+        ? f.geometry.coordinates
+        : [f.geometry.coordinates];
+      lines.forEach((line) => {
+        const pts = ringToRotatedFeet(line);
+        for (let i = 0; i < pts.length - 1; i++) {
+          const x1 = pts[i].x, y1 = pts[i].y, x2 = pts[i + 1].x, y2 = pts[i + 1].y;
+          const segLen = Math.hypot(x2 - x1, y2 - y1);
+          const steps = Math.max(1, Math.ceil(segLen / stepFt));
+          for (let s = 0; s <= steps; s++) {
+            const t = s / steps;
+            const x = x1 + (x2 - x1) * t;
+            const y = y1 + (y2 - y1) * t;
+            const { gx, gy } = nearestHexLatticePoint(x, y, pitch);
+            claims.streets.add(latticeKey(gx, gy));
+          }
+        }
+      });
+    });
+  }
+
+  function claimPolygons(features, claimSet) {
+    const list = features || [];
+    list.forEach((f) => {
+      if (!f.geometry) return;
+      const polys = f.geometry.type === 'MultiPolygon'
+        ? f.geometry.coordinates
+        : [f.geometry.coordinates];
+      polys.forEach((poly) => {
+        const outerFt = ringToRotatedFeet(poly[0]);
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        outerFt.forEach((p) => {
+          if (p.x < minX) minX = p.x;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.y > maxY) maxY = p.y;
+        });
+        if (maxX - minX < pitch && maxY - minY < pitch) {
+          const cx = (minX + maxX) / 2;
+          const cy = (minY + maxY) / 2;
+          const { gx, gy } = nearestHexLatticePoint(cx, cy, pitch);
+          claimSet.add(latticeKey(gx, gy));
+          return;
+        }
+        forEachHexLatticeInBounds(minX, maxX, minY, maxY, pitch, (gx, gy) => {
+          if (!pointInPolygon(gx, gy, outerFt)) return;
+          claimSet.add(latticeKey(gx, gy));
+        });
+      });
+    });
+  }
+
+  if (state.layers.buildings) claimPolygons(buildings || scoreLayers.buildings, claims.buildings);
+  if (state.layers.vegetation) claimPolygons(vegetation || scoreLayers.vegetation, claims.vegetation);
+
+  return { pitch: pitch, claims: claims };
 }
 
 function getBaseMarkDef(markId) {
@@ -1025,12 +1179,22 @@ function ringToRotatedFeet(ring) {
 
 /**
  * Shared base-layer stamp positions in rotated-feet space on the isometric lattice.
+ * Within a layer's geometry, both phase rows are candidates. Where multiple layers
+ * claim the same lattice point, only the phase-matching layer stamps (shared claims).
  * callback(markDef, color, lng, lat, category, scale, rotation)
+ * claimsCtx: optional { pitch, claims } from buildBaseLayerClaimSets — required for
+ * correct overlap arbitration when layers are emitted separately (SVG).
  */
-function forEachStreetMarkStamp(geo, features, callback) {
+function forEachStreetMarkStamp(geo, features, callback, claimsCtx) {
   if (!state.layers.streets) return;
-  const pitch = texturePitchFt(geo);
-  const phaseIndex = layerGridPhaseIndex('streets');
+  const ctx = claimsCtx || buildBaseLayerClaimSets(
+    geo,
+    features || scoreLayers.streets,
+    scoreLayers.buildings,
+    scoreLayers.vegetation
+  );
+  const pitch = ctx.pitch;
+  const claims = ctx.claims;
   const stepFt = pitch * 0.5;
   const drawnPoints = new Set();
   const roadFills = (window.categoryFills && window.categoryFills.streets) || {};
@@ -1055,10 +1219,11 @@ function forEachStreetMarkStamp(geo, features, callback) {
           const t = s / steps;
           const x = x1 + (x2 - x1) * t;
           const y = y1 + (y2 - y1) * t;
-          const { gx, gy } = nearestHexPhasePoint(x, y, pitch, phaseIndex);
-          const key = gx.toFixed(3) + ',' + gy.toFixed(3);
+          const { gx, gy } = nearestHexLatticePoint(x, y, pitch);
+          const key = latticeKey(gx, gy);
           if (drawnPoints.has(key)) continue;
           drawnPoints.add(key);
+          if (!shouldStampLayerAt('streets', key, gy, pitch, claims)) continue;
           const { lng, lat } = fromRotatedFeet(gx, gy);
           if (!stampInClip(geo, lng, lat)) continue;
           callback(markDef, color, lng, lat, category, scale, rotation);
@@ -1068,10 +1233,16 @@ function forEachStreetMarkStamp(geo, features, callback) {
   });
 }
 
-function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey, callback, outlineCallback) {
+function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey, callback, outlineCallback, claimsCtx) {
   const fills = (window.categoryFills && window.categoryFills[fillGroupKey]) || {};
-  const pitch = texturePitchFt(geo);
-  const phaseIndex = layerGridPhaseIndex(fillGroupKey);
+  const ctx = claimsCtx || buildBaseLayerClaimSets(
+    geo,
+    scoreLayers.streets,
+    fillGroupKey === 'buildings' ? (features || scoreLayers.buildings) : scoreLayers.buildings,
+    fillGroupKey === 'vegetation' ? (features || scoreLayers.vegetation) : scoreLayers.vegetation
+  );
+  const pitch = ctx.pitch;
+  const claims = ctx.claims;
   const list = features || [];
 
   list.forEach((f) => {
@@ -1100,7 +1271,9 @@ function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey,
       if (maxX - minX < pitch && maxY - minY < pitch) {
         const cx = (minX + maxX) / 2;
         const cy = (minY + maxY) / 2;
-        const { gx, gy } = nearestHexPhasePoint(cx, cy, pitch, phaseIndex);
+        const { gx, gy } = nearestHexLatticePoint(cx, cy, pitch);
+        const key = latticeKey(gx, gy);
+        if (!shouldStampLayerAt(fillGroupKey, key, gy, pitch, claims)) return;
         const { lng, lat } = fromRotatedFeet(gx, gy);
         if (stampInClip(geo, lng, lat)) {
           callback(markDef, color, lng, lat, category, scale, rotation);
@@ -1108,8 +1281,10 @@ function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey,
         return;
       }
 
-      forEachHexPhaseInBounds(minX, maxX, minY, maxY, pitch, phaseIndex, (gx, gy) => {
+      forEachHexLatticeInBounds(minX, maxX, minY, maxY, pitch, (gx, gy) => {
         if (!pointInPolygon(gx, gy, outerFt)) return;
+        const key = latticeKey(gx, gy);
+        if (!shouldStampLayerAt(fillGroupKey, key, gy, pitch, claims)) return;
         const { lng, lat } = fromRotatedFeet(gx, gy);
         if (!stampInClip(geo, lng, lat)) return;
         callback(markDef, color, lng, lat, category, scale, rotation);
@@ -1128,6 +1303,7 @@ function forEachBaseLayerStamp(geo, callback, options) {
   const buildings = opts.buildings != null ? opts.buildings : scoreLayers.buildings;
   const vegetation = opts.vegetation != null ? opts.vegetation : scoreLayers.vegetation;
   const drawOutlines = !!opts.drawOutlines;
+  const claimsCtx = opts.claimsCtx || buildBaseLayerClaimSets(geo, streets, buildings, vegetation);
 
   function outlineDrawer(outerRing) {
     noFill();
@@ -1147,25 +1323,30 @@ function forEachBaseLayerStamp(geo, callback, options) {
   if (state.layers.vegetation) {
     forEachCategorizedMarkStamp(
       geo, vegetation, 'LIFEFORM', 'vegetation', callback,
-      drawOutlines ? outlineDrawer : null
+      drawOutlines ? outlineDrawer : null,
+      claimsCtx
     );
   }
 
   if (state.layers.streets) {
-    forEachStreetMarkStamp(geo, streets, callback);
+    forEachStreetMarkStamp(geo, streets, callback, claimsCtx);
   }
 
   if (state.layers.buildings) {
     forEachCategorizedMarkStamp(
       geo, buildings, 'PropType', 'buildings', callback,
-      drawOutlines ? outlineDrawer : null
+      drawOutlines ? outlineDrawer : null,
+      claimsCtx
     );
   }
 }
 
+/** Baseline size for base-layer stamps; per-classification scale multiplies on top. */
+const BASE_LAYER_MARK_SCALE = 0.5;
+
 function drawBaseLayerMarkAt(markDef, color, lng, lat, geo, scale, rotationDeg) {
   if (!markDef || !Array.isArray(markDef.marks)) return;
-  const s = clampFillScale(scale);
+  const s = clampFillScale(scale) * BASE_LAYER_MARK_SCALE;
   const rotExtra = (clampFillRotation(rotationDeg) * Math.PI) / 180;
   // Geometry scales with s; stroke weight compensated so screen stroke stays fixed.
   const ftPerPx = baseLayerFtPerFieldPx(geo) * s;
@@ -2593,7 +2774,7 @@ function emitSketchMarkSvg(m, lng, lat, ftPerPx, geo, defs, clipState, options) 
 
 function pushMarkFrags(parts, markDef, color, lng, lat, ftPerPxBase, geo, defs, clipState, emitOpts, scale, rotationDeg) {
   if (!markDef || !Array.isArray(markDef.marks)) return;
-  const s = clampFillScale(scale);
+  const s = clampFillScale(scale) * BASE_LAYER_MARK_SCALE;
   const rotExtra = (clampFillRotation(rotationDeg) * Math.PI) / 180;
   const ftPerPx = ftPerPxBase * s;
   markDef.marks.forEach((m) => {
@@ -2643,20 +2824,22 @@ function appendBaseLayerMarksSvg(geo, defs, plotParts, layerOpts, clipState) {
   const streets = opts.streets != null ? opts.streets : scoreLayers.streets;
   const buildings = opts.buildings != null ? opts.buildings : scoreLayers.buildings;
   const vegetation = opts.vegetation != null ? opts.vegetation : scoreLayers.vegetation;
+  // One claim pass for all layers — same arbitration as drawBaseLayerMarks.
+  const claimsCtx = buildBaseLayerClaimSets(geo, streets, buildings, vegetation);
 
   if (state.layers.vegetation) {
     appendOneBaseLayerSvg(geo, defs, plotParts, 'vegetation', 'vegetation', 'vegetation', (cb) => {
-      forEachCategorizedMarkStamp(geo, vegetation, 'LIFEFORM', 'vegetation', cb, null);
+      forEachCategorizedMarkStamp(geo, vegetation, 'LIFEFORM', 'vegetation', cb, null, claimsCtx);
     }, clipState);
   }
   if (state.layers.streets) {
     appendOneBaseLayerSvg(geo, defs, plotParts, 'streets', 'streets', 'streets', (cb) => {
-      forEachStreetMarkStamp(geo, streets, cb);
+      forEachStreetMarkStamp(geo, streets, cb, claimsCtx);
     }, clipState);
   }
   if (state.layers.buildings) {
     appendOneBaseLayerSvg(geo, defs, plotParts, 'buildings', 'buildings', 'buildings', (cb) => {
-      forEachCategorizedMarkStamp(geo, buildings, 'PropType', 'buildings', cb, null);
+      forEachCategorizedMarkStamp(geo, buildings, 'PropType', 'buildings', cb, null, claimsCtx);
     }, clipState);
   }
 }

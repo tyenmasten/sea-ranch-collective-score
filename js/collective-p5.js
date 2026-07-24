@@ -2648,27 +2648,25 @@ function sheetCaptionText(sheet, scaleDenom) {
 }
 
 /**
- * Sheet/SVG caption layout in page inches: stacked below the bottom-right crop mark,
- * horizontally centered in the right margin band (PAGE_OVERLAP_IN strip).
+ * Sheet/SVG caption layout in page inches: stacked below the bottom crop line,
+ * horizontally centered on the full page width, vertically in the bottom margin.
  */
 function sheetCaptionLayoutInches(sheet, scaleDenom) {
   const caption = sheetCaptionText(sheet, scaleDenom);
   const heightIn = 0.18;
   const gapIn = 0.05; // clear air between crop arm tip and label top
   const m = PAGE_OVERLAP_IN;
-  const cropX = PAGE_WIDTH_IN - m;
   const cropY = PAGE_HEIGHT_IN - m;
-  const marginCenterX = PAGE_WIDTH_IN - m * 0.5;
   const arm = CROP_MARK_CROSS_IN;
   const widthIn = captionStringWidthIn(caption, heightIn);
-  // Vertical center: below crop arm, keep glyph inside [pageH - m, pageH].
+  // Vertical center: below crop arm height, keep glyph inside [pageH - m, pageH].
   let startY = cropY + arm + gapIn + heightIn * 0.5;
   const minY = (PAGE_HEIGHT_IN - m) + heightIn * 0.5 + 0.01;
   const maxY = PAGE_HEIGHT_IN - heightIn * 0.5 - 0.02;
   if (startY < minY) startY = minY;
   if (startY > maxY) startY = maxY;
-  // Horizontally center on the right margin band (not under the crop at content edge).
-  let startX = marginCenterX - widthIn * 0.5;
+  // Horizontally center on the full page.
+  let startX = PAGE_WIDTH_IN * 0.5 - widthIn * 0.5;
   const pad = 0.04;
   if (startX < pad) startX = pad;
   if (startX + widthIn > PAGE_WIDTH_IN - pad) startX = PAGE_WIDTH_IN - pad - widthIn;
@@ -2677,9 +2675,7 @@ function sheetCaptionLayoutInches(sheet, scaleDenom) {
     heightIn: heightIn,
     startX: startX,
     startY: startY,
-    cropX: cropX,
     cropY: cropY,
-    marginCenterX: marginCenterX,
     widthIn: widthIn,
   };
 }

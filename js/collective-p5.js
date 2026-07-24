@@ -401,6 +401,10 @@ async function loadScoreLayers() {
     };
 
     computeBaseFitScale(bounds);
+    // Pan origin: buildings cluster center (fit scale still uses full site bounds above).
+    const buildingsCenter = computeBuildingsCenterFt();
+    panRX = buildingsCenter.rx;
+    panRY = buildingsCenter.ry;
     scoreReady = true;
     if (statusEl) statusEl.style.display = 'none';
     redraw();
@@ -488,6 +492,30 @@ function computeLngLatBounds(features) {
   }
   features.forEach((f) => { if (f.geometry) walk(f.geometry.coordinates); });
   return { minLng, maxLng, minLat, maxLat };
+}
+
+/** Buildings AABB center in rotated-feet (View/Grid pan origin). */
+function computeBuildingsCenterFt() {
+  let minRx = Infinity, maxRx = -Infinity, minRy = Infinity, maxRy = -Infinity;
+  (scoreLayers.buildings || []).forEach((f) => {
+    if (!f.geometry) return;
+    (function walk(coords) {
+      if (typeof coords[0] === 'number') {
+        const { rx, ry } = toRotatedFeet(coords[0], coords[1]);
+        if (rx < minRx) minRx = rx;
+        if (rx > maxRx) maxRx = rx;
+        if (ry < minRy) minRy = ry;
+        if (ry > maxRy) maxRy = ry;
+        return;
+      }
+      coords.forEach(walk);
+    })(f.geometry.coordinates);
+  });
+  if (!isFinite(minRx)) return { rx: 0, ry: 0 };
+  return {
+    rx: (minRx + maxRx) / 2,
+    ry: (minRy + maxRy) / 2,
+  };
 }
 
 function computeBaseFitScale(bounds) {
@@ -643,14 +671,16 @@ function getGridGeometry() {
   const availW = Math.max(width - pad * 2, 1);
   const availH = Math.max(height - pad * 2, 1);
   const pxPerFt = Math.min(availW / widthFt, availH / heightFt);
+  // Same fit scale as before (full site); pan/origin centered on buildings.
+  const buildingsCenter = computeBuildingsCenterFt();
   return {
     mode: 'grid',
     scaleDenom,
     pxPerFt,
     centerX: width / 2,
     centerY: height / 2,
-    originRx: (minX + maxX) / 2,
-    originRy: (minY + maxY) / 2,
+    originRx: buildingsCenter.rx,
+    originRy: buildingsCenter.ry,
   };
 }
 

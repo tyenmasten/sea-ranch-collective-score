@@ -133,7 +133,7 @@ function nearestHexPhasePoint(x, y, pitch, phaseIndex) {
     for (let di = -3; di <= 3; di++) {
       const i = iBase + di;
       const j = jBase + dj;
-      if (((i + j) % 3 + 3) % 3 !== phaseIndex) continue;
+      if (((j % 3) + 3) % 3 !== phaseIndex) continue;
       const p = hexLatticePoint(i, j, pitch);
       if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
       const d = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y);
@@ -154,8 +154,8 @@ function nearestHexPhasePoint(x, y, pitch, phaseIndex) {
     let j = bestJ;
     const target = ((phaseIndex % 3) + 3) % 3;
     let guard = 0;
-    while (((i + j) % 3 + 3) % 3 !== target && guard < 3) {
-      i += 1;
+    while (((j % 3) + 3) % 3 !== target && guard < 3) {
+      j += 1;
       guard += 1;
     }
     const p = hexLatticePoint(i, j, pitch);
@@ -173,7 +173,7 @@ function forEachHexPhaseInBounds(minX, maxX, minY, maxY, pitch, phaseIndex, call
     const iMin = Math.floor((minX - pad - j * (pitch * 0.5)) / pitch);
     const iMax = Math.ceil((maxX + pad - j * (pitch * 0.5)) / pitch);
     for (let i = iMin; i <= iMax; i++) {
-      if (((i + j) % 3 + 3) % 3 !== phaseIndex) continue;
+      if (((j % 3) + 3) % 3 !== phaseIndex) continue;
       const p = hexLatticePoint(i, j, pitch);
       if (p.x < minX - pad || p.x > maxX + pad || p.y < minY - pad || p.y > maxY + pad) continue;
       callback(p.x, p.y);

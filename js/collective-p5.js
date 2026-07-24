@@ -149,22 +149,19 @@ function forEachBrickInBounds(minX, maxX, minY, maxY, pitch, phaseIndex, callbac
   }
 }
 
-function forEachBrickLatticeInBounds(minX, maxX, minY, maxY, pitch, callback) {
-  forEachBrickInBounds(minX, maxX, minY, maxY, pitch, null, callback);
-}
-
-function nearestBrickLatticePoint(x, y, pitch) {
+/** Nearest brick-grid point on the given phase row (A=0 / B=1). Fail closed. */
+function nearestBrickPhasePoint(x, y, pitch, phaseIndex) {
   const rowGap = pitch * 0.5;
-  const jApprox = Math.round(y / rowGap);
+  const target = ((phaseIndex % 2) + 2) % 2;
   const jBase = Math.floor(y / rowGap);
   let bestX = null;
   let bestY = null;
-  let bestJ = jApprox;
+  let bestJ = jBase;
   let bestDist = Infinity;
-  for (let dj = -2; dj <= 2; dj++) {
+  for (let dj = -3; dj <= 3; dj++) {
     const j = jBase + dj;
-    const phase = brickRowPhase(j);
-    const xOff = phase === 1 ? pitch * 0.5 : 0;
+    if (brickRowPhase(j) !== target) continue;
+    const xOff = target === 1 ? pitch * 0.5 : 0;
     const iApprox = Math.round((x - xOff) / pitch);
     for (let di = -2; di <= 2; di++) {
       const i = iApprox + di;
@@ -181,8 +178,11 @@ function nearestBrickLatticePoint(x, y, pitch) {
     }
   }
   if (bestX == null || bestY == null || !Number.isFinite(bestX) || !Number.isFinite(bestY)) {
-    const p = brickLatticePoint(Math.round(x / pitch), jApprox, pitch);
-    return { gx: p.x, gy: p.y, j: jApprox };
+    let j = Math.round(y / rowGap);
+    if (brickRowPhase(j) !== target) j += 1;
+    const xOff = target === 1 ? pitch * 0.5 : 0;
+    const i = Math.round((x - xOff) / pitch);
+    return { gx: i * pitch + xOff, gy: j * rowGap, j: j };
   }
   return { gx: bestX, gy: bestY, j: bestJ };
 }
@@ -204,117 +204,6 @@ function distPointToSegment2(px, py, x1, y1, x2, y2) {
   const ex = px - qx;
   const ey = py - qy;
   return ex * ex + ey * ey;
-}
-
-function ringBounds(pts) {
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i];
-    if (p.x < minX) minX = p.x;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.y > maxY) maxY = p.y;
-  }
-  return { pts: pts, minX: minX, maxX: maxX, minY: minY, maxY: maxY };
-}
-
-function buildPolygonCoverage(features) {
-  const out = [];
-  const list = features || [];
-  list.forEach((f) => {
-    if (!f.geometry) return;
-    const polys = f.geometry.type === 'MultiPolygon'
-      ? f.geometry.coordinates
-      : [f.geometry.coordinates];
-    polys.forEach((poly) => {
-      out.push(ringBounds(ringToRotatedFeet(poly[0])));
-    });
-  });
-  return out;
-}
-
-function buildStreetCoverage(features) {
-  const out = [];
-  const list = features || [];
-  list.forEach((f) => {
-    if (!f.geometry) return;
-    const lines = f.geometry.type === 'MultiLineString'
-      ? f.geometry.coordinates
-      : [f.geometry.coordinates];
-    lines.forEach((line) => {
-      const pts = ringToRotatedFeet(line);
-      if (pts.length < 2) return;
-      out.push(ringBounds(pts));
-    });
-  });
-  return out;
-}
-
-/**
- * Precompute rotated-feet geometry for contested-point tests (shared screen/SVG).
- * Lighter than the retired claim-set Sets: rings + AABBs only, tested on demand.
- */
-function buildBaseLayerCoverage(geo, streets, buildings, vegetation) {
-  const pitch = texturePitchFt(geo);
-  return {
-    pitch: pitch,
-    streetDist: pitch * 0.5,
-    streets: state.layers.streets ? buildStreetCoverage(streets || scoreLayers.streets) : [],
-    buildings: state.layers.buildings ? buildPolygonCoverage(buildings || scoreLayers.buildings) : [],
-    vegetation: state.layers.vegetation ? buildPolygonCoverage(vegetation || scoreLayers.vegetation) : [],
-  };
-}
-
-function pointInPolygonCoverage(gx, gy, rings) {
-  for (let i = 0; i < rings.length; i++) {
-    const r = rings[i];
-    if (gx < r.minX || gx > r.maxX || gy < r.minY || gy > r.maxY) continue;
-    if (pointInPolygon(gx, gy, r.pts)) return true;
-  }
-  return false;
-}
-
-function pointNearStreetCoverage(gx, gy, polylines, maxDist) {
-  const maxDist2 = maxDist * maxDist;
-  const pad = maxDist;
-  for (let i = 0; i < polylines.length; i++) {
-    const pl = polylines[i];
-    if (gx < pl.minX - pad || gx > pl.maxX + pad || gy < pl.minY - pad || gy > pl.maxY + pad) continue;
-    const pts = pl.pts;
-    for (let s = 0; s < pts.length - 1; s++) {
-      if (distPointToSegment2(gx, gy, pts[s].x, pts[s].y, pts[s + 1].x, pts[s + 1].y) <= maxDist2) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-/** True if another active base layer's geometry covers this stamp point. */
-function isPointContestedByOthers(layerKey, gx, gy, cover) {
-  if (!cover) return false;
-  if (layerKey !== 'streets' && cover.streets.length &&
-      pointNearStreetCoverage(gx, gy, cover.streets, cover.streetDist)) {
-    return true;
-  }
-  if (layerKey !== 'buildings' && cover.buildings.length &&
-      pointInPolygonCoverage(gx, gy, cover.buildings)) {
-    return true;
-  }
-  if (layerKey !== 'vegetation' && cover.vegetation.length &&
-      pointInPolygonCoverage(gx, gy, cover.vegetation)) {
-    return true;
-  }
-  return false;
-}
-
-/**
- * Policy C (hybrid): uncontested → stamp both rows; contested → only this
- * layer's assigned A/B row (interleave / touch, no stacked doubles).
- */
-function shouldStampLayerPoint(layerKey, gx, gy, j, cover) {
-  if (!isPointContestedByOthers(layerKey, gx, gy, cover)) return true;
-  return brickRowPhase(j) === layerGridPhaseIndex(layerKey);
 }
 
 function getBaseMarkDef(markId) {
@@ -1155,20 +1044,14 @@ function ringToRotatedFeet(ring) {
 
 /**
  * Shared base-layer stamp positions on the brick offset grid.
- * Uncontested geometry: both A/B rows. Contested overlap: assigned row only.
+ * Strict single-phase: each layer stamps only its assigned A/B rows.
  * callback(markDef, color, lng, lat, category, scale, rotation)
- * cover: optional buildBaseLayerCoverage result (shared across layers for draw/SVG).
  */
-function forEachStreetMarkStamp(geo, features, callback, cover) {
+function forEachStreetMarkStamp(geo, features, callback) {
   if (!state.layers.streets) return;
-  const cov = cover || buildBaseLayerCoverage(
-    geo,
-    features || scoreLayers.streets,
-    scoreLayers.buildings,
-    scoreLayers.vegetation
-  );
-  const pitch = cov.pitch;
-  const corridor = cov.streetDist;
+  const pitch = texturePitchFt(geo);
+  const phaseIndex = layerGridPhaseIndex('streets');
+  const corridor = pitch * 0.5;
   const drawnPoints = new Set();
   const roadFills = (window.categoryFills && window.categoryFills.streets) || {};
   const list = features || scoreLayers.streets;
@@ -1193,7 +1076,7 @@ function forEachStreetMarkStamp(geo, features, callback, cover) {
         if (p.y > maxY) maxY = p.y;
       });
       const pad = corridor;
-      forEachBrickLatticeInBounds(minX - pad, maxX + pad, minY - pad, maxY + pad, pitch, (gx, gy, j) => {
+      forEachBrickInBounds(minX - pad, maxX + pad, minY - pad, maxY + pad, pitch, phaseIndex, (gx, gy) => {
         const key = latticeKey(gx, gy);
         if (drawnPoints.has(key)) return;
         let near = false;
@@ -1204,7 +1087,6 @@ function forEachStreetMarkStamp(geo, features, callback, cover) {
           }
         }
         if (!near) return;
-        if (!shouldStampLayerPoint('streets', gx, gy, j, cov)) return;
         drawnPoints.add(key);
         const { lng, lat } = fromRotatedFeet(gx, gy);
         if (!stampInClip(geo, lng, lat)) return;
@@ -1214,15 +1096,10 @@ function forEachStreetMarkStamp(geo, features, callback, cover) {
   });
 }
 
-function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey, callback, outlineCallback, cover) {
+function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey, callback, outlineCallback) {
   const fills = (window.categoryFills && window.categoryFills[fillGroupKey]) || {};
-  const cov = cover || buildBaseLayerCoverage(
-    geo,
-    scoreLayers.streets,
-    fillGroupKey === 'buildings' ? (features || scoreLayers.buildings) : scoreLayers.buildings,
-    fillGroupKey === 'vegetation' ? (features || scoreLayers.vegetation) : scoreLayers.vegetation
-  );
-  const pitch = cov.pitch;
+  const pitch = texturePitchFt(geo);
+  const phaseIndex = layerGridPhaseIndex(fillGroupKey);
   const list = features || [];
 
   list.forEach((f) => {
@@ -1251,8 +1128,7 @@ function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey,
       if (maxX - minX < pitch && maxY - minY < pitch) {
         const cx = (minX + maxX) / 2;
         const cy = (minY + maxY) / 2;
-        const { gx, gy, j } = nearestBrickLatticePoint(cx, cy, pitch);
-        if (!shouldStampLayerPoint(fillGroupKey, gx, gy, j, cov)) return;
+        const { gx, gy } = nearestBrickPhasePoint(cx, cy, pitch, phaseIndex);
         const { lng, lat } = fromRotatedFeet(gx, gy);
         if (stampInClip(geo, lng, lat)) {
           callback(markDef, color, lng, lat, category, scale, rotation);
@@ -1260,9 +1136,8 @@ function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey,
         return;
       }
 
-      forEachBrickLatticeInBounds(minX, maxX, minY, maxY, pitch, (gx, gy, j) => {
+      forEachBrickInBounds(minX, maxX, minY, maxY, pitch, phaseIndex, (gx, gy) => {
         if (!pointInPolygon(gx, gy, outerFt)) return;
-        if (!shouldStampLayerPoint(fillGroupKey, gx, gy, j, cov)) return;
         const { lng, lat } = fromRotatedFeet(gx, gy);
         if (!stampInClip(geo, lng, lat)) return;
         callback(markDef, color, lng, lat, category, scale, rotation);
@@ -1281,7 +1156,6 @@ function forEachBaseLayerStamp(geo, callback, options) {
   const buildings = opts.buildings != null ? opts.buildings : scoreLayers.buildings;
   const vegetation = opts.vegetation != null ? opts.vegetation : scoreLayers.vegetation;
   const drawOutlines = !!opts.drawOutlines;
-  const cover = opts.cover || buildBaseLayerCoverage(geo, streets, buildings, vegetation);
 
   function outlineDrawer(outerRing) {
     noFill();
@@ -1301,20 +1175,18 @@ function forEachBaseLayerStamp(geo, callback, options) {
   if (state.layers.vegetation) {
     forEachCategorizedMarkStamp(
       geo, vegetation, 'LIFEFORM', 'vegetation', callback,
-      drawOutlines ? outlineDrawer : null,
-      cover
+      drawOutlines ? outlineDrawer : null
     );
   }
 
   if (state.layers.streets) {
-    forEachStreetMarkStamp(geo, streets, callback, cover);
+    forEachStreetMarkStamp(geo, streets, callback);
   }
 
   if (state.layers.buildings) {
     forEachCategorizedMarkStamp(
       geo, buildings, 'PropType', 'buildings', callback,
-      drawOutlines ? outlineDrawer : null,
-      cover
+      drawOutlines ? outlineDrawer : null
     );
   }
 }
@@ -2799,22 +2671,20 @@ function appendBaseLayerMarksSvg(geo, defs, plotParts, layerOpts, clipState) {
   const streets = opts.streets != null ? opts.streets : scoreLayers.streets;
   const buildings = opts.buildings != null ? opts.buildings : scoreLayers.buildings;
   const vegetation = opts.vegetation != null ? opts.vegetation : scoreLayers.vegetation;
-  // One coverage pass for contested-point checks — same as drawBaseLayerMarks.
-  const cover = buildBaseLayerCoverage(geo, streets, buildings, vegetation);
 
   if (state.layers.vegetation) {
     appendOneBaseLayerSvg(geo, defs, plotParts, 'vegetation', 'vegetation', 'vegetation', (cb) => {
-      forEachCategorizedMarkStamp(geo, vegetation, 'LIFEFORM', 'vegetation', cb, null, cover);
+      forEachCategorizedMarkStamp(geo, vegetation, 'LIFEFORM', 'vegetation', cb, null);
     }, clipState);
   }
   if (state.layers.streets) {
     appendOneBaseLayerSvg(geo, defs, plotParts, 'streets', 'streets', 'streets', (cb) => {
-      forEachStreetMarkStamp(geo, streets, cb, cover);
+      forEachStreetMarkStamp(geo, streets, cb);
     }, clipState);
   }
   if (state.layers.buildings) {
     appendOneBaseLayerSvg(geo, defs, plotParts, 'buildings', 'buildings', 'buildings', (cb) => {
-      forEachCategorizedMarkStamp(geo, buildings, 'PropType', 'buildings', cb, null, cover);
+      forEachCategorizedMarkStamp(geo, buildings, 'PropType', 'buildings', cb, null);
     }, clipState);
   }
 }

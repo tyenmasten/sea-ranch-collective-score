@@ -2263,6 +2263,16 @@ function bindEvents() {
         rot: 0,
       }],
     },
+    {
+      id: 'hatch',
+      name: 'Hatch',
+      previewSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="2.5" y1="2.5" x2="13.5" y2="2.5" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/><line x1="2.5" y1="8" x2="13.5" y2="8" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/><line x1="2.5" y1="13.5" x2="13.5" y2="13.5" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/></svg>',
+      marks: [
+        mkLine(BMC.x - MARK_REACH, BMC.y - MARK_REACH, BMC.x + MARK_REACH, BMC.y - MARK_REACH),
+        mkLine(BMC.x - MARK_REACH, BMC.y, BMC.x + MARK_REACH, BMC.y),
+        mkLine(BMC.x - MARK_REACH, BMC.y + MARK_REACH, BMC.x + MARK_REACH, BMC.y + MARK_REACH),
+      ],
+    },
   ];
 
   const DEFAULT_ROAD_MARKS = {

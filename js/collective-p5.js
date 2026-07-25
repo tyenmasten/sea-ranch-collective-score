@@ -1268,6 +1268,9 @@ function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey,
   const pitch = texturePitchFt(geo);
   const phaseIndex = layerGridPhaseIndex(fillGroupKey);
   const list = features || [];
+  // First polygon (feature order) to contain a lattice point wins — prevents
+  // double-stamps where land-cover polygons overlap (same or different class).
+  const drawnPoints = new Set();
 
   list.forEach((f) => {
     if (!f.geometry) return;
@@ -1297,6 +1300,9 @@ function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey,
         const cx = (minX + maxX) / 2;
         const cy = (minY + maxY) / 2;
         const { gx, gy } = nearestBrickPhasePoint(cx, cy, pitch, phaseIndex);
+        const key = latticeKey(gx, gy);
+        if (drawnPoints.has(key)) return;
+        drawnPoints.add(key);
         const { lng, lat } = fromRotatedFeet(gx, gy);
         if (stampInClip(geo, lng, lat)) {
           callback(markDef, color, lng, lat, category, scale, rotation);
@@ -1305,7 +1311,10 @@ function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey,
       }
 
       forEachBrickInBounds(minX, maxX, minY, maxY, pitch, phaseIndex, (gx, gy) => {
+        const key = latticeKey(gx, gy);
+        if (drawnPoints.has(key)) return;
         if (!pointInPolygon(gx, gy, outerFt)) return;
+        drawnPoints.add(key);
         const { lng, lat } = fromRotatedFeet(gx, gy);
         if (!stampInClip(geo, lng, lat)) return;
         callback(markDef, color, lng, lat, category, scale, rotation);

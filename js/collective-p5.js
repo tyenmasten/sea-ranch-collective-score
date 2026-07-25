@@ -1375,13 +1375,14 @@ function drawBaseLayerMarkAt(markDef, color, lng, lat, geo, scale, rotationDeg) 
   // Geometry scales with s; stroke weight compensated so screen stroke stays fixed.
   const ftPerPx = baseLayerFtPerFieldPx(geo) * s;
   const strokeWeight = BASE_MARK_STROKE_WEIGHT / Math.max(s, 1e-6);
+  const groupPivot = markDef.pivotMode === 'group' ? markDefGroupPivot(markDef) : null;
   markDef.marks.forEach((m) => {
     const colored = Object.assign({}, m, {
       color: color || m.color || '#1a1a1a',
       weight: strokeWeight,
       rot: (m.rot || 0) + rotExtra,
     });
-    drawSketchMark(colored, lng, lat, ftPerPx, geo);
+    drawSketchMark(colored, lng, lat, ftPerPx, geo, groupPivot);
   });
 }
 
@@ -1465,6 +1466,23 @@ function markLocalCenter(m) {
     return { x: sx / g.pts.length, y: sy / g.pts.length };
   }
   return { x: MARK_FIELD_W / 2, y: MARK_FIELD_H / 2 };
+}
+
+/** Shared pivot for pivotMode:'group' marks (average of segment centres ≈ BMC). */
+function markDefGroupPivot(markDef) {
+  if (!markDef || !Array.isArray(markDef.marks) || !markDef.marks.length) {
+    return { x: MARK_FIELD_W / 2, y: MARK_FIELD_H / 2 };
+  }
+  let sx = 0;
+  let sy = 0;
+  let n = 0;
+  markDef.marks.forEach((m) => {
+    const c = markLocalCenter(m);
+    sx += c.x;
+    sy += c.y;
+    n += 1;
+  });
+  return { x: sx / n, y: sy / n };
 }
 
 function rotateFieldPt(p, c, rot) {
@@ -1561,10 +1579,10 @@ function strokeScreenPolyline(screenPts, close) {
   else endShape();
 }
 
-function drawSketchMark(m, lng, lat, ftPerPx, geo) {
+function drawSketchMark(m, lng, lat, ftPerPx, geo, pivotOverride) {
   if (!m || !m.geom) return;
   const g = m.geom;
-  const pivot = markLocalCenter(m);
+  const pivot = pivotOverride || markLocalCenter(m);
   const rot = m.rot || 0;
   const color = m.color || '#1a1a1a';
   const weightPx = Math.max((m.weight || 1) * ftPerPx * geo.pxPerFt, 0.5);
@@ -2745,7 +2763,7 @@ function emitSketchMarkSvg(m, lng, lat, ftPerPx, geo, defs, clipState, options) 
   const opts = options || {};
   const inchesPerFt = 12 / geo.scaleDenom;
   const g = m.geom;
-  const pivot = markLocalCenter(m);
+  const pivot = opts.pivot || markLocalCenter(m);
   const rot = m.rot || 0;
   const color = m.color || '#1a1a1a';
   const weightIn = opts.fixedStrokeIn != null
@@ -2861,6 +2879,7 @@ function pushMarkFrags(parts, markDef, color, lng, lat, ftPerPxBase, geo, defs, 
   const s = clampFillScale(scale);
   const rotExtra = (clampFillRotation(rotationDeg) * Math.PI) / 180;
   const ftPerPx = ftPerPxBase * s;
+  const groupPivot = markDef.pivotMode === 'group' ? markDefGroupPivot(markDef) : null;
   markDef.marks.forEach((m) => {
     const colored = Object.assign({}, m, {
       color: color || m.color || '#1a1a1a',
@@ -2869,7 +2888,11 @@ function pushMarkFrags(parts, markDef, color, lng, lat, ftPerPxBase, geo, defs, 
     });
     const frags = emitSketchMarkSvg(
       colored, lng, lat, ftPerPx, geo, defs, clipState,
-      Object.assign({ fixedStrokeIn: MARK_STROKE_IN }, emitOpts || {})
+      Object.assign(
+        { fixedStrokeIn: MARK_STROKE_IN },
+        emitOpts || {},
+        groupPivot ? { pivot: groupPivot } : {}
+      )
     );
     for (let i = 0; i < frags.length; i++) parts.push(frags[i]);
   });

@@ -1174,6 +1174,182 @@ function pointInPolygon(px, py, ring) {
   return inside;
 }
 
+/** Squared distance from point P to segment AB (rotated-feet space). */
+function distPointToSegSq(px, py, ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (len2 <= 1e-18) {
+    const ex = px - ax;
+    const ey = py - ay;
+    return ex * ex + ey * ey;
+  }
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
+  const qx = ax + t * dx;
+  const qy = ay + t * dy;
+  const ex = px - qx;
+  const ey = py - qy;
+  return ex * ex + ey * ey;
+}
+
+/**
+ * Douglas–Peucker simplification for PIP hit-testing only.
+ * Keeps endpoints; closes the ring if the source was closed.
+ */
+function simplifyRingDp(points, tolerance) {
+  if (!points || points.length <= 4) return points;
+  const sqTol = tolerance * tolerance;
+  const closed = points.length > 1 &&
+    points[0].x === points[points.length - 1].x &&
+    points[0].y === points[points.length - 1].y;
+  const pts = closed ? points.slice(0, -1) : points;
+  if (pts.length <= 3) return points;
+
+  const keep = new Uint8Array(pts.length);
+  keep[0] = 1;
+  keep[pts.length - 1] = 1;
+
+  function dp(i0, i1) {
+    let maxD = 0;
+    let maxI = -1;
+    const a = pts[i0];
+    const b = pts[i1];
+    for (let i = i0 + 1; i < i1; i++) {
+      const d = distPointToSegSq(pts[i].x, pts[i].y, a.x, a.y, b.x, b.y);
+      if (d > maxD) {
+        maxD = d;
+        maxI = i;
+      }
+    }
+    if (maxD > sqTol && maxI >= 0) {
+      keep[maxI] = 1;
+      dp(i0, maxI);
+      dp(maxI, i1);
+    }
+  }
+  dp(0, pts.length - 1);
+
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    if (keep[i]) out.push(pts[i]);
+  }
+  if (out.length < 3) return points;
+  if (closed) out.push(out[0]);
+  return out;
+}
+
+/** Cache: GeoJSON outer-ring array → rotated-feet full ring + pitch-keyed hit-test ring. */
+const stampOuterRingCache = new WeakMap();
+
+/**
+ * Full ring for bounds/outlines; simplified ring for PIP when dense.
+ * Cached across redraws; hit-test ring rebuilds when pitch changes materially.
+ */
+function getStampOuterRingsFt(outerLngLat, pitch) {
+  let entry = stampOuterRingCache.get(outerLngLat);
+  if (!entry) {
+    const full = ringToRotatedFeet(outerLngLat);
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    full.forEach((p) => {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    });
+    entry = { full: full, minX: minX, maxX: maxX, minY: minY, maxY: maxY, hit: null, hitPitchKey: null };
+    stampOuterRingCache.set(outerLngLat, entry);
+  }
+  const pitchKey = Math.round(pitch * 100) / 100;
+  if (entry.hitPitchKey !== pitchKey) {
+    // Tolerance ~¼ pitch: preserves lattice membership at stamp resolution.
+    const tol = Math.max(pitch * 0.25, 1);
+    entry.hit = entry.full.length > 400 ? simplifyRingDp(entry.full, tol) : entry.full;
+    entry.hitPitchKey = pitchKey;
+  }
+  return entry;
+}
+
+function intersectBoundsFt(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  const minX = Math.max(a.minX, b.minX);
+  const maxX = Math.min(a.maxX, b.maxX);
+  const minY = Math.max(a.minY, b.minY);
+  const maxY = Math.min(a.maxY, b.maxY);
+  if (minX > maxX || minY > maxY) return null;
+  return { minX: minX, maxX: maxX, minY: minY, maxY: maxY };
+}
+
+/**
+ * Visible lattice search window in rotated feet.
+ * Sheet/Print: content clip rect. View/Grid: canvas viewport.
+ * Pads by mark size + pitch so edge stamps are not clipped early.
+ */
+function stampSearchBoundsFt(geo, pitch) {
+  if (!geo || !(geo.pxPerFt > 0)) return null;
+  const padPx = stampClipPadPx(geo);
+  const padFt = padPx / geo.pxPerFt + (pitch || 0) * 2;
+  const ox = geo.originRx != null ? geo.originRx : panRX;
+  const oy = geo.originRy != null ? geo.originRy : panRY;
+
+  let x0;
+  let x1;
+  let y0;
+  let y1;
+  if (geo.clipMinX != null) {
+    x0 = geo.clipMinX;
+    x1 = geo.clipMaxX;
+    y0 = geo.clipMinY;
+    y1 = geo.clipMaxY;
+  } else {
+    x0 = 0;
+    x1 = width;
+    y0 = 0;
+    y1 = height;
+  }
+
+  function screenToFt(sx, sy) {
+    return {
+      x: ox + (sx - geo.centerX) / geo.pxPerFt,
+      y: oy - (sy - geo.centerY) / geo.pxPerFt,
+    };
+  }
+
+  const corners = [
+    screenToFt(x0, y0),
+    screenToFt(x1, y0),
+    screenToFt(x1, y1),
+    screenToFt(x0, y1),
+  ];
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  corners.forEach((c) => {
+    if (c.x < minX) minX = c.x;
+    if (c.x > maxX) maxX = c.x;
+    if (c.y < minY) minY = c.y;
+    if (c.y > maxY) maxY = c.y;
+  });
+  return {
+    minX: minX - padFt,
+    maxX: maxX + padFt,
+    minY: minY - padFt,
+    maxY: maxY + padFt,
+  };
+}
+
+/** Cheap visibility test in screen space (View/Grid) or page clip (Sheet/Print). */
+function stampInVisible(geo, gx, gy, lng, lat) {
+  if (geo.clipMinX != null) return stampInClip(geo, lng, lat);
+  if (!(geo.pxPerFt > 0)) return true;
+  const ox = geo.originRx != null ? geo.originRx : panRX;
+  const oy = geo.originRy != null ? geo.originRy : panRY;
+  const sx = geo.centerX + (gx - ox) * geo.pxPerFt;
+  const sy = geo.centerY - (gy - oy) * geo.pxPerFt;
+  const pad = stampClipPadPx(geo);
+  return sx >= -pad && sx <= width + pad && sy >= -pad && sy <= height + pad;
+}
+
 function drawPageFrame(geo) {
   push();
   noStroke();
@@ -1303,6 +1479,9 @@ function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey,
   // First polygon (feature order) to contain a lattice point wins — prevents
   // double-stamps where land-cover polygons overlap (same or different class).
   const drawnPoints = new Set();
+  // Cull lattice iteration to the visible/sheet window. Critical for regional
+  // polygons (e.g. Water Ecologies) whose AABBs dwarf the Sea Ranch site.
+  const searchBounds = stampSearchBoundsFt(geo, pitch);
 
   list.forEach((f) => {
     if (!f.geometry) return;
@@ -1317,38 +1496,42 @@ function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey,
     if (!markDef) return;
 
     polys.forEach((poly) => {
-      const outerFt = ringToRotatedFeet(poly[0]);
-      if (outlineCallback) outlineCallback(ringToScreen(poly[0], geo));
+      const outerLngLat = poly[0];
+      const rings = getStampOuterRingsFt(outerLngLat, pitch);
+      const hitFt = rings.hit;
+      if (outlineCallback) outlineCallback(ringToScreen(outerLngLat, geo));
 
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      outerFt.forEach((p) => {
-        if (p.x < minX) minX = p.x;
-        if (p.x > maxX) maxX = p.x;
-        if (p.y < minY) minY = p.y;
-        if (p.y > maxY) maxY = p.y;
-      });
+      const polyBounds = {
+        minX: rings.minX,
+        maxX: rings.maxX,
+        minY: rings.minY,
+        maxY: rings.maxY,
+      };
+      const query = intersectBoundsFt(polyBounds, searchBounds);
+      if (!query) return;
 
-      if (maxX - minX < pitch && maxY - minY < pitch) {
-        const cx = (minX + maxX) / 2;
-        const cy = (minY + maxY) / 2;
+      if (query.maxX - query.minX < pitch && query.maxY - query.minY < pitch) {
+        const cx = (query.minX + query.maxX) / 2;
+        const cy = (query.minY + query.maxY) / 2;
         const { gx, gy } = nearestBrickPhasePoint(cx, cy, pitch, phaseIndex);
         const key = latticeKey(gx, gy);
         if (drawnPoints.has(key)) return;
-        drawnPoints.add(key);
         const { lng, lat } = fromRotatedFeet(gx, gy);
-        if (stampInClip(geo, lng, lat)) {
-          callback(markDef, color, lng, lat, category, scale, rotation);
-        }
+        if (!stampInVisible(geo, gx, gy, lng, lat)) return;
+        if (!pointInPolygon(gx, gy, hitFt)) return;
+        drawnPoints.add(key);
+        callback(markDef, color, lng, lat, category, scale, rotation);
         return;
       }
 
-      forEachBrickInBounds(minX, maxX, minY, maxY, pitch, phaseIndex, (gx, gy) => {
+      forEachBrickInBounds(query.minX, query.maxX, query.minY, query.maxY, pitch, phaseIndex, (gx, gy) => {
         const key = latticeKey(gx, gy);
         if (drawnPoints.has(key)) return;
-        if (!pointInPolygon(gx, gy, outerFt)) return;
-        drawnPoints.add(key);
+        // Cheap visibility before expensive PIP (especially dense Water Ecologies rings).
         const { lng, lat } = fromRotatedFeet(gx, gy);
-        if (!stampInClip(geo, lng, lat)) return;
+        if (!stampInVisible(geo, gx, gy, lng, lat)) return;
+        if (!pointInPolygon(gx, gy, hitFt)) return;
+        drawnPoints.add(key);
         callback(markDef, color, lng, lat, category, scale, rotation);
       });
     });

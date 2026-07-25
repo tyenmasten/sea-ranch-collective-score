@@ -1014,6 +1014,21 @@ nav {
                 <div class="fill-category-list" id="vegetationFillList"></div>
               </div>
 
+              <div class="fill-layer-block">
+                <div class="layer-row">
+                  <span class="layer-name">Water Ecologies</span>
+                  <div class="fill-layer-controls">
+                    <select class="layer-phase-select" id="phaseWaterEcologies" data-layer-grid="waterEcologies" aria-label="Water Ecologies grid phase">
+                      <option value="A">A</option>
+                      <option value="B">B</option>
+                    </select>
+                    <button type="button" class="fill-expand-toggle" id="expandWaterEcologies" aria-label="Expand water ecologies fill symbols">▾</button>
+                    <button type="button" class="layer-toggle" id="toggleWaterEcologies" aria-pressed="false" aria-label="Toggle water ecologies"></button>
+                  </div>
+                </div>
+                <div class="fill-category-list" id="waterEcologiesFillList"></div>
+              </div>
+
               <div class="layer-row">
                 <span class="layer-name">Contours</span>
                 <div class="layer-row-controls">
@@ -1359,6 +1374,7 @@ const state = {
     streets: true,
     buildings: true,
     vegetation: false,
+    waterEcologies: false,
     contours: false,
     notations: true,
     parcels: false,
@@ -2144,6 +2160,21 @@ function bindEvents() {
     });
   }
 
+  els.toggleWaterEcologies = document.getElementById('toggleWaterEcologies');
+  if (els.toggleWaterEcologies) {
+    els.toggleWaterEcologies.addEventListener('click', () => {
+      if (!isFacultyUser()) return;
+      state.layers.waterEcologies = !state.layers.waterEcologies;
+      els.toggleWaterEcologies.classList.toggle('on', state.layers.waterEcologies);
+      els.toggleWaterEcologies.setAttribute('aria-pressed', state.layers.waterEcologies);
+      if (state.layers.waterEcologies && window.loadWaterEcologiesLayer) {
+        window.loadWaterEcologiesLayer();
+      }
+      if (window.redraw) redraw();
+      saveScoreSettings();
+    });
+  }
+
   const ROAD_FILL_CATEGORIES = [
     'Highway', 'Major Collector', 'Minor Collector', 'Local',
     'Path Pedestrian Only', 'Path Multi-Use', 'Fire Road',
@@ -2157,6 +2188,10 @@ function bindEvents() {
     'Shrub', 'Non-native Shrub', 'Herbaceous',
     'Nursery or Ornamental Horticultural Area', 'Barren & Sparsely Vegetated',
     'Developed', 'Major Roads', 'Water',
+  ];
+  const WATER_ECOLOGIES_FILL_CATEGORIES = [
+    'Polygon01', 'Polygon02', 'Polygon03', 'Polygon04',
+    'Polygon05', 'Polygon06', 'Polygon07',
   ];
   const DEFAULT_FILL_COLOR = '#1a1a1a';
   const DEFAULT_MARK_ID = 'dot';
@@ -2307,6 +2342,15 @@ function bindEvents() {
     'Major Roads': 'diagonal-tick',
     'Water': 'circle',
   };
+  const DEFAULT_WATER_ECOLOGIES_MARKS = {
+    'Polygon01': 'circle',
+    'Polygon02': 'hatch',
+    'Polygon03': 'chevron',
+    'Polygon04': 'diagonal-tick',
+    'Polygon05': 'cross',
+    'Polygon06': 'tick',
+    'Polygon07': 'triangle',
+  };
 
   /** Legacy character → markId for one-time Firestore normalize. */
   const LEGACY_CHAR_TO_MARK_ID = {
@@ -2429,11 +2473,13 @@ function bindEvents() {
     streets: fillEntriesFromMarkIds(DEFAULT_ROAD_MARKS),
     buildings: fillEntriesFromMarkIds(DEFAULT_BUILDING_MARKS),
     vegetation: fillEntriesFromMarkIds(DEFAULT_VEGETATION_MARKS),
+    waterEcologies: fillEntriesFromMarkIds(DEFAULT_WATER_ECOLOGIES_MARKS),
   };
   window.DEFAULT_CATEGORY_MARKS = {
     streets: DEFAULT_ROAD_MARKS,
     buildings: DEFAULT_BUILDING_MARKS,
     vegetation: DEFAULT_VEGETATION_MARKS,
+    waterEcologies: DEFAULT_WATER_ECOLOGIES_MARKS,
   };
 
   window.layerColors = {
@@ -2445,6 +2491,10 @@ function bindEvents() {
     streets: { gridPhase: 'A' },
     buildings: { gridPhase: 'A' },
     vegetation: { gridPhase: 'B' },
+    // Only A/B exist; Streets+Buildings already use A and Vegetation uses B,
+    // so a shared phase is unavoidable. Default A (with Streets/Buildings) to
+    // avoid stacking dense area-fill stamps with Vegetation on the same rows.
+    waterEcologies: { gridPhase: 'A' },
     parcels: { gridPhase: 'A' },
     coastalEdge: { gridPhase: 'A' },
     publicLand: { gridPhase: 'B' },
@@ -2601,6 +2651,7 @@ function bindEvents() {
   buildFillCategoryRows('streetsFillList', ROAD_FILL_CATEGORIES, 'streets', DEFAULT_ROAD_MARKS);
   buildFillCategoryRows('buildingsFillList', BUILDING_FILL_CATEGORIES, 'buildings', DEFAULT_BUILDING_MARKS);
   buildFillCategoryRows('vegetationFillList', VEGETATION_FILL_CATEGORIES, 'vegetation', DEFAULT_VEGETATION_MARKS);
+  buildFillCategoryRows('waterEcologiesFillList', WATER_ECOLOGIES_FILL_CATEGORIES, 'waterEcologies', DEFAULT_WATER_ECOLOGIES_MARKS);
 
   function bindLayerColorPicker(inputId, key) {
     const input = document.getElementById(inputId);
@@ -2644,6 +2695,7 @@ function bindEvents() {
     { btnId: 'expandStreets', listId: 'streetsFillList' },
     { btnId: 'expandBuildings', listId: 'buildingsFillList' },
     { btnId: 'expandVegetation', listId: 'vegetationFillList' },
+    { btnId: 'expandWaterEcologies', listId: 'waterEcologiesFillList' },
   ];
 
   FILL_EXPAND_GROUPS.forEach((group) => {
@@ -2775,6 +2827,7 @@ function collectScoreSettingsPayload() {
       streets: !!state.layers.streets,
       buildings: !!state.layers.buildings,
       vegetation: !!state.layers.vegetation,
+      waterEcologies: !!state.layers.waterEcologies,
       contours: !!state.layers.contours,
       notations: !!state.layers.notations,
       parcels: !!state.layers.parcels,
@@ -2786,6 +2839,7 @@ function collectScoreSettingsPayload() {
       streets: {},
       buildings: {},
       vegetation: {},
+      waterEcologies: {},
     })),
     layerColors: {
       contours: (window.layerColors && window.layerColors.contours) || '#dddddd',
@@ -2795,6 +2849,7 @@ function collectScoreSettingsPayload() {
       streets: { gridPhase: 'A' },
       buildings: { gridPhase: 'A' },
       vegetation: { gridPhase: 'B' },
+      waterEcologies: { gridPhase: 'A' },
       parcels: { gridPhase: 'A' },
       coastalEdge: { gridPhase: 'A' },
       publicLand: { gridPhase: 'B' },
@@ -2857,7 +2912,7 @@ function applyScoreSettingsData(data) {
   }
   if (data.categoryFills && typeof data.categoryFills === 'object' && window.categoryFills) {
     const defaults = window.DEFAULT_CATEGORY_MARKS || {};
-    ['streets', 'buildings', 'vegetation'].forEach((group) => {
+    ['streets', 'buildings', 'vegetation', 'waterEcologies'].forEach((group) => {
       if (!data.categoryFills[group] || typeof data.categoryFills[group] !== 'object') return;
       if (!window.categoryFills[group]) window.categoryFills[group] = {};
       Object.keys(data.categoryFills[group]).forEach((cat) => {
@@ -2885,6 +2940,7 @@ function applyScoreSettingsData(data) {
         streets: { gridPhase: 'A' },
         buildings: { gridPhase: 'A' },
         vegetation: { gridPhase: 'B' },
+        waterEcologies: { gridPhase: 'A' },
         parcels: { gridPhase: 'A' },
         coastalEdge: { gridPhase: 'A' },
         publicLand: { gridPhase: 'B' },
@@ -2905,6 +2961,7 @@ function syncLayerControlsFromState() {
     [els.toggleStreets, state.layers.streets],
     [els.toggleBuildings, state.layers.buildings],
     [els.toggleVegetation || document.getElementById('toggleVegetation'), state.layers.vegetation],
+    [els.toggleWaterEcologies || document.getElementById('toggleWaterEcologies'), state.layers.waterEcologies],
     [els.toggleContours, state.layers.contours],
     [els.toggleNotations || document.getElementById('toggleNotations'), state.layers.notations],
     [els.toggleParcels, state.layers.parcels],
@@ -2999,6 +3056,7 @@ function applyLayerEditingGate() {
     els.toggleStreets,
     els.toggleBuildings,
     els.toggleVegetation || document.getElementById('toggleVegetation'),
+    els.toggleWaterEcologies || document.getElementById('toggleWaterEcologies'),
     els.toggleContours,
     els.toggleNotations || document.getElementById('toggleNotations'),
     els.toggleParcels,
@@ -3061,6 +3119,9 @@ function loadScoreSettings() {
       applyLayerVisibility();
       if (state.layers.vegetation && window.loadVegetationLayer) {
         window.loadVegetationLayer();
+      }
+      if (state.layers.waterEcologies && window.loadWaterEcologiesLayer) {
+        window.loadWaterEcologiesLayer();
       }
       if (state.layers.contours && window.loadContoursLayer) {
         window.loadContoursLayer();

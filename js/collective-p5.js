@@ -22,7 +22,7 @@
 // and contours as reference; Sheet, Print Preview, and SVG export are marks
 // only (contours still draw when that layer is on).
 
-let scoreLayers = { streets: [], buildings: [], contours: [], vegetation: [] };
+let scoreLayers = { streets: [], buildings: [], contours: [], vegetation: [], waterEcologies: [] };
 let scoreCentroid = null;
 let scoreReady = false;
 
@@ -495,6 +495,38 @@ window.loadVegetationLayer = async function loadVegetationLayer() {
     console.error('Vegetation layer failed to load:', err);
   } finally {
     vegetationLoading = false;
+    if (statusEl) statusEl.style.display = 'none';
+    redraw();
+  }
+};
+
+let waterEcologiesLoaded = false;
+let waterEcologiesLoading = false;
+
+// Lazy-load like Vegetation: dense overlapping MultiPolygons (~1.7MB+), only
+// fetched when the Water Ecologies toggle is switched on.
+window.loadWaterEcologiesLayer = async function loadWaterEcologiesLayer() {
+  if (waterEcologiesLoaded || waterEcologiesLoading) return;
+  waterEcologiesLoading = true;
+  const statusEl = document.getElementById('scoreLoadMsg');
+  if (statusEl) {
+    statusEl.textContent = 'Loading water ecologies…';
+    statusEl.style.display = 'block';
+  }
+  try {
+    const res = await fetch('geojson/Water_ecologies.geojson');
+    if (res.ok) {
+      const gj = await res.json();
+      if (gj && gj.features) {
+        // Already WGS84 lon/lat (CRS84), same as vegetation — no state-plane transform.
+        scoreLayers.waterEcologies = gj.features;
+        waterEcologiesLoaded = true;
+      }
+    }
+  } catch (err) {
+    console.error('Water Ecologies layer failed to load:', err);
+  } finally {
+    waterEcologiesLoading = false;
     if (statusEl) statusEl.style.display = 'none';
     redraw();
   }
@@ -1324,7 +1356,7 @@ function forEachCategorizedMarkStamp(geo, features, categoryField, fillGroupKey,
 }
 
 /**
- * Iterate every base-layer stamp (streets + buildings + vegetation).
+ * Iterate every base-layer stamp (water, vegetation, streets, buildings).
  * Shared by drawBaseLayerMarks and appendBaseLayerMarksSvg — one placement path.
  */
 function forEachBaseLayerStamp(geo, callback, options) {
@@ -1332,6 +1364,7 @@ function forEachBaseLayerStamp(geo, callback, options) {
   const streets = opts.streets != null ? opts.streets : scoreLayers.streets;
   const buildings = opts.buildings != null ? opts.buildings : scoreLayers.buildings;
   const vegetation = opts.vegetation != null ? opts.vegetation : scoreLayers.vegetation;
+  const waterEcologies = opts.waterEcologies != null ? opts.waterEcologies : scoreLayers.waterEcologies;
   const drawOutlines = !!opts.drawOutlines;
 
   function outlineDrawer(outerRing) {
@@ -1348,7 +1381,16 @@ function forEachBaseLayerStamp(geo, callback, options) {
     endShape(CLOSE);
   }
 
-  // Match prior paint order: vegetation, streets, buildings.
+  // Paint order: water under vegetation, then streets, buildings.
+  // forEachCategorizedMarkStamp dedupes lattice points within each layer
+  // (first feature wins) — required for Water Ecologies' heavy overlaps.
+  if (state.layers.waterEcologies) {
+    forEachCategorizedMarkStamp(
+      geo, waterEcologies, 'Layer', 'waterEcologies', callback,
+      drawOutlines ? outlineDrawer : null
+    );
+  }
+
   if (state.layers.vegetation) {
     forEachCategorizedMarkStamp(
       geo, vegetation, 'LIFEFORM', 'vegetation', callback,
@@ -2937,7 +2979,13 @@ function appendBaseLayerMarksSvg(geo, defs, plotParts, layerOpts, clipState) {
   const streets = opts.streets != null ? opts.streets : scoreLayers.streets;
   const buildings = opts.buildings != null ? opts.buildings : scoreLayers.buildings;
   const vegetation = opts.vegetation != null ? opts.vegetation : scoreLayers.vegetation;
+  const waterEcologies = opts.waterEcologies != null ? opts.waterEcologies : scoreLayers.waterEcologies;
 
+  if (state.layers.waterEcologies) {
+    appendOneBaseLayerSvg(geo, defs, plotParts, 'waterEcologies', 'water ecologies', 'waterEcologies', (cb) => {
+      forEachCategorizedMarkStamp(geo, waterEcologies, 'Layer', 'waterEcologies', cb, null);
+    }, clipState);
+  }
   if (state.layers.vegetation) {
     appendOneBaseLayerSvg(geo, defs, plotParts, 'vegetation', 'vegetation', 'vegetation', (cb) => {
       forEachCategorizedMarkStamp(geo, vegetation, 'LIFEFORM', 'vegetation', cb, null);
@@ -3090,6 +3138,7 @@ function buildSelectedSheetSvgString(options) {
   const streetsF = filterFeaturesToSheet(scoreLayers.streets, sheet, sheetBufferFt);
   const buildingsF = filterFeaturesToSheet(scoreLayers.buildings, sheet, sheetBufferFt);
   const vegetationF = filterFeaturesToSheet(scoreLayers.vegetation, sheet, sheetBufferFt);
+  const waterEcologiesF = filterFeaturesToSheet(scoreLayers.waterEcologies, sheet, sheetBufferFt);
   const contoursF = filterFeaturesToSheet(scoreLayers.contours, sheet, sheetBufferFt);
 
   const defs = [];
@@ -3114,6 +3163,7 @@ function buildSelectedSheetSvgString(options) {
       streets: streetsF,
       buildings: buildingsF,
       vegetation: vegetationF,
+      waterEcologies: waterEcologiesF,
       drawOutlines: false,
     }, exportClipState);
   }
@@ -3160,6 +3210,7 @@ function buildSelectedSheetSvgString(options) {
     streets: streetsF.length + '/' + scoreLayers.streets.length,
     buildings: buildingsF.length + '/' + scoreLayers.buildings.length,
     vegetation: vegetationF.length + '/' + scoreLayers.vegetation.length,
+    waterEcologies: waterEcologiesF.length + '/' + scoreLayers.waterEcologies.length,
     contours: contoursF.length + '/' + scoreLayers.contours.length,
     textElements: textCount,
     clipPathAttrs: clipPathCount,

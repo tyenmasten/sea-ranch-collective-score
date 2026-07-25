@@ -8,6 +8,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-storage-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <style>
 /* Mobile responsive — to be handled by Cursor in a separate pass */
@@ -421,6 +422,50 @@ select.lexicon-empty {
 .notation-item-actions .btn {
   padding: 3px 6px;
   font-size: 8px;
+}
+
+.notation-item-photo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.notation-photo-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  flex-shrink: 0;
+  display: block;
+}
+
+.notation-photo-thumb.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Miniature', serif;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.notation-photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.notation-photo-actions .btn {
+  padding: 3px 6px;
+  font-size: 8px;
+}
+
+.notation-photo-actions .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .notation-marker-popup .leaflet-popup-content-wrapper {
@@ -985,6 +1030,7 @@ select.lexicon-empty {
       <div class="section-block">
         <div class="slabel">Placed Notations</div>
         <div class="notation-list" id="notationList"></div>
+        <input type="file" id="observationPhotoInput" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" hidden>
       </div>
     </aside>
 
@@ -1127,6 +1173,7 @@ const ELEMENT_IDS = {
   changeLexiconSelect: 'changeLexiconSelect',
   changeLexiconConfirm: 'changeLexiconConfirm',
   changeLexiconCancel: 'changeLexiconCancel',
+  observationPhotoInput: 'observationPhotoInput',
   zoomIn: 'zoomIn',
   zoomOut: 'zoomOut',
   zoomFit: 'zoomFit',
@@ -1872,6 +1919,206 @@ function canEditObservation(obs) {
   return !!(window.currentUser && window.currentUser.fullName && obs.author === window.currentUser.fullName);
 }
 
+const OBS_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
+const OBS_IMAGE_TYPES = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
+
+/** Path-safe author key from the same fullName identity used on observations. */
+function observationAuthorKey(author) {
+  const raw = String(author || 'unknown').trim();
+  const cleaned = raw.replace(/[\\/#?[\]*]/g, '_').replace(/\s+/g, '_');
+  return cleaned || 'unknown';
+}
+
+function observationPhotoPath(author, obsId, contentType) {
+  const ext = OBS_IMAGE_TYPES[contentType] || 'jpg';
+  return 'observations/' + observationAuthorKey(author) + '/' + obsId + '/photo.' + ext;
+}
+
+function clearObservationImageFields(obs) {
+  if (!obs) return;
+  obs.imageUrl = null;
+  obs.imagePath = null;
+  obs.imageContentType = null;
+  obs.imageSize = null;
+  obs.imageUpdatedAt = null;
+}
+
+function applyObservationImageFields(obs, fields) {
+  if (!obs || !fields) return;
+  obs.imageUrl = fields.imageUrl || null;
+  obs.imagePath = fields.imagePath || null;
+  obs.imageContentType = fields.imageContentType || null;
+  obs.imageSize = fields.imageSize != null ? fields.imageSize : null;
+  obs.imageUpdatedAt = fields.imageUpdatedAt || null;
+}
+
+function deleteObservationStorageImage(obs) {
+  if (!obs || !obs.imagePath || !window.storage) return Promise.resolve();
+  return window.storage.ref(obs.imagePath).delete().catch((err) => {
+    if (err && err.code === 'storage/object-not-found') return;
+    console.warn('Failed to delete observation image from Storage:', err);
+  });
+}
+
+function validateObservationImageFile(file) {
+  if (!file) return 'No file selected.';
+  if (!OBS_IMAGE_TYPES[file.type]) {
+    return 'Use a JPEG, PNG, or WebP image (max 3 MB).';
+  }
+  if (file.size > OBS_IMAGE_MAX_BYTES) {
+    return 'That image is too large. Maximum size is 3 MB.';
+  }
+  return null;
+}
+
+function buildObservationPhotoControls(obs) {
+  const wrap = document.createElement('div');
+  wrap.className = 'notation-item-photo';
+
+  if (obs.imageUrl) {
+    const img = document.createElement('img');
+    img.className = 'notation-photo-thumb';
+    img.src = obs.imageUrl;
+    img.alt = 'Notation photo';
+    wrap.appendChild(img);
+  } else {
+    const ph = document.createElement('div');
+    ph.className = 'notation-photo-thumb placeholder';
+    ph.textContent = 'No photo';
+    wrap.appendChild(ph);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'notation-photo-actions';
+
+  const pickBtn = document.createElement('button');
+  pickBtn.type = 'button';
+  pickBtn.className = 'btn';
+  pickBtn.textContent = obs.imageUrl ? 'Replace' : 'Add photo';
+  pickBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openObservationPhotoPicker(obs.id);
+  });
+  actions.appendChild(pickBtn);
+
+  if (obs.imageUrl) {
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeObservationPhoto(obs.id);
+    });
+    actions.appendChild(removeBtn);
+  }
+
+  wrap.appendChild(actions);
+  return wrap;
+}
+
+function openObservationPhotoPicker(obsId) {
+  const input = els.observationPhotoInput;
+  if (!input) return;
+  input.dataset.obsId = obsId;
+  input.value = '';
+  input.click();
+}
+
+function handleObservationPhotoSelected(fileList) {
+  const input = els.observationPhotoInput;
+  const obsId = input && input.dataset.obsId;
+  const file = fileList && fileList[0];
+  if (input) input.value = '';
+  if (!obsId || !file) return;
+
+  const errMsg = validateObservationImageFile(file);
+  if (errMsg) {
+    alert(errMsg);
+    return;
+  }
+
+  uploadObservationPhoto(obsId, file);
+}
+
+function uploadObservationPhoto(obsId, file) {
+  requireLogin(() => {
+    const obs = state.observations.find((o) => o.id === obsId);
+    if (!obs || !canEditObservation(obs)) return;
+    if (!window.storage || !window.db) {
+      alert('Photo storage is not available. Check your connection and try again.');
+      return;
+    }
+
+    const previousPath = obs.imagePath || null;
+    const imagePath = observationPhotoPath(obs.author, obs.id, file.type);
+    const ref = window.storage.ref(imagePath);
+
+    const item = els.notationList && els.notationList.querySelector('[data-id="' + obsId + '"]');
+    const busyBtns = item ? item.querySelectorAll('.notation-photo-actions .btn') : [];
+    busyBtns.forEach((b) => { b.disabled = true; });
+
+    ref.put(file, { contentType: file.type })
+      .then(() => ref.getDownloadURL())
+      .then((imageUrl) => {
+        const fields = {
+          imageUrl: imageUrl,
+          imagePath: imagePath,
+          imageContentType: file.type,
+          imageSize: file.size,
+          imageUpdatedAt: new Date().toISOString(),
+        };
+        return window.db.collection('observations').doc(obsId).update(fields).then(() => fields);
+      })
+      .then((fields) => {
+        applyObservationImageFields(obs, fields);
+        if (previousPath && previousPath !== fields.imagePath) {
+          window.storage.ref(previousPath).delete().catch(() => {});
+        }
+        renderNotationList();
+        console.log('Observation photo saved:', obsId, fields.imagePath);
+      })
+      .catch((err) => {
+        console.error('Failed to upload observation photo:', err);
+        alert('Could not upload that photo. Check your connection and try again.');
+        renderNotationList();
+      });
+  });
+}
+
+function removeObservationPhoto(obsId) {
+  requireLogin(() => {
+    const obs = state.observations.find((o) => o.id === obsId);
+    if (!obs || !canEditObservation(obs)) return;
+    if (!obs.imageUrl && !obs.imagePath) return;
+    if (!window.confirm('Remove this notation\'s photo?')) return;
+
+    const cleared = {
+      imageUrl: null,
+      imagePath: null,
+      imageContentType: null,
+      imageSize: null,
+      imageUpdatedAt: null,
+    };
+
+    deleteObservationStorageImage(obs)
+      .then(() => window.db.collection('observations').doc(obsId).update(cleared))
+      .then(() => {
+        clearObservationImageFields(obs);
+        renderNotationList();
+        console.log('Observation photo removed:', obsId);
+      })
+      .catch((err) => {
+        console.error('Failed to remove observation photo:', err);
+        alert('Could not remove this photo. Check your connection and try again.');
+      });
+  });
+}
+
 function closeObservationMarkerPopup() {
   if (map) map.closePopup();
 }
@@ -2037,7 +2284,8 @@ function deleteObservation(obsId) {
     if (!obs || !canEditObservation(obs)) return;
     if (!window.confirm('Delete this notation?')) return;
 
-    window.db.collection('observations').doc(obsId).delete()
+    deleteObservationStorageImage(obs)
+      .then(() => window.db.collection('observations').doc(obsId).delete())
       .then(() => {
         if (state.pendingMoveId === obsId) {
           state.pendingMoveId = null;
@@ -2241,7 +2489,17 @@ function renderNotationList() {
     item.appendChild(status);
 
     if (canEditObservation(obs)) {
+      item.appendChild(buildObservationPhotoControls(obs));
       item.appendChild(buildObservationActions(obs.id));
+    } else if (obs.imageUrl) {
+      const readOnly = document.createElement('div');
+      readOnly.className = 'notation-item-photo';
+      const img = document.createElement('img');
+      img.className = 'notation-photo-thumb';
+      img.src = obs.imageUrl;
+      img.alt = 'Notation photo';
+      readOnly.appendChild(img);
+      item.appendChild(readOnly);
     }
 
     item.addEventListener('click', () => {
@@ -2416,6 +2674,11 @@ function loadMyObservations() {
           method: data.method,
           timestamp: data.timestamp,
           status: data.status,
+          imageUrl: data.imageUrl || null,
+          imagePath: data.imagePath || null,
+          imageContentType: data.imageContentType || null,
+          imageSize: data.imageSize != null ? data.imageSize : null,
+          imageUpdatedAt: data.imageUpdatedAt || null,
         });
       });
       loaded.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
@@ -2521,6 +2784,12 @@ function bindEvents() {
 
   if (els.lexiconField) {
     els.lexiconField.addEventListener('change', syncLexiconFromField);
+  }
+
+  if (els.observationPhotoInput) {
+    els.observationPhotoInput.addEventListener('change', () => {
+      handleObservationPhotoSelected(els.observationPhotoInput.files);
+    });
   }
 
   els.toggleStreets.addEventListener('click', () => {

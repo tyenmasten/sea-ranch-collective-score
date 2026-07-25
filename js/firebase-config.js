@@ -24,13 +24,18 @@ firebase.initializeApp(firebaseConfig);
 // Exposed globally so any page's script can reach these without each one
 // re-initializing Firebase itself.
 window.db = firebase.firestore();
+window.storage = (typeof firebase.storage === 'function') ? firebase.storage() : null;
 
 /*
   LOADING ORDER, this file depends on the Firebase compat libraries already
-  being loaded. In each HTML page that needs Firebase, add these two script
+  being loaded. In each HTML page that needs Firebase, add these script
   tags, in this exact order, before this file:
 
   <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-storage-compat.js"></script>
   <script src="js/firebase-config.js"></script>
+
+  Pages that never touch Storage may omit firebase-storage-compat.js; call
+  sites that need uploads must load it (Location Input).
 */

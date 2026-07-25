@@ -1,0 +1,10 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Temporary open access for active development (matches current Firestore posture).
+    // Tighten before the programme goes fully public.
+    match /{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}

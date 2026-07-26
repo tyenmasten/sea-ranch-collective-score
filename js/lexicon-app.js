@@ -326,6 +326,66 @@ function startNewLexiconEntry() {
   updateEditingUI();
 }
 
+/**
+ * Delete a lexicon entry the current user authored, plus any observations that
+ * reference it via lexiconEntryId. UI updates only after Firestore succeeds.
+ */
+function deleteLexiconEntry(entryId, entryName) {
+  requireLogin((user) => {
+    if (!window.db || !entryId) return;
+
+    const label = entryName || 'this lexicon entry';
+    const msg =
+      'Delete "' + label + '"?\n\n' +
+      'Map notations that use this lexicon will also be removed. This cannot be undone.';
+    if (!window.confirm(msg)) return;
+
+    const listEl = document.getElementById('myLexiconList');
+    const row = listEl
+      ? Array.from(listEl.querySelectorAll('.my-lexicon-item'))
+        .find((el) => el.dataset.id === entryId)
+      : null;
+    const deleteBtn = row ? row.querySelector('.my-lexicon-delete') : null;
+    if (deleteBtn) {
+      deleteBtn.disabled = true;
+      deleteBtn.textContent = 'Deleting…';
+    }
+
+    window.db.collection('observations')
+      .where('lexiconEntryId', '==', entryId)
+      .get()
+      .then((snap) => {
+        const deletes = [];
+        snap.forEach((doc) => {
+          deletes.push(doc.ref.delete());
+        });
+        deletes.push(window.db.collection('lexiconEntries').doc(entryId).delete());
+        return Promise.all(deletes).then(() => snap.size);
+      })
+      .then((obsCount) => {
+        console.log(
+          'Lexicon entry deleted:',
+          entryId,
+          '(observations removed:',
+          obsCount + ')'
+        );
+        delete state.fillMigrationWritten[entryId];
+        if (state.editingEntryId === entryId) {
+          startNewLexiconEntry();
+        }
+        loadMyLexiconEntries();
+      })
+      .catch((err) => {
+        console.error('Failed to delete lexicon entry:', err);
+        if (deleteBtn) {
+          deleteBtn.disabled = false;
+          deleteBtn.textContent = 'Delete';
+        }
+        alert('Could not delete this entry, check your connection and try again.');
+      });
+  });
+}
+
 function loadMyLexiconEntries() {
   const listEl = document.getElementById('myLexiconList');
   if (!listEl || !window.db) return;
@@ -336,6 +396,7 @@ function loadMyLexiconEntries() {
     return;
   }
 
+  // Scoped to the logged-in author — delete is only offered on these rows.
   window.db.collection('lexiconEntries')
     .where('author', '==', user.fullName)
     .get()
@@ -352,11 +413,16 @@ function loadMyLexiconEntries() {
           ? escapeHtml(new Date(entry.savedAt).toLocaleString())
           : '';
         const sel = entry.id === state.editingEntryId ? ' sel' : '';
+        const idAttr = escapeHtml(entry.id);
         return (
-          `<button type="button" class="my-lexicon-item${sel}" data-id="${escapeHtml(entry.id)}">` +
+          `<div class="my-lexicon-item${sel}" data-id="${idAttr}">` +
+          `<button type="button" class="my-lexicon-main" data-load-id="${idAttr}">` +
           `<span class="my-lexicon-name">${name}</span>` +
           `<span class="my-lexicon-time">${ts}</span>` +
-          `</button>`
+          `</button>` +
+          `<button type="button" class="my-lexicon-delete" data-delete-id="${idAttr}" ` +
+          `aria-label="Delete ${name}">Delete</button>` +
+          `</div>`
         );
       }).join('');
     })
@@ -369,9 +435,24 @@ function bindMyLexiconList() {
   const listEl = document.getElementById('myLexiconList');
   if (!listEl) return;
   listEl.addEventListener('click', (e) => {
-    const item = e.target.closest('[data-id]');
-    if (!item) return;
-    loadLexiconEntry(item.dataset.id);
+    const deleteBtn = e.target.closest('[data-delete-id]');
+    if (deleteBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = deleteBtn.getAttribute('data-delete-id');
+      const row = deleteBtn.closest('.my-lexicon-item');
+      const nameEl = row && row.querySelector('.my-lexicon-name');
+      const name = nameEl ? nameEl.textContent : '';
+      deleteLexiconEntry(id, name);
+      return;
+    }
+    const loadBtn = e.target.closest('[data-load-id]');
+    if (loadBtn) {
+      loadLexiconEntry(loadBtn.getAttribute('data-load-id'));
+      return;
+    }
+    const item = e.target.closest('.my-lexicon-item[data-id]');
+    if (item) loadLexiconEntry(item.dataset.id);
   });
 }
 

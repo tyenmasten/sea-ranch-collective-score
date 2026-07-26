@@ -665,9 +665,9 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
 
 .my-lexicon-item {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
   width: 100%;
   text-align: left;
   background: var(--surface2);
@@ -676,6 +676,7 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
   cursor: pointer;
   font-family: 'Media77', sans-serif;
   color: var(--ink);
+  box-sizing: border-box;
 }
 
 .my-lexicon-item:hover { border-color: var(--ink); }
@@ -685,11 +686,50 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
   background: var(--hi);
 }
 
+.my-lexicon-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+  text-align: left;
+}
+
 .my-lexicon-name { font-size: 11px; }
 .my-lexicon-time {
   font-size: 8px;
   color: var(--dim);
   letter-spacing: 0.04em;
+}
+
+.my-lexicon-delete {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--dim);
+  font-family: 'Media77', sans-serif;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.my-lexicon-delete:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.my-lexicon-delete:disabled {
+  opacity: 0.5;
+  cursor: wait;
 }
 
 #sketch-stage #canvas {

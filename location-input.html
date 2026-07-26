@@ -297,6 +297,28 @@ select.lexicon-empty {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 5px;
+  gap: 8px;
+}
+
+.layer-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.layer-color {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.layer-color[hidden] {
+  display: none !important;
 }
 
 .layer-name {
@@ -1000,15 +1022,41 @@ select.lexicon-empty {
         <div class="slabel">Site Layers</div>
         <div class="layer-row">
           <span class="layer-name">Streets</span>
-          <button type="button" class="layer-toggle on" id="toggleStreets" aria-pressed="true" aria-label="Toggle streets"></button>
+          <div class="layer-controls">
+            <input type="color" class="layer-color" id="colorStreetsPublic" value="#888888" hidden aria-label="Public streets colour" title="Public">
+            <input type="color" class="layer-color" id="colorStreetsPrivate" value="#aaaaaa" hidden aria-label="Private streets colour" title="Private">
+            <input type="color" class="layer-color" id="colorStreetsUnpaved" value="#bbbbbb" hidden aria-label="Unpaved streets colour" title="Unpaved">
+            <input type="color" class="layer-color" id="colorStreetsDefault" value="#cccccc" hidden aria-label="Other streets colour" title="Other">
+            <button type="button" class="layer-toggle on" id="toggleStreets" aria-pressed="true" aria-label="Toggle streets"></button>
+          </div>
         </div>
         <div class="layer-row">
           <span class="layer-name">Buildings</span>
-          <button type="button" class="layer-toggle on" id="toggleBuildings" aria-pressed="true" aria-label="Toggle buildings"></button>
+          <div class="layer-controls">
+            <input type="color" class="layer-color" id="colorBuildings" value="#aaaaaa" hidden aria-label="Buildings outline colour">
+            <button type="button" class="layer-toggle on" id="toggleBuildings" aria-pressed="true" aria-label="Toggle buildings"></button>
+          </div>
         </div>
         <div class="layer-row">
           <span class="layer-name">Contours</span>
-          <button type="button" class="layer-toggle" id="toggleContours" aria-pressed="false" aria-label="Toggle contours"></button>
+          <div class="layer-controls">
+            <input type="color" class="layer-color" id="colorContours" value="#cccccc" hidden aria-label="Contours colour">
+            <button type="button" class="layer-toggle" id="toggleContours" aria-pressed="false" aria-label="Toggle contours"></button>
+          </div>
+        </div>
+        <div class="layer-row">
+          <span class="layer-name">Water Ecologies</span>
+          <div class="layer-controls">
+            <input type="color" class="layer-color" id="colorWaterEcologies" value="#5b8fa8" hidden aria-label="Water Ecologies colour">
+            <button type="button" class="layer-toggle" id="toggleWaterEcologies" aria-pressed="false" aria-label="Toggle water ecologies"></button>
+          </div>
+        </div>
+        <div class="layer-row">
+          <span class="layer-name">Water Colour</span>
+          <div class="layer-controls">
+            <input type="color" class="layer-color" id="colorWaterColour" value="#3d6f99" hidden aria-label="Water Colour colour">
+            <button type="button" class="layer-toggle" id="toggleWaterColour" aria-pressed="false" aria-label="Toggle water colour"></button>
+          </div>
         </div>
       </div>
 
@@ -1098,7 +1146,20 @@ select.lexicon-empty {
 
 <script>
 const STREET_LABEL_MIN_ZOOM = 17;
-const CONTOURS_STYLE = { color: '#cccccc', weight: 0.5, fill: false };
+const LOCATION_INPUT_SETTINGS_PATH = { collection: 'locationInputSettings', doc: 'current' };
+/** Location Input–only defaults (independent of Collective Score categoryFills). */
+const DEFAULT_LOCATION_LAYER_COLORS = {
+  waterEcologies: '#5b8fa8',
+  waterColour: '#3d6f99',
+  buildings: '#aaaaaa',
+  contours: '#cccccc',
+  streets: {
+    public: '#888888',
+    private: '#aaaaaa',
+    unpaved: '#bbbbbb',
+    default: '#cccccc',
+  },
+};
 const FIT_BOUNDS_PADDING = [20, 20];
 const MAP_MIN_ZOOM = 12;
 const SITE_MAX_BOUNDS = L.latLngBounds(
@@ -1123,6 +1184,20 @@ const state = {
     streets: true,
     buildings: true,
     contours: false,
+    waterEcologies: false,
+    waterColour: false,
+  },
+  layerColors: {
+    waterEcologies: DEFAULT_LOCATION_LAYER_COLORS.waterEcologies,
+    waterColour: DEFAULT_LOCATION_LAYER_COLORS.waterColour,
+    buildings: DEFAULT_LOCATION_LAYER_COLORS.buildings,
+    contours: DEFAULT_LOCATION_LAYER_COLORS.contours,
+    streets: {
+      public: DEFAULT_LOCATION_LAYER_COLORS.streets.public,
+      private: DEFAULT_LOCATION_LAYER_COLORS.streets.private,
+      unpaved: DEFAULT_LOCATION_LAYER_COLORS.streets.unpaved,
+      default: DEFAULT_LOCATION_LAYER_COLORS.streets.default,
+    },
   },
   observations: [],
   selectedObservation: null,
@@ -1139,6 +1214,10 @@ let streetsLayer = null;
 let streetLabelsLayer = null;
 let buildingsLayer = null;
 let contoursLayer = null;
+let waterEcologiesLayer = null;
+let waterColourLayer = null;
+let waterEcologiesLoading = null;
+let waterColourLoading = null;
 let observationsLayer = null;
 let siteLayerGroup = null;
 let pendingPlacement = null;
@@ -1160,6 +1239,16 @@ const ELEMENT_IDS = {
   toggleStreets: 'toggleStreets',
   toggleBuildings: 'toggleBuildings',
   toggleContours: 'toggleContours',
+  toggleWaterEcologies: 'toggleWaterEcologies',
+  toggleWaterColour: 'toggleWaterColour',
+  colorWaterEcologies: 'colorWaterEcologies',
+  colorWaterColour: 'colorWaterColour',
+  colorBuildings: 'colorBuildings',
+  colorContours: 'colorContours',
+  colorStreetsPublic: 'colorStreetsPublic',
+  colorStreetsPrivate: 'colorStreetsPrivate',
+  colorStreetsUnpaved: 'colorStreetsUnpaved',
+  colorStreetsDefault: 'colorStreetsDefault',
   confirmOverlay: 'confirmOverlay',
   confirmAuthor: 'confirmAuthor',
   confirmLexicon: 'confirmLexicon',
@@ -1354,7 +1443,9 @@ function prepareSiteGeoJSON(streets, buildings) {
 
 function buildingStyle(feature) {
   const propType = feature.properties && feature.properties.PropType;
-  const border = { color: '#aaa', weight: 0.5 };
+  const borderColor = (state.layerColors && state.layerColors.buildings)
+    || DEFAULT_LOCATION_LAYER_COLORS.buildings;
+  const border = { color: borderColor, weight: 0.5 };
   switch (propType) {
     case 'Single Family Residence':
       return { ...border, fillColor: '#d4c9b8', fillOpacity: 0.6 };
@@ -1373,20 +1464,38 @@ function buildingStyle(feature) {
   }
 }
 
+function streetColors() {
+  const s = (state.layerColors && state.layerColors.streets) || {};
+  const d = DEFAULT_LOCATION_LAYER_COLORS.streets;
+  return {
+    public: s.public || d.public,
+    private: s.private || d.private,
+    unpaved: s.unpaved || d.unpaved,
+    default: s.default || d.default,
+  };
+}
+
 function roadStyle(feature) {
   const props = feature.properties || {};
   const surfaceType = props.SurfaceType || props.SurfaceTyp;
+  const colors = streetColors();
 
   if (props.Class === 'Local' && props.PubPriv === 'Public') {
-    return { color: '#888888', weight: 1.5, fill: false };
+    return { color: colors.public, weight: 1.5, fill: false };
   }
   if (props.Class === 'Local' && props.PubPriv === 'Private') {
-    return { color: '#aaaaaa', weight: 1, fill: false };
+    return { color: colors.private, weight: 1, fill: false };
   }
   if (surfaceType === 'Unpaved') {
-    return { color: '#bbbbbb', weight: 0.8, fill: false, dashArray: '4 4' };
+    return { color: colors.unpaved, weight: 0.8, fill: false, dashArray: '4 4' };
   }
-  return { color: '#cccccc', weight: 0.8, fill: false };
+  return { color: colors.default, weight: 0.8, fill: false };
+}
+
+function contoursStyle() {
+  const color = (state.layerColors && state.layerColors.contours)
+    || DEFAULT_LOCATION_LAYER_COLORS.contours;
+  return { color: color, weight: 0.5, fill: false };
 }
 
 function getGeometryEndpoints(geometry) {
@@ -1520,6 +1629,219 @@ function applyLayerVisibility() {
     } else if (map.hasLayer(contoursLayer)) {
       map.removeLayer(contoursLayer);
     }
+  }
+  if (waterEcologiesLayer) {
+    if (state.layers.waterEcologies) {
+      if (!map.hasLayer(waterEcologiesLayer)) waterEcologiesLayer.addTo(map);
+    } else if (map.hasLayer(waterEcologiesLayer)) {
+      map.removeLayer(waterEcologiesLayer);
+    }
+  }
+  if (waterColourLayer) {
+    if (state.layers.waterColour) {
+      if (!map.hasLayer(waterColourLayer)) waterColourLayer.addTo(map);
+    } else if (map.hasLayer(waterColourLayer)) {
+      map.removeLayer(waterColourLayer);
+    }
+  }
+}
+
+function isFacultyUser() {
+  return !!(window.currentUser && window.currentUser.role === 'faculty');
+}
+
+function waterPolygonStyle(hex) {
+  const color = hex || '#5b8fa8';
+  return {
+    color: color,
+    weight: 1,
+    opacity: 0.85,
+    fillColor: color,
+    fillOpacity: 0.28,
+  };
+}
+
+function syncFacultyLayerColorUI() {
+  const faculty = isFacultyUser();
+  const flat = [
+    ['colorWaterEcologies', () => state.layerColors.waterEcologies || DEFAULT_LOCATION_LAYER_COLORS.waterEcologies],
+    ['colorWaterColour', () => state.layerColors.waterColour || DEFAULT_LOCATION_LAYER_COLORS.waterColour],
+    ['colorBuildings', () => state.layerColors.buildings || DEFAULT_LOCATION_LAYER_COLORS.buildings],
+    ['colorContours', () => state.layerColors.contours || DEFAULT_LOCATION_LAYER_COLORS.contours],
+    ['colorStreetsPublic', () => streetColors().public],
+    ['colorStreetsPrivate', () => streetColors().private],
+    ['colorStreetsUnpaved', () => streetColors().unpaved],
+    ['colorStreetsDefault', () => streetColors().default],
+  ];
+  flat.forEach(([elKey, getValue]) => {
+    const input = els[elKey];
+    if (!input) return;
+    input.value = getValue();
+    if (faculty) input.removeAttribute('hidden');
+    else input.setAttribute('hidden', '');
+  });
+}
+
+function restyleWaterLayer(key) {
+  const hex = state.layerColors[key] || DEFAULT_LOCATION_LAYER_COLORS[key];
+  const layer = key === 'waterEcologies' ? waterEcologiesLayer : waterColourLayer;
+  if (layer) layer.setStyle(waterPolygonStyle(hex));
+}
+
+function restyleBuildingsLayer() {
+  if (buildingsLayer) buildingsLayer.setStyle(buildingStyle);
+}
+
+function restyleContoursLayer() {
+  if (contoursLayer) contoursLayer.setStyle(contoursStyle());
+}
+
+function restyleStreetsLayer() {
+  if (streetsLayer) streetsLayer.setStyle(roadStyle);
+}
+
+function restyleAllLocationLayers() {
+  restyleWaterLayer('waterEcologies');
+  restyleWaterLayer('waterColour');
+  restyleBuildingsLayer();
+  restyleContoursLayer();
+  restyleStreetsLayer();
+}
+
+function pickColor(value, fallback) {
+  return typeof value === 'string' && value ? value : fallback;
+}
+
+function applyLocationLayerColors(data) {
+  const colors = (data && data.layerColors) || {};
+  const streetIn = (colors.streets && typeof colors.streets === 'object') ? colors.streets : {};
+  const streetDef = DEFAULT_LOCATION_LAYER_COLORS.streets;
+
+  state.layerColors.waterEcologies = pickColor(
+    colors.waterEcologies, DEFAULT_LOCATION_LAYER_COLORS.waterEcologies
+  );
+  state.layerColors.waterColour = pickColor(
+    colors.waterColour, DEFAULT_LOCATION_LAYER_COLORS.waterColour
+  );
+  state.layerColors.buildings = pickColor(
+    colors.buildings, DEFAULT_LOCATION_LAYER_COLORS.buildings
+  );
+  state.layerColors.contours = pickColor(
+    colors.contours, DEFAULT_LOCATION_LAYER_COLORS.contours
+  );
+  state.layerColors.streets = {
+    public: pickColor(streetIn.public, streetDef.public),
+    private: pickColor(streetIn.private, streetDef.private),
+    unpaved: pickColor(streetIn.unpaved, streetDef.unpaved),
+    default: pickColor(streetIn.default, streetDef.default),
+  };
+
+  restyleAllLocationLayers();
+  syncFacultyLayerColorUI();
+}
+
+function loadLocationInputSettings() {
+  if (!window.db) {
+    applyLocationLayerColors(null);
+    return Promise.resolve();
+  }
+  return window.db.collection(LOCATION_INPUT_SETTINGS_PATH.collection)
+    .doc(LOCATION_INPUT_SETTINGS_PATH.doc)
+    .get()
+    .then((doc) => {
+      if (doc.exists) applyLocationLayerColors(doc.data());
+      else applyLocationLayerColors(null);
+    })
+    .catch((err) => {
+      console.warn('[location-input] Failed to load locationInputSettings:', err);
+      applyLocationLayerColors(null);
+    });
+}
+
+function saveLocationInputSettings() {
+  if (!window.db || !isFacultyUser()) return Promise.resolve();
+  const payload = {
+    layerColors: {
+      waterEcologies: state.layerColors.waterEcologies,
+      waterColour: state.layerColors.waterColour,
+      buildings: state.layerColors.buildings,
+      contours: state.layerColors.contours,
+      streets: {
+        public: state.layerColors.streets.public,
+        private: state.layerColors.streets.private,
+        unpaved: state.layerColors.streets.unpaved,
+        default: state.layerColors.streets.default,
+      },
+    },
+    updatedAt: new Date().toISOString(),
+  };
+  return window.db.collection(LOCATION_INPUT_SETTINGS_PATH.collection)
+    .doc(LOCATION_INPUT_SETTINGS_PATH.doc)
+    .set(payload, { merge: true })
+    .then(() => {
+      console.log('[location-input] Saved locationInputSettings/current', payload);
+    })
+    .catch((err) => {
+      console.error('[location-input] Failed to save locationInputSettings:', err);
+      alert('Could not save layer colour, check your connection and try again.');
+    });
+}
+
+async function ensureWaterEcologiesLayer() {
+  if (waterEcologiesLayer) return waterEcologiesLayer;
+  if (waterEcologiesLoading) return waterEcologiesLoading;
+  const statusEl = els.mapLoadMsg;
+  if (statusEl) {
+    statusEl.textContent = 'Loading water ecologies…';
+    statusEl.style.display = 'block';
+  }
+  waterEcologiesLoading = (async () => {
+    const res = await fetch('geojson/Water_ecologies.geojson');
+    if (!res.ok) throw new Error('Water Ecologies fetch failed');
+    const gj = await res.json();
+    waterEcologiesLayer = L.geoJSON(gj, {
+      style: waterPolygonStyle(state.layerColors.waterEcologies),
+    });
+    return waterEcologiesLayer;
+  })();
+  try {
+    return await waterEcologiesLoading;
+  } catch (err) {
+    console.error('[location-input] Water Ecologies layer failed:', err);
+    waterEcologiesLayer = null;
+    throw err;
+  } finally {
+    waterEcologiesLoading = null;
+    if (statusEl && mapData.ready) statusEl.style.display = 'none';
+  }
+}
+
+async function ensureWaterColourLayer() {
+  if (waterColourLayer) return waterColourLayer;
+  if (waterColourLoading) return waterColourLoading;
+  const statusEl = els.mapLoadMsg;
+  if (statusEl) {
+    statusEl.textContent = 'Loading water colour…';
+    statusEl.style.display = 'block';
+  }
+  waterColourLoading = (async () => {
+    const res = await fetch('geojson/Water_colour.geojson');
+    if (!res.ok) throw new Error('Water Colour fetch failed');
+    const gj = await res.json();
+    waterColourLayer = L.geoJSON(gj, {
+      style: waterPolygonStyle(state.layerColors.waterColour),
+    });
+    return waterColourLayer;
+  })();
+  try {
+    return await waterColourLoading;
+  } catch (err) {
+    console.error('[location-input] Water Colour layer failed:', err);
+    waterColourLayer = null;
+    throw err;
+  } finally {
+    waterColourLoading = null;
+    if (statusEl && mapData.ready) statusEl.style.display = 'none';
   }
 }
 
@@ -2745,7 +3067,7 @@ async function loadGeoLayers() {
       }
       contoursLayer = L.geoJSON(
         { type: 'FeatureCollection', features: contoursFeatures },
-        { style: CONTOURS_STYLE }
+        { style: contoursStyle }
       );
     }
     siteLayerGroup = L.featureGroup([streetsLayer, buildingsLayer]);
@@ -2808,6 +3130,87 @@ function bindEvents() {
     applyLayerVisibility();
   });
 
+  async function toggleWaterLayer(key, toggleEl, ensureFn) {
+    state.layers[key] = !state.layers[key];
+    toggleEl.classList.toggle('on', state.layers[key]);
+    toggleEl.setAttribute('aria-pressed', state.layers[key]);
+    if (state.layers[key]) {
+      try {
+        await ensureFn();
+      } catch (_) {
+        state.layers[key] = false;
+        toggleEl.classList.remove('on');
+        toggleEl.setAttribute('aria-pressed', 'false');
+        alert('Could not load this water layer. Check your connection and try again.');
+        return;
+      }
+    }
+    applyLayerVisibility();
+  }
+
+  if (els.toggleWaterEcologies) {
+    els.toggleWaterEcologies.addEventListener('click', () => {
+      toggleWaterLayer('waterEcologies', els.toggleWaterEcologies, ensureWaterEcologiesLayer);
+    });
+  }
+  if (els.toggleWaterColour) {
+    els.toggleWaterColour.addEventListener('click', () => {
+      toggleWaterLayer('waterColour', els.toggleWaterColour, ensureWaterColourLayer);
+    });
+  }
+
+  function bindLayerColorInput(inputEl, applyValue) {
+    if (!inputEl) return;
+    inputEl.addEventListener('input', () => {
+      if (!isFacultyUser()) {
+        syncFacultyLayerColorUI();
+        return;
+      }
+      applyValue(inputEl.value);
+    });
+    inputEl.addEventListener('change', () => {
+      if (!isFacultyUser()) {
+        syncFacultyLayerColorUI();
+        return;
+      }
+      applyValue(inputEl.value);
+      saveLocationInputSettings();
+    });
+  }
+
+  bindLayerColorInput(els.colorWaterEcologies, (v) => {
+    state.layerColors.waterEcologies = v;
+    restyleWaterLayer('waterEcologies');
+  });
+  bindLayerColorInput(els.colorWaterColour, (v) => {
+    state.layerColors.waterColour = v;
+    restyleWaterLayer('waterColour');
+  });
+  bindLayerColorInput(els.colorBuildings, (v) => {
+    state.layerColors.buildings = v;
+    restyleBuildingsLayer();
+  });
+  bindLayerColorInput(els.colorContours, (v) => {
+    state.layerColors.contours = v;
+    restyleContoursLayer();
+  });
+  bindLayerColorInput(els.colorStreetsPublic, (v) => {
+    state.layerColors.streets.public = v;
+    restyleStreetsLayer();
+  });
+  bindLayerColorInput(els.colorStreetsPrivate, (v) => {
+    state.layerColors.streets.private = v;
+    restyleStreetsLayer();
+  });
+  bindLayerColorInput(els.colorStreetsUnpaved, (v) => {
+    state.layerColors.streets.unpaved = v;
+    restyleStreetsLayer();
+  });
+  bindLayerColorInput(els.colorStreetsDefault, (v) => {
+    state.layerColors.streets.default = v;
+    restyleStreetsLayer();
+  });
+
   els.zoomIn.addEventListener('click', () => {
     if (map) map.zoomIn();
   });
@@ -2854,12 +3257,18 @@ function init() {
   setMode('picker');
   renderNotationList();
   bindEvents();
+  syncFacultyLayerColorUI();
+  loadLocationInputSettings();
   loadGeoLayers();
   setTimeout(() => {
     updateLexiconField();
     loadMyObservations();
   }, 0);
 }
+
+window.onAuthSessionChange = function onAuthSessionChange() {
+  syncFacultyLayerColorUI();
+};
 
 if (domReady()) {
   init();

@@ -1789,13 +1789,25 @@ function drawContours(geo) {
 // Site layers arrive as WGS84 lng/lat (after prepareSiteGeoJSON state-plane fit).
 // Anchors use toRotatedFeet (42°) then project so marks sit on the rotated site.
 // Local sketch offsets are applied upright in screen space (scale only); per-mark
-// rot still applies in field space. Real-world size: sketch.scaleFt feet across
-// MARK_SCALE_BAR_PX field pixels (default scaleFt = 10).
+// rot still applies in field space.
+// Collective Score display/export: lattice-snapped anchors + fixed NOTATION_GRID_CELLS
+// footprint (ignores stored scaleFt for drawing). Builder/Location Input/Firestore keep
+// literal lat/lng and scaleFt.
 
 const MARK_FIELD_W = 600;
 const MARK_FIELD_H = 800;
 const MARK_SCALE_BAR_PX = 100;
 const FALLBACK_DOT_RADIUS_FT = 3;
+/**
+ * Collective Score display/export only: every notation spans this many lattice
+ * pitches across the sketch field width (≈2×2 cell footprint). Stored scaleFt
+ * is never overwritten — Builder / Firestore / Location Input stay literal.
+ */
+const NOTATION_GRID_CELLS = 2;
+/** Max spiral nudge from preferred cell, in lattice pitches (scale-linked feet). */
+const NOTATION_NUDGE_MAX_PITCHES = 8;
+/** Overflow fan-out radius as a fraction of pitch when the capped search fails. */
+const NOTATION_OVERFLOW_OFFSET_FRAC = 0.25;
 
 function getNotationsToDraw() {
   if (typeof state === 'undefined' || !state || !Array.isArray(state.notations)) return [];
@@ -1828,34 +1840,65 @@ function nearestBrickPointAnyPhase(x, y, pitch) {
   return da <= db ? a : b;
 }
 
-/**
- * Nearest free brick cell to (prefGx, prefGy), expanding ring search with no cap.
- * Occupancy is notation-only (caller-owned Set); both lattice phases are eligible.
- */
-function findFreeNotationLatticeCell(prefGx, prefGy, pitch, occupied) {
-  const key0 = latticeKey(prefGx, prefGy);
-  if (!occupied.has(key0)) return { gx: prefGx, gy: prefGy };
+function notationCentreClear(gx, gy, centres, minDist2) {
+  for (let i = 0; i < centres.length; i++) {
+    const c = centres[i];
+    const dx = gx - c.gx;
+    const dy = gy - c.gy;
+    if (dx * dx + dy * dy < minDist2) return false;
+  }
+  return true;
+}
 
-  for (let ring = 1; ring < 1000000; ring++) {
+/**
+ * Nearest brick cell to (prefGx, prefGy) whose centre is at least
+ * NOTATION_GRID_CELLS pitches from every already-placed centre, within
+ * NOTATION_NUDGE_MAX_PITCHES of preferred. Returns null if none (overflow).
+ */
+function findFreeNotationLatticeCell(prefGx, prefGy, pitch, centres) {
+  const minDist = NOTATION_GRID_CELLS * pitch;
+  const minDist2 = minDist * minDist;
+  const maxDist = NOTATION_NUDGE_MAX_PITCHES * pitch;
+  const maxDist2 = maxDist * maxDist;
+
+  if (notationCentreClear(prefGx, prefGy, centres, minDist2)) {
+    return { gx: prefGx, gy: prefGy };
+  }
+
+  const maxRing = Math.ceil(NOTATION_NUDGE_MAX_PITCHES * 2) + 2;
+  for (let ring = 1; ring <= maxRing; ring++) {
     const pad = ring * pitch * 0.5;
+    if (pad > maxDist + pitch) break;
     let best = null;
     let bestD = Infinity;
     forEachBrickInBounds(
       prefGx - pad, prefGx + pad, prefGy - pad, prefGy + pad,
       pitch, null,
       (gx, gy) => {
-        const k = latticeKey(gx, gy);
-        if (occupied.has(k)) return;
-        const d = (gx - prefGx) * (gx - prefGx) + (gy - prefGy) * (gy - prefGy);
-        if (d < bestD) {
-          bestD = d;
+        const dPref = (gx - prefGx) * (gx - prefGx) + (gy - prefGy) * (gy - prefGy);
+        if (dPref > maxDist2 + 1e-9) return;
+        if (!notationCentreClear(gx, gy, centres, minDist2)) return;
+        if (dPref < bestD) {
+          bestD = dPref;
           best = { gx: gx, gy: gy };
         }
       }
     );
     if (best) return best;
   }
-  return { gx: prefGx, gy: prefGy };
+  return null;
+}
+
+/** Deterministic micro-offset from preferred cell for capped-search overflow. */
+function notationOverflowAnchor(prefGx, prefGy, pitch, overflowIndex) {
+  // Golden-angle fan so stacked overflows stay separated for the plotter.
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  const angle = overflowIndex * golden;
+  const r = NOTATION_OVERFLOW_OFFSET_FRAC * pitch;
+  return {
+    gx: prefGx + r * Math.cos(angle),
+    gy: prefGy + r * Math.sin(angle),
+  };
 }
 
 function notationPlacementSortKey(a, b) {
@@ -1870,19 +1913,24 @@ function notationPlacementSortKey(a, b) {
 
 /**
  * Shared Collective Score placement for student notations (screen + SVG).
- * Snaps anchors to the print brick lattice, quantizes size to whole cells,
- * and nudges colliding notations to the nearest free cell (notation-only occupancy).
+ * Snaps anchors to the print brick lattice, sizes every mark to a fixed
+ * NOTATION_GRID_CELLS footprint (ignores stored scaleFt for drawing only),
+ * nudges with 2-pitch centre clearance and an 8-pitch search cap, and falls
+ * back to a preferred-cell micro-offset when the neighbourhood is full.
  * Does not mutate notations or Firestore.
  *
- * @returns {Object.<string, {lng,lat,gx,gy,ftPerPx,cells,pitch,scaleFt}>} keyed by notation.id
+ * @returns {Object.<string, {lng,lat,gx,gy,ftPerPx,cells,pitch,overflow}>} keyed by notation.id
  */
 function resolveNotationLatticePlacement(notations, geo) {
   const pitch = notationPrintPitchFt(geo);
   const list = Array.isArray(notations) ? notations.slice() : [];
   list.sort(notationPlacementSortKey);
 
-  const occupied = new Set();
+  const centres = [];
+  const overflowCountByPref = Object.create(null);
   const byId = Object.create(null);
+  const cells = NOTATION_GRID_CELLS;
+  const ftPerPx = (cells * pitch) / MARK_FIELD_W;
 
   list.forEach((notation) => {
     if (!notation || notation.lat == null || notation.lng == null) return;
@@ -1891,28 +1939,38 @@ function resolveNotationLatticePlacement(notations, geo) {
 
     const { rx, ry } = toRotatedFeet(notation.lng, notation.lat);
     const pref = nearestBrickPointAnyPhase(rx, ry, pitch);
-    const cell = findFreeNotationLatticeCell(pref.gx, pref.gy, pitch, occupied);
-    occupied.add(latticeKey(cell.gx, cell.gy));
+    const found = findFreeNotationLatticeCell(pref.gx, pref.gy, pitch, centres);
 
-    const ll = fromRotatedFeet(cell.gx, cell.gy);
-    let scaleFt = notation.sketch && notation.sketch.scaleFt != null
-      ? Number(notation.sketch.scaleFt)
-      : 10;
-    if (!(scaleFt > 0)) scaleFt = 10;
-    const cells = Math.max(1, Math.round(scaleFt / pitch));
-    const ftPerPx = (cells * pitch) / MARK_SCALE_BAR_PX;
+    let gx;
+    let gy;
+    let overflow = false;
+    if (found) {
+      gx = found.gx;
+      gy = found.gy;
+      centres.push({ gx: gx, gy: gy });
+    } else {
+      const prefKey = latticeKey(pref.gx, pref.gy);
+      const idx = overflowCountByPref[prefKey] || 0;
+      overflowCountByPref[prefKey] = idx + 1;
+      const off = notationOverflowAnchor(pref.gx, pref.gy, pitch, idx);
+      gx = off.gx;
+      gy = off.gy;
+      overflow = true;
+    }
+
+    const ll = fromRotatedFeet(gx, gy);
 
     byId[id] = {
       lng: ll.lng,
       lat: ll.lat,
-      gx: cell.gx,
-      gy: cell.gy,
+      gx: gx,
+      gy: gy,
       preferredGx: pref.gx,
       preferredGy: pref.gy,
       ftPerPx: ftPerPx,
       cells: cells,
       pitch: pitch,
-      scaleFt: scaleFt,
+      overflow: overflow,
     };
   });
 

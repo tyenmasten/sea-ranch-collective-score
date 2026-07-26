@@ -3593,13 +3593,26 @@ function appendNotationMarksSvg(geo, defs, plotParts, sheet, bufferFt, clipState
   });
   const inchesPerFt = 12 / geo.scaleDenom;
   const clips = clipState || { seq: 0 };
-  const parts = [];
+  // Inkscape nesting: notation marks → author → lexicon (same pattern as base layers).
+  const byAuthor = {};
+
+  function bucketFor(notation) {
+    const author = (notation.author && String(notation.author).trim()) || 'Unknown';
+    const lexicon = (notation.lexicon && String(notation.lexicon).trim())
+      || (notation.lexiconName && String(notation.lexiconName).trim())
+      || 'Untitled';
+    if (!byAuthor[author]) byAuthor[author] = {};
+    if (!byAuthor[author][lexicon]) byAuthor[author][lexicon] = [];
+    return byAuthor[author][lexicon];
+  }
+
   notations.forEach((notation) => {
     if (notation.lat == null || notation.lng == null) return;
     const place = notation.id != null ? placement[String(notation.id)] : null;
     const lng = place ? place.lng : notation.lng;
     const lat = place ? place.lat : notation.lat;
     const ftPerPx = place ? place.ftPerPx : markFtPerFieldPx(notation.sketch);
+    const parts = bucketFor(notation);
 
     if (notation.lexiconLinkStatus === 'missing') {
       const p = projectLngLatToPageInches(lng, lat, geo);
@@ -3633,11 +3646,39 @@ function appendNotationMarksSvg(geo, defs, plotParts, sheet, bufferFt, clipState
       for (let i = 0; i < frags.length; i++) parts.push(frags[i]);
     });
   });
-  if (parts.length) {
-    plotParts.push(svgLayerOpen('marks', 'notation marks'));
-    plotParts.push(parts.join(''));
-    plotParts.push(svgLayerClose());
+
+  const authors = Object.keys(byAuthor).sort((a, b) => a.localeCompare(b));
+  let hasAny = false;
+  for (let i = 0; i < authors.length; i++) {
+    const lexMap = byAuthor[authors[i]];
+    const lexNames = Object.keys(lexMap);
+    for (let j = 0; j < lexNames.length; j++) {
+      if (lexMap[lexNames[j]].length) {
+        hasAny = true;
+        break;
+      }
+    }
+    if (hasAny) break;
   }
+  if (!hasAny) return;
+
+  plotParts.push(svgLayerOpen('marks', 'notation marks'));
+  authors.forEach((author) => {
+    const lexMap = byAuthor[author];
+    const lexNames = Object.keys(lexMap).sort((a, b) => a.localeCompare(b))
+      .filter((lex) => lexMap[lex].length);
+    if (!lexNames.length) return;
+
+    const authorId = svgCategorySubId('marks', author);
+    plotParts.push(svgLayerOpen(authorId, author));
+    lexNames.forEach((lexicon) => {
+      plotParts.push(svgLayerOpen(svgCategorySubId(authorId, lexicon), lexicon));
+      plotParts.push(lexMap[lexicon].join(''));
+      plotParts.push(svgLayerClose());
+    });
+    plotParts.push(svgLayerClose());
+  });
+  plotParts.push(svgLayerClose());
 }
 
 function cropMarkCentersInches() {

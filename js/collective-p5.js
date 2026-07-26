@@ -1785,17 +1785,18 @@ function drawContours(geo) {
 }
 
 /**
- * World-space white mask outside the streets+buildings site AABB.
- * Covers messy water/empty ocean beyond the corridor; pans/zooms with the drawing.
- * Hole is slightly expanded so edge streets/buildings are not clipped.
+ * World-space white mask outside a framed hole around the streets+buildings AABB.
+ * Hole padding matched to the Miro red-box crop on Score: generous hatch buffer
+ * on the short axis (~1× site width each side), modest pad on the long axis.
  */
-const SITE_MASK_HOLE_PAD = 0.02;
+const SITE_MASK_PAD_X = 1.0;   // fraction of site widthFt each side (was uniform 0.02)
+const SITE_MASK_PAD_Y = 0.12;  // fraction of site heightFt each end (was uniform 0.02)
 const SITE_MASK_OUTER_MULT = 5;
 
 function getSiteMaskBandsFt() {
   const site = computeSiteBoundsFt();
-  const padW = site.widthFt * SITE_MASK_HOLE_PAD;
-  const padH = site.heightFt * SITE_MASK_HOLE_PAD;
+  const padW = site.widthFt * SITE_MASK_PAD_X;
+  const padH = site.heightFt * SITE_MASK_PAD_Y;
   const hole = {
     minRx: site.minRx - padW,
     maxRx: site.maxRx + padW,

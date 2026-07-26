@@ -1810,13 +1810,33 @@ function applySiteMapConstraints() {
 
 /**
  * White mask in lat/lng: outer regional ring with a hole over streets+buildings.
- * Pans/zooms with the map; sits above base layers, below notation markers.
+ * Hole padding matched to the Miro red-box crop on Location Input: large ocean
+ * margin on the west, tight on east / north / south. Pans/zooms with the map;
+ * sits above base layers, below notation markers.
+ *
+ * Pad fractions are of the streets+buildings AABB width (lng) / height (lat).
  */
+const SITE_MASK_HOLE_PAD = {
+  west: 1.0,   // ocean breathing room ≈ corridor width
+  east: 0.05,  // just past inland edge
+  north: 0.03, // tight to northern tip
+  south: 0.03, // tight to southern tip
+};
+
+function padLatLngBoundsAsymmetric(bounds, pad) {
+  const w = bounds.getEast() - bounds.getWest();
+  const h = bounds.getNorth() - bounds.getSouth();
+  return L.latLngBounds(
+    [bounds.getSouth() - h * pad.south, bounds.getWest() - w * pad.west],
+    [bounds.getNorth() + h * pad.north, bounds.getEast() + w * pad.east]
+  );
+}
+
 function buildSiteExteriorMaskLayer() {
   if (!siteLayerGroup) return null;
   const holeBounds = siteLayerGroup.getBounds();
   if (!holeBounds.isValid()) return null;
-  const hole = holeBounds.pad(0.02);
+  const hole = padLatLngBoundsAsymmetric(holeBounds, SITE_MASK_HOLE_PAD);
   const outer = SITE_MAX_BOUNDS;
   const outerRing = [
     [outer.getSouth(), outer.getWest()],

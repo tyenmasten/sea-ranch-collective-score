@@ -953,6 +953,34 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
   height: 24px;
 }
 
+#sketch-stage #row-fill-angle #grp-fill-angle,
+#sketch-stage #row-fill-density #grp-fill-density {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  gap: 6px;
+}
+
+#sketch-stage .fill-opt-btn {
+  min-width: 34px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  background: var(--surface2);
+  color: var(--ink);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+#sketch-stage .fill-opt-btn.on {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: #fff;
+}
+
 #sketch-stage .ls-btn,
 #sketch-stage .wt {
   width: 34px;
@@ -1203,6 +1231,12 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
           <div class="tool-row" id="row-fill">
             <div id="grp-fill"></div>
           </div>
+          <div class="tool-row" id="row-fill-angle" style="display:none">
+            <div id="grp-fill-angle"></div>
+          </div>
+          <div class="tool-row" id="row-fill-density" style="display:none">
+            <div id="grp-fill-density"></div>
+          </div>
         </div>
         <div class="tool-panel" id="panel-line">
           <div class="tool-row" id="row-line">
@@ -1280,6 +1314,7 @@ input[type="range"] { width: 100%; accent-color: var(--ink); border: none; paddi
 <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/sketch-fill.js"></script>
 <script src="js/sketch-composer.js"></script>
 <script src="js/lexicon-app.js"></script>
 <script src="js/auth-gate.js"></script>

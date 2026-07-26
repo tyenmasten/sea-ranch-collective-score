@@ -1795,7 +1795,6 @@ function drawContours(geo) {
 const MARK_FIELD_W = 600;
 const MARK_FIELD_H = 800;
 const MARK_SCALE_BAR_PX = 100;
-const MARK_HATCH_LINE_STEP = 8;
 const FALLBACK_DOT_RADIUS_FT = 3;
 
 function getNotationsToDraw() {
@@ -1891,55 +1890,42 @@ function setMarkDash(lineStyle, weightPx) {
   }
 }
 
-function hatchFillScreen(screenPts, color, fillStyle, stepPx) {
-  if (!screenPts.length) return;
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  screenPts.forEach((p) => {
-    if (p.x < minX) minX = p.x;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.y > maxY) maxY = p.y;
-  });
+function drawFillGeometryScreen(geom, color, toScreen, weightPx) {
+  if (!geom) return;
   const ctx = drawingContext;
   ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(screenPts[0].x, screenPts[0].y);
-  for (let i = 1; i < screenPts.length; i++) ctx.lineTo(screenPts[i].x, screenPts[i].y);
-  ctx.closePath();
-  ctx.clip();
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
-  ctx.lineWidth = Math.max(stepPx * 0.2, 0.75);
+  ctx.lineWidth = Math.max((weightPx || 1) * 0.25, 0.75);
+  ctx.lineCap = 'round';
   ctx.setLineDash([]);
-  if (fillStyle === 'h' || fillStyle === 'cross') {
-    for (let y = minY; y <= maxY; y += stepPx) {
-      ctx.beginPath();
-      ctx.moveTo(minX, y);
-      ctx.lineTo(maxX, y);
-      ctx.stroke();
-    }
-  }
-  if (fillStyle === 'd' || fillStyle === 'cross') {
-    const span = Math.max(maxX - minX, maxY - minY) * 2;
-    for (let d = -span; d <= span; d += stepPx) {
-      ctx.beginPath();
-      ctx.moveTo(minX + d, minY);
-      ctx.lineTo(minX + d + span, maxY);
-      ctx.stroke();
-    }
-  }
-  if (fillStyle === 'dots') {
-    const dotR = Math.max(stepPx * 0.15, 0.6);
-    const dotStep = stepPx * (10 / 8);
-    for (let y = minY; y <= maxY; y += dotStep) {
-      for (let x = minX; x <= maxX; x += dotStep) {
-        ctx.beginPath();
-        ctx.arc(x, y, dotR, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-  }
+  (geom.lines || []).forEach((seg) => {
+    const a = toScreen(seg.x1, seg.y1);
+    const b = toScreen(seg.x2, seg.y2);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  });
+  (geom.dots || []).forEach((d) => {
+    const c = toScreen(d.cx, d.cy);
+    const edge = toScreen(d.cx + d.r, d.cy);
+    const rPx = Math.max(Math.hypot(edge.x - c.x, edge.y - c.y), 0.5);
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, rPx, 0, Math.PI * 2);
+    ctx.fill();
+  });
   ctx.restore();
+}
+
+function fillGeometryForSketchMark(m) {
+  if (!m || !window.SketchFill || !window.SketchFill.fillGeometryForMark) return null;
+  if (m.fill === 'none') return null;
+  // closed shapes only; lines/dots/semicircles have no area fill
+  if (m.type !== 'circle' && m.type !== 'triangle' && m.type !== 'rectangle' && m.type !== 'diamond') {
+    return null;
+  }
+  return window.SketchFill.fillGeometryForMark(m);
 }
 
 function strokeScreenPolyline(screenPts, close) {
@@ -1957,7 +1943,6 @@ function drawSketchMark(m, lng, lat, ftPerPx, geo, pivotOverride) {
   const rot = m.rot || 0;
   const color = m.color || '#1a1a1a';
   const weightPx = Math.max((m.weight || 1) * ftPerPx * geo.pxPerFt, 0.5);
-  const hatchStep = MARK_HATCH_LINE_STEP * ftPerPx * geo.pxPerFt;
 
   const toScreen = (fx, fy) => {
     const r = rotateFieldPt({ x: fx, y: fy }, pivot, rot);
@@ -2019,23 +2004,21 @@ function drawSketchMark(m, lng, lat, ftPerPx, geo, pivotOverride) {
   }
 
   if (m.type === 'circle') {
-    const samples = [];
-    for (let i = 0; i <= 48; i++) {
-      const t = (i / 48) * Math.PI * 2;
-      samples.push({
-        x: g.cx + g.r * Math.cos(t),
-        y: g.cy + g.r * Math.sin(t),
-      });
-    }
-    const screenPts = mapFieldPts(samples, lng, lat, ftPerPx, geo, pivot, rot);
-    if (m.fill === 'solid') {
-      noStroke();
-      fill(color);
-      strokeScreenPolyline(screenPts, true);
-    } else if (m.fill && m.fill !== 'none') {
-      hatchFillScreen(screenPts, color, m.fill, hatchStep);
+    const fillGeom = fillGeometryForSketchMark(m);
+    if (fillGeom && (fillGeom.lines.length || fillGeom.dots.length)) {
+      drawFillGeometryScreen(fillGeom, color, toScreen, weightPx);
     }
     if (m.stroke !== false) {
+      const samples = [];
+      const n = (window.SketchFill && window.SketchFill.CIRCLE_RING_VERTS) || 48;
+      for (let i = 0; i <= n; i++) {
+        const t = (i / n) * Math.PI * 2;
+        samples.push({
+          x: g.cx + g.r * Math.cos(t),
+          y: g.cy + g.r * Math.sin(t),
+        });
+      }
+      const screenPts = mapFieldPts(samples, lng, lat, ftPerPx, geo, pivot, rot);
       noFill();
       stroke(color);
       strokeWeight(weightPx);
@@ -2047,15 +2030,12 @@ function drawSketchMark(m, lng, lat, ftPerPx, geo, pivotOverride) {
 
   // triangle, rectangle, diamond (closed polygons via geom.pts)
   if (!Array.isArray(g.pts) || !g.pts.length) return;
-  const screenPts = mapFieldPts(g.pts, lng, lat, ftPerPx, geo, pivot, rot);
-  if (m.fill === 'solid') {
-    noStroke();
-    fill(color);
-    strokeScreenPolyline(screenPts, true);
-  } else if (m.fill && m.fill !== 'none') {
-    hatchFillScreen(screenPts, color, m.fill, hatchStep);
+  const fillGeom = fillGeometryForSketchMark(m);
+  if (fillGeom && (fillGeom.lines.length || fillGeom.dots.length)) {
+    drawFillGeometryScreen(fillGeom, color, toScreen, weightPx);
   }
   if (m.stroke !== false) {
+    const screenPts = mapFieldPts(g.pts, lng, lat, ftPerPx, geo, pivot, rot);
     noFill();
     stroke(color);
     strokeWeight(weightPx);
@@ -2107,6 +2087,9 @@ function drawNotations(geo) {
       return;
     }
     const ftPerPx = markFtPerFieldPx(notation.sketch);
+    if (window.SketchFill && window.SketchFill.migrateMarkFills) {
+      window.SketchFill.migrateMarkFills(marks);
+    }
     marks.forEach((m) => drawSketchMark(m, notation.lng, notation.lat, ftPerPx, geo));
   });
 }
@@ -2179,51 +2162,30 @@ window.renderSelectedNotationPreview = function renderSelectedNotationPreview(co
     return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos };
   }
 
-  function previewHatch(pts, color, fillStyle, step) {
-    if (!pts.length) return;
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    pts.forEach((p) => {
-      if (p.x < minX) minX = p.x;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.y > maxY) maxY = p.y;
-    });
+  function drawPreviewFill(geom, color, mapPt, weight) {
+    if (!geom) return;
     ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-    ctx.closePath();
-    ctx.clip();
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = Math.max((weight || 1) * 0.25, 0.75);
+    ctx.lineCap = 'round';
     ctx.setLineDash([]);
-    if (fillStyle === 'h' || fillStyle === 'cross') {
-      for (let y = minY; y <= maxY; y += step) {
-        ctx.beginPath();
-        ctx.moveTo(minX, y);
-        ctx.lineTo(maxX, y);
-        ctx.stroke();
-      }
-    }
-    if (fillStyle === 'd' || fillStyle === 'cross') {
-      const span = Math.max(maxX - minX, maxY - minY) * 2;
-      for (let d = -span; d <= span; d += step) {
-        ctx.beginPath();
-        ctx.moveTo(minX + d, minY);
-        ctx.lineTo(minX + d + span, maxY);
-        ctx.stroke();
-      }
-    }
-    if (fillStyle === 'dots') {
-      for (let y = minY; y <= maxY; y += step) {
-        for (let x = minX; x <= maxX; x += step) {
-          ctx.beginPath();
-          ctx.arc(x, y, 1, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-    }
+    (geom.lines || []).forEach((seg) => {
+      const a = mapPt(seg.x1, seg.y1);
+      const b = mapPt(seg.x2, seg.y2);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    });
+    (geom.dots || []).forEach((d) => {
+      const c = mapPt(d.cx, d.cy);
+      const edge = mapPt(d.cx + d.r, d.cy);
+      const r = Math.max(Math.hypot(edge.x - c.x, edge.y - c.y), 0.5);
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    });
     ctx.restore();
   }
 
@@ -2300,24 +2262,19 @@ window.renderSelectedNotationPreview = function renderSelectedNotationPreview(co
     }
 
     if (m.type === 'circle') {
-      const samples = [];
-      for (let i = 0; i <= 48; i++) {
-        const t = (i / 48) * Math.PI * 2;
-        samples.push(mapPt(g.cx + g.r * Math.cos(t), g.cy + g.r * Math.sin(t)));
-      }
-      if (m.fill === 'solid') {
-        ctx.beginPath();
-        ctx.moveTo(samples[0].x, samples[0].y);
-        for (let i = 1; i < samples.length; i++) ctx.lineTo(samples[i].x, samples[i].y);
-        ctx.closePath();
-        ctx.fill();
-      } else if (m.fill && m.fill !== 'none') {
-        previewHatch(samples, color, m.fill, Math.max(MARK_HATCH_LINE_STEP * scale, 3));
+      const fillGeom = fillGeometryForSketchMark(m);
+      if (fillGeom && (fillGeom.lines.length || fillGeom.dots.length)) {
+        drawPreviewFill(fillGeom, color, mapPt, weight);
       }
       if (m.stroke !== false) {
+        const n = (window.SketchFill && window.SketchFill.CIRCLE_RING_VERTS) || 48;
         ctx.beginPath();
-        ctx.moveTo(samples[0].x, samples[0].y);
-        for (let i = 1; i < samples.length; i++) ctx.lineTo(samples[i].x, samples[i].y);
+        for (let i = 0; i <= n; i++) {
+          const t = (i / n) * Math.PI * 2;
+          const p = mapPt(g.cx + g.r * Math.cos(t), g.cy + g.r * Math.sin(t));
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        }
         ctx.closePath();
         ctx.stroke();
       }
@@ -2325,17 +2282,12 @@ window.renderSelectedNotationPreview = function renderSelectedNotationPreview(co
     }
 
     if (!Array.isArray(g.pts) || !g.pts.length) return;
-    const pts = g.pts.map((p) => mapPt(p.x, p.y));
-    if (m.fill === 'solid') {
-      ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y);
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-      ctx.closePath();
-      ctx.fill();
-    } else if (m.fill && m.fill !== 'none') {
-      previewHatch(pts, color, m.fill, Math.max(MARK_HATCH_LINE_STEP * scale, 3));
+    const fillGeom = fillGeometryForSketchMark(m);
+    if (fillGeom && (fillGeom.lines.length || fillGeom.dots.length)) {
+      drawPreviewFill(fillGeom, color, mapPt, weight);
     }
     if (m.stroke !== false) {
+      const pts = g.pts.map((p) => mapPt(p.x, p.y));
       ctx.beginPath();
       ctx.moveTo(pts[0].x, pts[0].y);
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
@@ -2344,6 +2296,9 @@ window.renderSelectedNotationPreview = function renderSelectedNotationPreview(co
     }
   }
 
+  if (window.SketchFill && window.SketchFill.migrateMarkFills) {
+    window.SketchFill.migrateMarkFills(marks);
+  }
   marks.forEach(drawPreviewMark);
 };
 
@@ -3128,6 +3083,9 @@ function drawSheetCaption(geo) {
  * Emit one sketch mark as SVG fragments (shared by notations + base-layer texture).
  * Page-edge clipping is geometric (Cohen–Sutherland / polyline clip) — not clip-path.
  * clipState = { seq: number } only for optional hatch shape masks (notation fills).
+ *
+ * Fills: local-generate via SketchFill → rotateFieldPt → page inches (same as Pass 2
+ * screen path). Dot fills export as stroked pen circles (fill="none"), not filled discs.
  */
 function emitSketchMarkSvg(m, lng, lat, ftPerPx, geo, defs, clipState, options) {
   if (!m || !m.geom) return [];
@@ -3140,9 +3098,9 @@ function emitSketchMarkSvg(m, lng, lat, ftPerPx, geo, defs, clipState, options) 
   const weightIn = opts.fixedStrokeIn != null
     ? opts.fixedStrokeIn
     : Math.max((m.weight || 1) * ftPerPx * inchesPerFt * EXPORT_MARK_STROKE_SCALE, 0.006);
-  const hatchStep = MARK_HATCH_LINE_STEP * ftPerPx * inchesPerFt;
   const pageRect = opts.pageRect || getContentRectInches();
   const out = [];
+  const fillStrokeIn = Math.max(weightIn * 0.25, 0.006);
 
   const toPage = (fx, fy) => {
     const r = rotateFieldPt({ x: fx, y: fy }, pivot, rot);
@@ -3186,11 +3144,35 @@ function emitSketchMarkSvg(m, lng, lat, ftPerPx, geo, defs, clipState, options) 
     return emitClippedPolylineSvg(samples, color, weightIn, pageRect);
   }
 
+  const closedTypes = m.type === 'circle' || m.type === 'triangle'
+    || m.type === 'rectangle' || m.type === 'diamond';
+
+  if (closedTypes && window.SketchFill && window.SketchFill.fillGeometryForMark) {
+    const fillGeom = window.SketchFill.fillGeometryForMark(m);
+    if (fillGeom) {
+      (fillGeom.lines || []).forEach((seg) => {
+        const a = toPage(seg.x1, seg.y1);
+        const b = toPage(seg.x2, seg.y2);
+        emitClippedLineSvg(a.x, a.y, b.x, b.y, color, fillStrokeIn, pageRect)
+          .forEach((el) => out.push(el));
+      });
+      // Dot fill: stroked pen circles (plotter-safe), not filled discs.
+      (fillGeom.dots || []).forEach((d) => {
+        const c = toPage(d.cx, d.cy);
+        const edge = toPage(d.cx + d.r, d.cy);
+        const rIn = Math.max(Math.hypot(edge.x - c.x, edge.y - c.y), 0.003);
+        emitClippedCircleSvg(c.x, c.y, rIn, color, fillStrokeIn, false, pageRect)
+          .forEach((el) => out.push(el));
+      });
+    }
+  }
+
   let pagePts = null;
   if (m.type === 'circle') {
     const samples = [];
-    for (let i = 0; i <= 48; i++) {
-      const t = (i / 48) * Math.PI * 2;
+    const n = (window.SketchFill && window.SketchFill.CIRCLE_RING_VERTS) || 48;
+    for (let i = 0; i <= n; i++) {
+      const t = (i / n) * Math.PI * 2;
       samples.push({ x: g.cx + g.r * Math.cos(t), y: g.cy + g.r * Math.sin(t) });
     }
     pagePts = mapFieldPtsToPageInches(samples, lng, lat, ftPerPx, geo, pivot, rot);
@@ -3199,41 +3181,8 @@ function emitSketchMarkSvg(m, lng, lat, ftPerPx, geo, defs, clipState, options) 
   }
   if (!pagePts || !pagePts.length) return out;
 
-  if (m.fill && m.fill !== 'none' && m.fill !== 'solid') {
-    // Hatch lines: keep only those whose midpoint lies in the mark, then
-    // clip each segment to the page geometrically (no SVG clip-path).
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    pagePts.forEach((p) => {
-      if (p.x < minX) minX = p.x;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.y > maxY) maxY = p.y;
-    });
-    const stepIn = hatchStep;
-    const hatchStroke = Math.max(stepIn * 0.2, 0.006);
-    if (m.fill === 'h' || m.fill === 'cross') {
-      for (let y = minY; y <= maxY; y += stepIn) {
-        if (!pointInPolygon((minX + maxX) / 2, y, pagePts)) continue;
-        emitClippedLineSvg(minX, y, maxX, y, color, hatchStroke, pageRect)
-          .forEach((el) => out.push(el));
-      }
-    }
-    if (m.fill === 'd' || m.fill === 'cross') {
-      const span = Math.max(maxX - minX, maxY - minY) * 2;
-      for (let d = -span; d <= span; d += stepIn) {
-        const x1 = minX + d;
-        const y1 = minY;
-        const x2 = minX + d + span;
-        const y2 = maxY;
-        if (!pointInPolygon((x1 + x2) / 2, (y1 + y2) / 2, pagePts)) continue;
-        emitClippedLineSvg(x1, y1, x2, y2, color, hatchStroke, pageRect)
-          .forEach((el) => out.push(el));
-      }
-    }
-  }
-
+  // Outline after fill migration (solid → none); keep solid guard if SketchFill absent.
   if (m.stroke !== false || m.fill === 'solid') {
-    // Closed outline → open clipped edge segments (plotter-safe).
     const closed = pagePts.slice();
     if (closed.length > 1) {
       const first = closed[0];
@@ -3381,6 +3330,9 @@ function appendNotationMarksSvg(geo, defs, plotParts, sheet, bufferFt, clipState
     }
 
     const ftPerPx = markFtPerFieldPx(notation.sketch);
+    if (window.SketchFill && window.SketchFill.migrateMarkFills) {
+      window.SketchFill.migrateMarkFills(marks);
+    }
     marks.forEach((m) => {
       const frags = emitSketchMarkSvg(m, notation.lng, notation.lat, ftPerPx, geo, defs, clips, {});
       for (let i = 0; i < frags.length; i++) parts.push(frags[i]);

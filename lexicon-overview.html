@@ -7,6 +7,7 @@
 <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/sketch-fill.js"></script>
 <style>
 /* Mobile responsive — to be handled by Cursor in a separate pass */
 
@@ -786,8 +787,6 @@ const PREVIEW_MARK_SIZE = 88;
 
 const SKETCH_FIELD_W = 600;
 const SKETCH_FIELD_H = 800;
-const HATCH_LINE_STEP = 8;
-const HATCH_DOT_STEP = 10;
 
 /** Live lexicon rows mapped from Firestore (shape kept compatible with getGroups). */
 let LEXICONS = [];
@@ -909,6 +908,10 @@ function sketchUnionBounds(marks) {
 function rasterizeSketchMarks(marks, size) {
   if (!marks || !marks.length) return null;
 
+  if (window.SketchFill && window.SketchFill.migrateMarkFills) {
+    window.SketchFill.migrateMarkFills(marks);
+  }
+
   const field = document.createElement('canvas');
   field.width = SKETCH_FIELD_W;
   field.height = SKETCH_FIELD_H;
@@ -927,43 +930,43 @@ function rasterizeSketchMarks(marks, size) {
     if (close) ctx.closePath();
   }
 
-  function hatchFill(pts, color, fill, b) {
+  function drawFillGeometry(geom, color, weight) {
+    if (!geom) return;
     ctx.save();
-    ctx.beginPath();
-    tracePts(pts, true);
-    ctx.clip();
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.lineWidth = 1.5;
-    if (fill === 'h' || fill === 'cross') {
-      for (let y = b.y; y <= b.y + b.h; y += HATCH_LINE_STEP) {
-        ctx.beginPath(); ctx.moveTo(b.x, y); ctx.lineTo(b.x + b.w, y); ctx.stroke();
-      }
-    }
-    if (fill === 'd' || fill === 'cross') {
-      const span = Math.max(b.w, b.h) * 2;
-      for (let d = -span; d <= span; d += HATCH_LINE_STEP) {
-        ctx.beginPath(); ctx.moveTo(b.x + d, b.y); ctx.lineTo(b.x + d + span, b.y + b.h); ctx.stroke();
-      }
-    }
-    if (fill === 'dots') {
-      for (let y = b.y; y <= b.y + b.h; y += HATCH_DOT_STEP) {
-        for (let x = b.x; x <= b.x + b.w; x += HATCH_DOT_STEP) {
-          ctx.beginPath(); ctx.arc(x, y, 1.3, 0, Math.PI * 2); ctx.fill();
-        }
-      }
-    }
+    ctx.lineWidth = Math.max(1.25, (weight || 5) * 0.25);
+    ctx.lineCap = 'round';
+    ctx.setLineDash([]);
+    (geom.lines || []).forEach((seg) => {
+      ctx.beginPath();
+      ctx.moveTo(seg.x1, seg.y1);
+      ctx.lineTo(seg.x2, seg.y2);
+      ctx.stroke();
+    });
+    (geom.dots || []).forEach((d) => {
+      ctx.beginPath();
+      ctx.arc(d.cx, d.cy, d.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
     ctx.restore();
+  }
+
+  function fillForMark(m) {
+    if (!window.SketchFill || !window.SketchFill.fillGeometryForMark) return null;
+    if (!m || m.fill === 'none') return null;
+    if (m.type !== 'circle' && m.type !== 'triangle' && m.type !== 'rectangle' && m.type !== 'diamond') {
+      return null;
+    }
+    return window.SketchFill.fillGeometryForMark(m);
   }
 
   function drawClosed(m) {
     const g = m.geom;
-    const b = sketchLocalBounds(m);
     const pts = g.pts;
-    if (m.fill === 'solid') {
-      ctx.beginPath(); tracePts(pts, true); ctx.fill();
-    } else if (m.fill !== 'none') {
-      hatchFill(pts, m.color, m.fill, b);
+    const geom = fillForMark(m);
+    if (geom && (geom.lines.length || geom.dots.length)) {
+      drawFillGeometry(geom, m.color || '#1a1a1a', m.weight);
     }
     if (m.stroke) {
       ctx.beginPath(); tracePts(pts, true); ctx.stroke();
@@ -1015,17 +1018,9 @@ function rasterizeSketchMarks(marks, size) {
       return;
     }
     if (m.type === 'circle') {
-      if (m.fill === 'solid') {
-        ctx.beginPath(); ctx.arc(g.cx, g.cy, g.r, 0, Math.PI * 2); ctx.fill();
-      } else if (m.fill && m.fill !== 'none') {
-        const b = sketchLocalBounds(m);
-        const pts = [];
-        for (let i = 0; i <= 32; i++) {
-          const t = (i / 32) * Math.PI * 2;
-          pts.push({ x: g.cx + g.r * Math.cos(t), y: g.cy + g.r * Math.sin(t) });
-        }
-        pts.push(pts[0]);
-        hatchFill(pts, m.color || '#1a1a1a', m.fill, b);
+      const geom = fillForMark(m);
+      if (geom && (geom.lines.length || geom.dots.length)) {
+        drawFillGeometry(geom, m.color || '#1a1a1a', m.weight);
       }
       if (m.stroke !== false) {
         ctx.beginPath(); ctx.arc(g.cx, g.cy, g.r, 0, Math.PI * 2); ctx.stroke();

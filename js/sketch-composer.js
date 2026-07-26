@@ -4,8 +4,6 @@ const FIELD_H = 800;
     const UNIT = GRID / 2;
     const HANDLE = 8;
     const ROT_HANDLE = 10;
-    const HATCH_LINE_STEP = 8;
-    const HATCH_DOT_STEP = 10;
     const PALETTE = [
       '#E83A2F', '#F26B1D', '#F5C800', '#2E9E4F', '#1A5BA6', '#7B3FA0',
       '#E8547A', '#00A0C1', '#3D8C2F', '#E8A020', '#1A3A8A', '#C13A2A'
@@ -23,7 +21,9 @@ const FIELD_H = 800;
       diamond: '<polygon points="12,4 20,12 12,20 4,12"/>',
       dot: '<circle cx="12" cy="12" r="3"/>'
     };
-    const FILLS = ['solid', 'h', 'd', 'cross', 'dots', 'none'];
+    const FILLS = (window.SketchFill && window.SketchFill.FILL_TYPES) || ['line', 'dot', 'none'];
+    const FILL_ANGLES = (window.SketchFill && window.SketchFill.FILL_ANGLES) || [0, 45, 90, 135];
+    const FILL_DENSITIES = (window.SketchFill && window.SketchFill.FILL_DENSITIES) || ['tight', 'medium', 'loose'];
     const CLOSED = new Set(['circle', 'triangle', 'rectangle', 'diamond']);
     const STROKED = new Set(['line', 'semicircle', 'circle', 'triangle', 'rectangle', 'diamond']);
     const SCALE_PRESETS = [1, 5, 10, 50, 100, 500];
@@ -33,7 +33,9 @@ const FIELD_H = 800;
       tool: 'select',
       color: '#000000',
       weight: 5,
-      fill: 'solid',
+      fill: 'none',
+      fillAngle: 0,
+      fillDensity: 'medium',
       lineStyle: 'solid',
       stroke: true,
       scaleFt: 10,
@@ -302,6 +304,8 @@ const FIELD_H = 800;
         color: S.color,
         weight: S.weight,
         fill: CLOSED.has(markType) ? S.fill : 'none',
+        fillAngle: S.fillAngle,
+        fillDensity: S.fillDensity,
         lineStyle: (markType === 'line' || markType === 'semicircle') ? S.lineStyle : 'solid',
         stroke: STROKED.has(markType) ? S.stroke : false,
         rot: 0,
@@ -589,43 +593,39 @@ const FIELD_H = 800;
       if (close) ctx.closePath();
     }
 
-    function hatchFill(pts, color, fill, b) {
+    function drawFillGeometry(geom, color) {
+      if (!geom) return;
       ctx.save();
-      ctx.beginPath();
-      tracePts(pts, true);
-      ctx.clip();
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
-      ctx.lineWidth = 1.5;
-      if (fill === 'h' || fill === 'cross') {
-        for (let y = b.y; y <= b.y + b.h; y += HATCH_LINE_STEP) {
-          ctx.beginPath(); ctx.moveTo(b.x, y); ctx.lineTo(b.x + b.w, y); ctx.stroke();
-        }
-      }
-      if (fill === 'd' || fill === 'cross') {
-        const span = Math.max(b.w, b.h) * 2;
-        for (let d = -span; d <= span; d += HATCH_LINE_STEP) {
-          ctx.beginPath(); ctx.moveTo(b.x + d, b.y); ctx.lineTo(b.x + d + span, b.y + b.h); ctx.stroke();
-        }
-      }
-      if (fill === 'dots') {
-        for (let y = b.y; y <= b.y + b.h; y += HATCH_DOT_STEP) {
-          for (let x = b.x; x <= b.x + b.w; x += HATCH_DOT_STEP) {
-            ctx.beginPath(); ctx.arc(x, y, 1.3, 0, Math.PI * 2); ctx.fill();
-          }
-        }
-      }
+      ctx.lineWidth = Math.max(1.25, (S.weight || 5) * 0.25);
+      ctx.lineCap = 'round';
+      ctx.setLineDash([]);
+      (geom.lines || []).forEach((seg) => {
+        ctx.beginPath();
+        ctx.moveTo(seg.x1, seg.y1);
+        ctx.lineTo(seg.x2, seg.y2);
+        ctx.stroke();
+      });
+      (geom.dots || []).forEach((d) => {
+        ctx.beginPath();
+        ctx.arc(d.cx, d.cy, d.r, 0, Math.PI * 2);
+        ctx.fill();
+      });
       ctx.restore();
+    }
+
+    function fillGeometryForMark(m) {
+      if (!window.SketchFill || !m || !CLOSED.has(m.type)) return null;
+      if (m.fill === 'none') return null;
+      return window.SketchFill.fillGeometryForMark(m);
     }
 
     function drawClosed(m) {
       const g = m.geom;
-      const b = localBounds(m);
       const pts = g.pts;
-      if (m.fill === 'solid') {
-        ctx.beginPath(); tracePts(pts, true); ctx.fill();
-      } else if (m.fill !== 'none') {
-        hatchFill(pts, m.color, m.fill, b);
+      if (m.fill && m.fill !== 'none') {
+        drawFillGeometry(fillGeometryForMark(m), m.color);
       }
       if (m.stroke) {
         ctx.beginPath(); tracePts(pts, true); ctx.stroke();
@@ -691,17 +691,8 @@ const FIELD_H = 800;
       }
 
       if (m.type === 'circle') {
-        if (m.fill === 'solid') {
-          ctx.beginPath(); ctx.arc(g.cx, g.cy, g.r, 0, Math.PI * 2); ctx.fill();
-        } else if (m.fill !== 'none') {
-          const b = localBounds(m);
-          const pts = [];
-          for (let i = 0; i <= 32; i++) {
-            const t = i / 32 * Math.PI * 2;
-            pts.push({ x: g.cx + g.r * Math.cos(t), y: g.cy + g.r * Math.sin(t) });
-          }
-          pts.push(pts[0]);
-          hatchFill(pts, m.color, m.fill, b);
+        if (m.fill && m.fill !== 'none') {
+          drawFillGeometry(fillGeometryForMark(m), m.color);
         }
         if (m.stroke) {
           ctx.beginPath(); ctx.arc(g.cx, g.cy, g.r, 0, Math.PI * 2); ctx.stroke();
@@ -881,6 +872,19 @@ const FIELD_H = 800;
       document.querySelectorAll('.fill-sw').forEach(b => {
         b.classList.toggle('on', b.dataset.fill === (m && CLOSED.has(m.type) ? m.fill : S.fill));
       });
+      document.querySelectorAll('[data-fill-angle]').forEach(b => {
+        const ang = m && CLOSED.has(m.type) ? (m.fillAngle != null ? m.fillAngle : S.fillAngle) : S.fillAngle;
+        b.classList.toggle('on', Number(b.dataset.fillAngle) === Number(ang));
+      });
+      document.querySelectorAll('[data-fill-density]').forEach(b => {
+        const den = m && CLOSED.has(m.type) ? (m.fillDensity || S.fillDensity) : S.fillDensity;
+        b.classList.toggle('on', b.dataset.fillDensity === den);
+      });
+      const fillMode = m && CLOSED.has(m.type) ? m.fill : S.fill;
+      const angleRow = document.getElementById('row-fill-angle');
+      const densityRow = document.getElementById('row-fill-density');
+      if (angleRow) angleRow.style.display = fillMode === 'line' ? '' : 'none';
+      if (densityRow) densityRow.style.display = (fillMode === 'line' || fillMode === 'dot') ? '' : 'none';
       document.querySelectorAll('.wt').forEach(b => {
         b.classList.toggle('on', Number(b.dataset.w) === (m ? m.weight : S.weight));
       });
@@ -904,43 +908,37 @@ const FIELD_H = 800;
       x.strokeStyle = '#111';
       x.fillStyle = '#111';
       x.lineWidth = 1;
-      if (fillId === 'none') { x.strokeRect(0.5, 0.5, s - 1, s - 1); return; }
-      if (fillId === 'solid') { x.fillRect(1, 1, s - 2, s - 2); return; }
-      const step = 3;
-      if (fillId === 'h') {
-        for (let y = 2; y < s - 1; y += step) {
-          x.beginPath(); x.moveTo(1, y + 0.5); x.lineTo(s - 1, y + 0.5); x.stroke();
-        }
+      if (fillId === 'none') {
+        x.strokeRect(0.5, 0.5, s - 1, s - 1);
+        return;
       }
-      if (fillId === 'd') {
-        for (let d = -s; d <= s; d += step) {
-          x.beginPath(); x.moveTo(d, 1); x.lineTo(d + s, s - 1); x.stroke();
-        }
-      }
-      if (fillId === 'cross') {
-        x.fillStyle = '#fff';
-        x.fillRect(0, 0, s, s);
-        x.strokeStyle = '#111';
-        x.lineWidth = 1;
-        const crossStep = 6;
-        for (let y = 3; y < s - 2; y += crossStep) {
-          x.beginPath(); x.moveTo(1, y + 0.5); x.lineTo(s - 1, y + 0.5); x.stroke();
-        }
-        for (let d = -s; d <= s; d += crossStep) {
-          x.beginPath(); x.moveTo(d, 1); x.lineTo(d + s, s - 1); x.stroke();
-        }
-      }
-      if (fillId === 'dots') {
-        x.fillStyle = '#fff';
-        x.fillRect(0, 0, s, s);
-        x.fillStyle = '#111';
-        const dotStep = 6;
-        for (let y = dotStep; y < s - 1; y += dotStep) {
-          for (let x0 = dotStep; x0 < s - 1; x0 += dotStep) {
-            x.beginPath(); x.arc(x0, y, 1, 0, Math.PI * 2); x.fill();
-          }
-        }
-      }
+      if (!window.SketchFill) return;
+      const pad = 3;
+      const ring = [
+        { x: pad, y: pad },
+        { x: s - pad, y: pad },
+        { x: s - pad, y: s - pad },
+        { x: pad, y: s - pad },
+        { x: pad, y: pad },
+      ];
+      const preview = window.SketchFill.generateFillGeometry(ring, {
+        fill: fillId,
+        fillAngle: 0,
+        fillDensity: 'medium',
+        spacingField: fillId === 'dot' ? 5 : 4,
+      });
+      (preview.lines || []).forEach((seg) => {
+        x.beginPath();
+        x.moveTo(seg.x1, seg.y1);
+        x.lineTo(seg.x2, seg.y2);
+        x.stroke();
+      });
+      (preview.dots || []).forEach((d) => {
+        x.beginPath();
+        x.arc(d.cx, d.cy, Math.max(1, d.r * 0.4), 0, Math.PI * 2);
+        x.fill();
+      });
+      x.strokeRect(0.5, 0.5, s - 1, s - 1);
     }
 
     SHAPES.forEach(type => {
@@ -973,6 +971,8 @@ const FIELD_H = 800;
       b.type = 'button';
       b.className = 'fill-sw';
       b.dataset.fill = fillId;
+      b.title = fillId === 'line' ? 'Line' : fillId === 'dot' ? 'Dot' : 'None';
+      b.setAttribute('aria-label', b.title);
       const c = document.createElement('canvas');
       c.width = 24; c.height = 24;
       drawFillPreview(c, fillId);
@@ -980,10 +980,50 @@ const FIELD_H = 800;
       b.addEventListener('click', () => {
         S.fill = fillId;
         const m = S.selected ? markById(S.selected) : null;
-        if (m && CLOSED.has(m.type)) m.fill = fillId;
+        if (m && CLOSED.has(m.type)) {
+          m.fill = fillId;
+          m.fillAngle = S.fillAngle;
+          m.fillDensity = S.fillDensity;
+        }
         syncUI(); draw();
       });
       document.getElementById('grp-fill').appendChild(b);
+    });
+
+    FILL_ANGLES.forEach((ang) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'fill-opt-btn';
+      b.dataset.fillAngle = String(ang);
+      b.textContent = ang + '\u00b0';
+      b.title = 'Fill angle ' + ang + '\u00b0';
+      b.addEventListener('click', () => {
+        S.fillAngle = ang;
+        const m = S.selected ? markById(S.selected) : null;
+        if (m && CLOSED.has(m.type) && m.fill === 'line') m.fillAngle = ang;
+        syncUI(); draw();
+      });
+      const host = document.getElementById('grp-fill-angle');
+      if (host) host.appendChild(b);
+    });
+
+    FILL_DENSITIES.forEach((den) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'fill-opt-btn';
+      b.dataset.fillDensity = den;
+      b.textContent = den.charAt(0).toUpperCase() + den.slice(1);
+      b.title = 'Fill density: ' + den;
+      b.addEventListener('click', () => {
+        S.fillDensity = den;
+        const m = S.selected ? markById(S.selected) : null;
+        if (m && CLOSED.has(m.type) && (m.fill === 'line' || m.fill === 'dot')) {
+          m.fillDensity = den;
+        }
+        syncUI(); draw();
+      });
+      const host = document.getElementById('grp-fill-density');
+      if (host) host.appendChild(b);
     });
 
     [2, 5, 10].forEach(w => {
@@ -1093,6 +1133,8 @@ const FIELD_H = 800;
           color: S.color,
           weight: S.weight,
           fill: S.fill,
+          fillAngle: S.fillAngle,
+          fillDensity: S.fillDensity,
           lineStyle: S.lineStyle,
           stroke: S.stroke,
           scaleFt: S.scaleFt,
@@ -1101,9 +1143,29 @@ const FIELD_H = 800;
       setSketch(sketch) {
         if (sketch) {
           S.marks = JSON.parse(JSON.stringify(sketch.marks || []));
+          if (window.SketchFill && window.SketchFill.migrateMarkFills) {
+            window.SketchFill.migrateMarkFills(S.marks);
+          }
           S.color = sketch.color || '#000000';
           S.weight = sketch.weight != null ? sketch.weight : 5;
-          S.fill = sketch.fill || 'solid';
+          const toolMig = window.SketchFill
+            ? window.SketchFill.migrateLegacyFill(sketch.fill)
+            : { fill: 'none', fillAngle: 0, fillDensity: 'medium' };
+          // Tool defaults: prefer explicit new fields on the sketch blob when present.
+          if (sketch.fill === 'line' || sketch.fill === 'dot' || sketch.fill === 'none') {
+            S.fill = sketch.fill;
+            S.fillAngle = sketch.fillAngle != null ? Number(sketch.fillAngle) : 0;
+            S.fillDensity = sketch.fillDensity || 'medium';
+          } else {
+            S.fill = toolMig.fill;
+            S.fillAngle = toolMig.fillAngle;
+            S.fillDensity = toolMig.fillDensity;
+          }
+          if (window.SketchFill) {
+            S.fill = window.SketchFill.clampFillType(S.fill);
+            S.fillAngle = window.SketchFill.clampFillAngle(S.fillAngle);
+            S.fillDensity = window.SketchFill.clampFillDensity(S.fillDensity);
+          }
           S.lineStyle = sketch.lineStyle || 'solid';
           S.stroke = sketch.stroke != null ? sketch.stroke : true;
           S.scaleFt = sketch.scaleFt != null ? sketch.scaleFt : 10;
@@ -1111,7 +1173,9 @@ const FIELD_H = 800;
           S.marks = [];
           S.color = '#000000';
           S.weight = 5;
-          S.fill = 'solid';
+          S.fill = 'none';
+          S.fillAngle = 0;
+          S.fillDensity = 'medium';
           S.lineStyle = 'solid';
           S.stroke = true;
           S.scaleFt = 10;

@@ -8,7 +8,34 @@ const state = {
   unit: 'imperial',
   uploads: [],
   editingEntryId: null,
+  /** Entry ids already rewritten for fill schema this session (avoid double writes). */
+  fillMigrationWritten: Object.create(null),
 };
+
+/**
+ * If the loaded/saved sketch still has legacy fills, migrate in place and
+ * optionally persist to Firestore once (merge sketch only; does not bump savedAt).
+ */
+function persistFillMigrationIfNeeded(entryId, sketch) {
+  if (!window.SketchFill || !window.SketchFill.migrateSketchFills) {
+    return { sketch: sketch, changed: false };
+  }
+  const result = window.SketchFill.migrateSketchFills(sketch || null);
+  if (!result.changed || !entryId || !window.db) return result;
+  if (state.fillMigrationWritten[entryId]) return result;
+
+  state.fillMigrationWritten[entryId] = true;
+  window.db.collection('lexiconEntries').doc(entryId)
+    .set({ sketch: result.sketch }, { merge: true })
+    .then(() => {
+      console.log('[lexicon] Migrated legacy fill schema for entry', entryId);
+    })
+    .catch((err) => {
+      delete state.fillMigrationWritten[entryId];
+      console.warn('[lexicon] Fill schema migration write failed:', err);
+    });
+  return result;
+}
 
 function syncChromeHeight() {
   const chrome = document.getElementById('appChrome');
@@ -157,6 +184,10 @@ function saveLexiconEntry() {
     if (window.SketchComposer) {
       entry.sketch = window.SketchComposer.getSketch();
     }
+    // Ensure new schema on every save; marks new writes once if still legacy.
+    if (window.SketchFill && window.SketchFill.migrateSketchFills && entry.sketch) {
+      window.SketchFill.migrateSketchFills(entry.sketch);
+    }
 
     const isUpdate = !!state.editingEntryId;
     const entryId = state.editingEntryId || crypto.randomUUID();
@@ -173,6 +204,8 @@ function saveLexiconEntry() {
       .then(() => {
         console.log('Lexicon entry saved to Firestore:', entryId, entry);
         state.editingEntryId = entryId;
+        // Full save already wrote new schema — skip a second migration merge.
+        state.fillMigrationWritten[entryId] = true;
         updateEditingUI();
         loadMyLexiconEntries();
         if (saveBtn) saveBtn.textContent = 'Saved \u2713';
@@ -264,7 +297,10 @@ function loadLexiconEntry(entryId) {
       }
 
       applyMetaSelections(entry.metadata || {});
-      applySketchState(entry.sketch || null);
+      const sketch = entry.sketch || null;
+      // Migrate legacy fills in place, then load; rewrite Firestore once if needed.
+      persistFillMigrationIfNeeded(doc.id, sketch);
+      applySketchState(sketch);
       state.uploads = [];
       renderUploadZone();
       updateEditingUI();

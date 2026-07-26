@@ -1111,19 +1111,25 @@ select.lexicon-empty {
             <button type="button" class="layer-toggle" id="toggleContours" aria-pressed="false" aria-label="Toggle contours"></button>
           </div>
         </div>
-        <div class="layer-row">
-          <span class="layer-name">Water Ecologies</span>
-          <div class="layer-controls">
-            <input type="color" class="layer-color" id="colorWaterEcologies" value="#5b8fa8" hidden aria-label="Water Ecologies colour">
-            <button type="button" class="layer-toggle" id="toggleWaterEcologies" aria-pressed="false" aria-label="Toggle water ecologies"></button>
+        <div class="fill-layer-block">
+          <div class="layer-row">
+            <span class="layer-name">Water Ecologies</span>
+            <div class="layer-controls">
+              <button type="button" class="fill-expand-toggle" id="expandWaterEcologiesFill" hidden aria-label="Expand water ecologies colours" aria-expanded="false">▾</button>
+              <button type="button" class="layer-toggle" id="toggleWaterEcologies" aria-pressed="false" aria-label="Toggle water ecologies"></button>
+            </div>
           </div>
+          <div class="fill-category-list" id="waterEcologiesFillList"></div>
         </div>
-        <div class="layer-row">
-          <span class="layer-name">Water Colour</span>
-          <div class="layer-controls">
-            <input type="color" class="layer-color" id="colorWaterColour" value="#3d6f99" hidden aria-label="Water Colour colour">
-            <button type="button" class="layer-toggle" id="toggleWaterColour" aria-pressed="false" aria-label="Toggle water colour"></button>
+        <div class="fill-layer-block">
+          <div class="layer-row">
+            <span class="layer-name">Water Colour</span>
+            <div class="layer-controls">
+              <button type="button" class="fill-expand-toggle" id="expandWaterColourFill" hidden aria-label="Expand water colour colours" aria-expanded="false">▾</button>
+              <button type="button" class="layer-toggle" id="toggleWaterColour" aria-pressed="false" aria-label="Toggle water colour"></button>
+            </div>
           </div>
+          <div class="fill-category-list" id="waterColourFillList"></div>
         </div>
       </div>
 
@@ -1219,6 +1225,7 @@ const LOCATION_INPUT_SETTINGS_PATH = { collection: 'locationInputSettings', doc:
  * Every hex below is unique across layers and categories.
  */
 const DEFAULT_LOCATION_LAYER_COLORS = {
+  /** Legacy single-colour keys; kept for migration seeding only. */
   waterEcologies: '#5b8fa8',
   waterColour: '#3d6f99',
   buildings: '#8b7355',
@@ -1239,6 +1246,24 @@ const DEFAULT_LOCATION_LAYER_COLORS = {
     agriculture: '#d4dab8',
     default: '#e0ddd8',
   },
+  waterEcologiesFill: {
+    polygon01: '#4a9aad',
+    polygon02: '#2f7f8f',
+    polygon03: '#1aa0b0',
+    polygon04: '#3cb89a',
+    polygon05: '#5ec8d4',
+    polygon06: '#6a9eb0',
+    polygon07: '#3d7088',
+  },
+  waterColourFill: {
+    polygon01: '#2a5080',
+    polygon02: '#1e3f6e',
+    polygon03: '#355f9a',
+    polygon04: '#254f8c',
+    polygon05: '#486890',
+    polygon06: '#335f82',
+    polygon07: '#5a7a9c',
+  },
 };
 
 const BUILDING_FILL_CATEGORIES = [
@@ -1250,6 +1275,17 @@ const BUILDING_FILL_CATEGORIES = [
   { key: 'agriculture', label: 'Agriculture', propType: 'Agriculture' },
   { key: 'default', label: 'Default', propType: null },
 ];
+
+const WATER_FILL_KEYS = [
+  'polygon01', 'polygon02', 'polygon03', 'polygon04',
+  'polygon05', 'polygon06', 'polygon07',
+];
+
+const WATER_FILL_CATEGORIES = WATER_FILL_KEYS.map((key, i) => ({
+  key: key,
+  label: 'Polygon0' + (i + 1),
+  layerValue: 'Polygon0' + (i + 1),
+}));
 
 function cloneBuildingsFill(source) {
   const src = source || {};
@@ -1265,6 +1301,43 @@ function cloneBuildingsFill(source) {
 function buildingFillKeyForPropType(propType) {
   const match = BUILDING_FILL_CATEGORIES.find((c) => c.propType === propType);
   return match ? match.key : 'default';
+}
+
+function hasWaterFillData(source) {
+  if (!source || typeof source !== 'object') return false;
+  return WATER_FILL_KEYS.some((key) => typeof source[key] === 'string' && source[key]);
+}
+
+/**
+ * Resolve water sub-category colours.
+ * - If fill map has any saved keys: merge with defaults per key.
+ * - Else if legacy single colour exists: seed all seven from it.
+ * - Else: use the distinct default palette.
+ */
+function cloneWaterFill(source, defaults, legacySingle) {
+  const out = {};
+  if (hasWaterFillData(source)) {
+    WATER_FILL_KEYS.forEach((key) => {
+      const v = source[key];
+      out[key] = (typeof v === 'string' && v) ? v : defaults[key];
+    });
+    return out;
+  }
+  if (typeof legacySingle === 'string' && legacySingle) {
+    WATER_FILL_KEYS.forEach((key) => {
+      out[key] = legacySingle;
+    });
+    return out;
+  }
+  WATER_FILL_KEYS.forEach((key) => {
+    out[key] = defaults[key];
+  });
+  return out;
+}
+
+function waterFillKeyForLayer(layerValue) {
+  const match = WATER_FILL_CATEGORIES.find((c) => c.layerValue === layerValue);
+  return match ? match.key : 'polygon01';
 }
 const FIT_BOUNDS_PADDING = [20, 20];
 const MAP_MIN_ZOOM = 12;
@@ -1305,6 +1378,12 @@ const state = {
       default: DEFAULT_LOCATION_LAYER_COLORS.streets.default,
     },
     buildingsFill: cloneBuildingsFill(DEFAULT_LOCATION_LAYER_COLORS.buildingsFill),
+    waterEcologiesFill: cloneWaterFill(
+      null, DEFAULT_LOCATION_LAYER_COLORS.waterEcologiesFill, null
+    ),
+    waterColourFill: cloneWaterFill(
+      null, DEFAULT_LOCATION_LAYER_COLORS.waterColourFill, null
+    ),
   },
   observations: [],
   selectedObservation: null,
@@ -1348,8 +1427,6 @@ const ELEMENT_IDS = {
   toggleContours: 'toggleContours',
   toggleWaterEcologies: 'toggleWaterEcologies',
   toggleWaterColour: 'toggleWaterColour',
-  colorWaterEcologies: 'colorWaterEcologies',
-  colorWaterColour: 'colorWaterColour',
   colorBuildings: 'colorBuildings',
   colorContours: 'colorContours',
   colorStreetsPublic: 'colorStreetsPublic',
@@ -1358,6 +1435,10 @@ const ELEMENT_IDS = {
   colorStreetsDefault: 'colorStreetsDefault',
   expandBuildingsFill: 'expandBuildingsFill',
   buildingsFillList: 'buildingsFillList',
+  expandWaterEcologiesFill: 'expandWaterEcologiesFill',
+  waterEcologiesFillList: 'waterEcologiesFillList',
+  expandWaterColourFill: 'expandWaterColourFill',
+  waterColourFillList: 'waterColourFillList',
   confirmOverlay: 'confirmOverlay',
   confirmAuthor: 'confirmAuthor',
   confirmLexicon: 'confirmLexicon',
@@ -1753,23 +1834,59 @@ function isFacultyUser() {
   return !!(window.currentUser && window.currentUser.role === 'faculty');
 }
 
-function waterPolygonStyle(hex) {
-  const color = hex || '#5b8fa8';
+function waterSolidStyle(hex) {
+  const color = hex || DEFAULT_LOCATION_LAYER_COLORS.waterEcologiesFill.polygon01;
   return {
     color: color,
     weight: 1,
-    // Fill is fully opaque; stroke matches so the edge isn't a washed rim.
     opacity: 1,
     fillColor: color,
     fillOpacity: 1,
   };
 }
 
+function waterColorFromFillMap(fillMap, defaults, layerValue) {
+  const key = waterFillKeyForLayer(layerValue);
+  const fills = fillMap || defaults;
+  return fills[key] || defaults[key] || defaults.polygon01;
+}
+
+function waterEcologiesStyle(feature) {
+  const layerValue = feature && feature.properties && feature.properties.Layer;
+  const hex = waterColorFromFillMap(
+    state.layerColors.waterEcologiesFill,
+    DEFAULT_LOCATION_LAYER_COLORS.waterEcologiesFill,
+    layerValue
+  );
+  return waterSolidStyle(hex);
+}
+
+function waterColourStyle(feature) {
+  const layerValue = feature && feature.properties && feature.properties.Layer;
+  const hex = waterColorFromFillMap(
+    state.layerColors.waterColourFill,
+    DEFAULT_LOCATION_LAYER_COLORS.waterColourFill,
+    layerValue
+  );
+  return waterSolidStyle(hex);
+}
+
+function syncFacultyExpandToggle(btn, list) {
+  const faculty = isFacultyUser();
+  if (!btn) return;
+  if (faculty) {
+    btn.removeAttribute('hidden');
+  } else {
+    btn.setAttribute('hidden', '');
+    btn.classList.remove('open');
+    btn.setAttribute('aria-expanded', 'false');
+    if (list) list.classList.remove('open');
+  }
+}
+
 function syncFacultyLayerColorUI() {
   const faculty = isFacultyUser();
   const flat = [
-    ['colorWaterEcologies', () => state.layerColors.waterEcologies || DEFAULT_LOCATION_LAYER_COLORS.waterEcologies],
-    ['colorWaterColour', () => state.layerColors.waterColour || DEFAULT_LOCATION_LAYER_COLORS.waterColour],
     ['colorBuildings', () => state.layerColors.buildings || DEFAULT_LOCATION_LAYER_COLORS.buildings],
     ['colorContours', () => state.layerColors.contours || DEFAULT_LOCATION_LAYER_COLORS.contours],
     ['colorStreetsPublic', () => streetColors().public],
@@ -1785,18 +1902,12 @@ function syncFacultyLayerColorUI() {
     else input.setAttribute('hidden', '');
   });
 
-  const expandBtn = els.expandBuildingsFill;
-  const fillList = els.buildingsFillList;
-  if (expandBtn) {
-    if (faculty) expandBtn.removeAttribute('hidden');
-    else {
-      expandBtn.setAttribute('hidden', '');
-      expandBtn.classList.remove('open');
-      expandBtn.setAttribute('aria-expanded', 'false');
-      if (fillList) fillList.classList.remove('open');
-    }
-  }
+  syncFacultyExpandToggle(els.expandBuildingsFill, els.buildingsFillList);
+  syncFacultyExpandToggle(els.expandWaterEcologiesFill, els.waterEcologiesFillList);
+  syncFacultyExpandToggle(els.expandWaterColourFill, els.waterColourFillList);
   syncBuildingsFillListUI();
+  syncWaterFillListUI('waterEcologies');
+  syncWaterFillListUI('waterColour');
 }
 
 function buildBuildingsFillList() {
@@ -1860,10 +1971,101 @@ function syncBuildingsFillListUI() {
   });
 }
 
+function waterFillStateKey(which) {
+  return which === 'waterColour' ? 'waterColourFill' : 'waterEcologiesFill';
+}
+
+function waterFillDefaults(which) {
+  return which === 'waterColour'
+    ? DEFAULT_LOCATION_LAYER_COLORS.waterColourFill
+    : DEFAULT_LOCATION_LAYER_COLORS.waterEcologiesFill;
+}
+
+function waterFillListEl(which) {
+  return which === 'waterColour' ? els.waterColourFillList : els.waterEcologiesFillList;
+}
+
+function buildWaterFillList(which) {
+  const container = waterFillListEl(which);
+  if (!container || container.dataset.built === '1') return;
+  container.dataset.built = '1';
+  const stateKey = waterFillStateKey(which);
+  const defaults = waterFillDefaults(which);
+  const dataAttr = which === 'waterColour' ? 'waterColourFillKey' : 'waterEcologiesFillKey';
+
+  WATER_FILL_CATEGORIES.forEach(({ key, label }) => {
+    const row = document.createElement('div');
+    row.className = 'fill-category-row';
+
+    const heading = document.createElement('div');
+    heading.className = 'fill-category-heading';
+
+    const name = document.createElement('span');
+    name.className = 'fill-category-name';
+    name.textContent = label;
+    name.title = label;
+
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.className = 'layer-color';
+    colorInput.dataset[dataAttr] = key;
+    colorInput.setAttribute('aria-label', label + ' colour');
+    colorInput.value = state.layerColors[stateKey][key] || defaults[key];
+
+    colorInput.addEventListener('input', () => {
+      if (!isFacultyUser()) {
+        syncWaterFillListUI(which);
+        return;
+      }
+      state.layerColors[stateKey][key] = colorInput.value;
+      // Keep legacy single in sync with polygon01 for migration round-trips.
+      if (key === 'polygon01') {
+        state.layerColors[which] = colorInput.value;
+      }
+      restyleWaterLayer(which);
+    });
+    colorInput.addEventListener('change', () => {
+      if (!isFacultyUser()) {
+        syncWaterFillListUI(which);
+        return;
+      }
+      state.layerColors[stateKey][key] = colorInput.value;
+      if (key === 'polygon01') {
+        state.layerColors[which] = colorInput.value;
+      }
+      restyleWaterLayer(which);
+      saveLocationInputSettings();
+    });
+
+    heading.appendChild(name);
+    heading.appendChild(colorInput);
+    row.appendChild(heading);
+    container.appendChild(row);
+  });
+}
+
+function syncWaterFillListUI(which) {
+  buildWaterFillList(which);
+  const container = waterFillListEl(which);
+  if (!container) return;
+  const stateKey = waterFillStateKey(which);
+  const defaults = waterFillDefaults(which);
+  const fills = state.layerColors[stateKey] || defaults;
+  const selector = which === 'waterColour'
+    ? 'input[data-water-colour-fill-key]'
+    : 'input[data-water-ecologies-fill-key]';
+  container.querySelectorAll(selector).forEach((input) => {
+    const key = which === 'waterColour'
+      ? input.dataset.waterColourFillKey
+      : input.dataset.waterEcologiesFillKey;
+    input.value = fills[key] || defaults[key];
+  });
+}
+
 function restyleWaterLayer(key) {
-  const hex = state.layerColors[key] || DEFAULT_LOCATION_LAYER_COLORS[key];
   const layer = key === 'waterEcologies' ? waterEcologiesLayer : waterColourLayer;
-  if (layer) layer.setStyle(waterPolygonStyle(hex));
+  const styleFn = key === 'waterEcologies' ? waterEcologiesStyle : waterColourStyle;
+  if (layer) layer.setStyle(styleFn);
 }
 
 function restyleBuildingsLayer() {
@@ -1913,8 +2115,25 @@ function applyLocationLayerColors(data) {
     unpaved: pickColor(streetIn.unpaved, streetDef.unpaved),
     default: pickColor(streetIn.default, streetDef.default),
   };
-  // Missing buildingsFill keys fall back per-category so old docs still load cleanly.
   state.layerColors.buildingsFill = cloneBuildingsFill(colors.buildingsFill);
+
+  // Seed from legacy single colour only when fill maps are absent.
+  const legacyEco = (typeof colors.waterEcologies === 'string' && colors.waterEcologies)
+    ? colors.waterEcologies
+    : null;
+  const legacyColour = (typeof colors.waterColour === 'string' && colors.waterColour)
+    ? colors.waterColour
+    : null;
+  state.layerColors.waterEcologiesFill = cloneWaterFill(
+    colors.waterEcologiesFill,
+    DEFAULT_LOCATION_LAYER_COLORS.waterEcologiesFill,
+    legacyEco
+  );
+  state.layerColors.waterColourFill = cloneWaterFill(
+    colors.waterColourFill,
+    DEFAULT_LOCATION_LAYER_COLORS.waterColourFill,
+    legacyColour
+  );
 
   restyleAllLocationLayers();
   syncFacultyLayerColorUI();
@@ -1940,10 +2159,21 @@ function loadLocationInputSettings() {
 
 function saveLocationInputSettings() {
   if (!window.db || !isFacultyUser()) return Promise.resolve();
+  const ecoFill = cloneWaterFill(
+    state.layerColors.waterEcologiesFill,
+    DEFAULT_LOCATION_LAYER_COLORS.waterEcologiesFill,
+    null
+  );
+  const colourFill = cloneWaterFill(
+    state.layerColors.waterColourFill,
+    DEFAULT_LOCATION_LAYER_COLORS.waterColourFill,
+    null
+  );
   const payload = {
     layerColors: {
-      waterEcologies: state.layerColors.waterEcologies,
-      waterColour: state.layerColors.waterColour,
+      // Legacy singles kept in sync with polygon01 for older docs / migration.
+      waterEcologies: ecoFill.polygon01,
+      waterColour: colourFill.polygon01,
       buildings: state.layerColors.buildings,
       contours: state.layerColors.contours,
       streets: {
@@ -1953,6 +2183,8 @@ function saveLocationInputSettings() {
         default: state.layerColors.streets.default,
       },
       buildingsFill: cloneBuildingsFill(state.layerColors.buildingsFill),
+      waterEcologiesFill: ecoFill,
+      waterColourFill: colourFill,
     },
     updatedAt: new Date().toISOString(),
   };
@@ -1981,7 +2213,7 @@ async function ensureWaterEcologiesLayer() {
     if (!res.ok) throw new Error('Water Ecologies fetch failed');
     const gj = await res.json();
     waterEcologiesLayer = L.geoJSON(gj, {
-      style: waterPolygonStyle(state.layerColors.waterEcologies),
+      style: waterEcologiesStyle,
     });
     return waterEcologiesLayer;
   })();
@@ -2010,7 +2242,7 @@ async function ensureWaterColourLayer() {
     if (!res.ok) throw new Error('Water Colour fetch failed');
     const gj = await res.json();
     waterColourLayer = L.geoJSON(gj, {
-      style: waterPolygonStyle(state.layerColors.waterColour),
+      style: waterColourStyle,
     });
     return waterColourLayer;
   })();
@@ -3359,14 +3591,6 @@ function bindEvents() {
     });
   }
 
-  bindLayerColorInput(els.colorWaterEcologies, (v) => {
-    state.layerColors.waterEcologies = v;
-    restyleWaterLayer('waterEcologies');
-  });
-  bindLayerColorInput(els.colorWaterColour, (v) => {
-    state.layerColors.waterColour = v;
-    restyleWaterLayer('waterColour');
-  });
   bindLayerColorInput(els.colorBuildings, (v) => {
     state.layerColors.buildings = v;
     restyleBuildingsLayer();
@@ -3392,15 +3616,19 @@ function bindEvents() {
     restyleStreetsLayer();
   });
 
-  if (els.expandBuildingsFill && els.buildingsFillList) {
-    els.expandBuildingsFill.addEventListener('click', () => {
+  function bindFillExpandToggle(btn, list) {
+    if (!btn || !list) return;
+    btn.addEventListener('click', () => {
       if (!isFacultyUser()) return;
-      const isOpen = els.buildingsFillList.classList.contains('open');
-      els.buildingsFillList.classList.toggle('open', !isOpen);
-      els.expandBuildingsFill.classList.toggle('open', !isOpen);
-      els.expandBuildingsFill.setAttribute('aria-expanded', !isOpen ? 'true' : 'false');
+      const isOpen = list.classList.contains('open');
+      list.classList.toggle('open', !isOpen);
+      btn.classList.toggle('open', !isOpen);
+      btn.setAttribute('aria-expanded', !isOpen ? 'true' : 'false');
     });
   }
+  bindFillExpandToggle(els.expandBuildingsFill, els.buildingsFillList);
+  bindFillExpandToggle(els.expandWaterEcologiesFill, els.waterEcologiesFillList);
+  bindFillExpandToggle(els.expandWaterColourFill, els.waterColourFillList);
 
   els.zoomIn.addEventListener('click', () => {
     if (map) map.zoomIn();

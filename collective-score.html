@@ -709,6 +709,54 @@ nav {
   z-index: 1;
 }
 
+/**
+ * Screen-fixed white frame: covers everything outside a central viewport.
+ * Not canvas-tied — stays put while the score pans/zooms underneath.
+ */
+.site-frame-mask {
+  --site-frame-top: 6%;
+  --site-frame-right: 9%;
+  --site-frame-bottom: 6%;
+  --site-frame-left: 9%;
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.site-frame-mask__edge {
+  position: absolute;
+  background: #ffffff;
+}
+
+.site-frame-mask__edge--n {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--site-frame-top);
+}
+
+.site-frame-mask__edge--s {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--site-frame-bottom);
+}
+
+.site-frame-mask__edge--w {
+  top: var(--site-frame-top);
+  bottom: var(--site-frame-bottom);
+  left: 0;
+  width: var(--site-frame-left);
+}
+
+.site-frame-mask__edge--e {
+  top: var(--site-frame-top);
+  bottom: var(--site-frame-bottom);
+  right: 0;
+  width: var(--site-frame-right);
+}
+
 .leaflet-container {
   background: #ffffff;
   font-family: 'Media77', sans-serif;
@@ -1283,6 +1331,12 @@ nav {
     <div class="map-viewer">
       <div class="map-load-msg" id="scoreLoadMsg">Loading site layers…</div>
       <div class="map-area" id="scoreCanvasWrap"></div>
+      <div class="site-frame-mask" aria-hidden="true">
+        <div class="site-frame-mask__edge site-frame-mask__edge--n"></div>
+        <div class="site-frame-mask__edge site-frame-mask__edge--s"></div>
+        <div class="site-frame-mask__edge site-frame-mask__edge--w"></div>
+        <div class="site-frame-mask__edge site-frame-mask__edge--e"></div>
+      </div>
 
       <div class="compass" id="scoreCompass" aria-hidden="true">
         <svg width="32" height="32" viewBox="0 0 32 32">

@@ -422,6 +422,11 @@ select.lexicon-empty {
 
 .layer-toggle.on::after { left: 15px; }
 
+.layer-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .legend-item {
   display: flex;
   align-items: center;
@@ -704,6 +709,54 @@ select.lexicon-empty {
 }
 
 .map-btn:hover { background: var(--hi); }
+
+/**
+ * Screen-fixed white frame: covers everything outside a central viewport.
+ * Not map-tied — stays put while the map pans/zooms underneath.
+ */
+.site-frame-mask {
+  --site-frame-top: 6%;
+  --site-frame-right: 9%;
+  --site-frame-bottom: 6%;
+  --site-frame-left: 9%;
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.site-frame-mask__edge {
+  position: absolute;
+  background: #ffffff;
+}
+
+.site-frame-mask__edge--n {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--site-frame-top);
+}
+
+.site-frame-mask__edge--s {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--site-frame-bottom);
+}
+
+.site-frame-mask__edge--w {
+  top: var(--site-frame-top);
+  bottom: var(--site-frame-bottom);
+  left: 0;
+  width: var(--site-frame-left);
+}
+
+.site-frame-mask__edge--e {
+  top: var(--site-frame-top);
+  bottom: var(--site-frame-bottom);
+  right: 0;
+  width: var(--site-frame-right);
+}
 
 .map-load-msg {
   position: absolute;
@@ -1159,6 +1212,12 @@ select.lexicon-empty {
     <div class="map-viewer mode-picker" id="mapViewer">
       <div class="map-load-msg" id="mapLoadMsg">Loading site layers…</div>
       <div class="map-area" id="mapArea"></div>
+      <div class="site-frame-mask" aria-hidden="true">
+        <div class="site-frame-mask__edge site-frame-mask__edge--n"></div>
+        <div class="site-frame-mask__edge site-frame-mask__edge--s"></div>
+        <div class="site-frame-mask__edge site-frame-mask__edge--w"></div>
+        <div class="site-frame-mask__edge site-frame-mask__edge--e"></div>
+      </div>
       <div class="move-mode-banner" id="moveModeBanner" role="status">
         Tap the map to place this notation
         <button type="button" id="cancelMoveBtn">Cancel</button>
@@ -1341,18 +1400,11 @@ function waterFillKeyForLayer(layerValue) {
 }
 const FIT_BOUNDS_PADDING = [20, 20];
 const MAP_MIN_ZOOM = 12;
-/**
- * Fallback interactive pan/zoom clamp only (not used for data/export measurement).
- * Prefer getSiteNavBounds() from loaded streets+buildings when available.
- * Approx. coastal corridor — far tighter than the old regional box
- * ([38.48,-123.58]–[38.82,-123.30]).
- */
-const SITE_NAV_BOUNDS_FALLBACK = L.latLngBounds(
-  [38.640, -123.540],
-  [38.780, -123.355]
+/** Soft regional pan limit only (not the visual frame — see .site-frame-mask). */
+const SITE_MAX_BOUNDS = L.latLngBounds(
+  [38.48, -123.58],
+  [38.82, -123.30]
 );
-/** Extra room around streets+buildings for the interactive clamp. */
-const SITE_NAV_BOUNDS_PAD = 0.05;
 const SKETCH_FIELD_W = 600;
 const SKETCH_FIELD_H = 800;
 const SKETCH_PREVIEW_SIZE = 48;
@@ -1415,6 +1467,10 @@ let waterColourLoading = null;
 let observationsLayer = null;
 let siteLayerGroup = null;
 let pendingPlacement = null;
+/** True after the first locationInputSettings load attempt finishes (success or fallback). */
+let locationSettingsReady = false;
+/** In-flight / completed settings load promise — gates saves so defaults can't overwrite Firestore. */
+let locationSettingsPromise = null;
 
 const els = {};
 
@@ -1771,7 +1827,6 @@ function initMap() {
     zoomControl: false,
     attributionControl: false,
     minZoom: MAP_MIN_ZOOM,
-    maxBoundsViscosity: 1.0,
   });
   observationsLayer = L.layerGroup().addTo(map);
   map.on('click', onMapClick);
@@ -1790,14 +1845,6 @@ function onMapClick(e) {
   openConfirmOverlay(e.latlng.lng, e.latlng.lat, 'picker');
 }
 
-function getSiteNavBounds() {
-  if (siteLayerGroup) {
-    const b = siteLayerGroup.getBounds();
-    if (b.isValid()) return b.pad(SITE_NAV_BOUNDS_PAD);
-  }
-  return SITE_NAV_BOUNDS_FALLBACK;
-}
-
 function fitSiteBounds() {
   if (!map || !siteLayerGroup) return;
   const bounds = siteLayerGroup.getBounds();
@@ -1807,9 +1854,7 @@ function fitSiteBounds() {
 
 function applySiteMapConstraints() {
   if (!map) return;
-  // Hard clamp: users cannot zoom/pan out into empty regional ocean beyond the site.
-  map.setMaxBounds(getSiteNavBounds());
-  map.options.maxBoundsViscosity = 1.0;
+  map.setMaxBounds(SITE_MAX_BOUNDS);
 }
 
 function applyLayerVisibility() {
@@ -1847,6 +1892,67 @@ function applyLayerVisibility() {
       map.removeLayer(waterColourLayer);
     }
   }
+}
+
+function syncLayerToggleUI() {
+  const pairs = [
+    [els.toggleStreets, state.layers.streets],
+    [els.toggleBuildings, state.layers.buildings],
+    [els.toggleContours, state.layers.contours],
+    [els.toggleWaterEcologies, state.layers.waterEcologies],
+    [els.toggleWaterColour, state.layers.waterColour],
+  ];
+  pairs.forEach(([el, on]) => {
+    if (!el) return;
+    el.classList.toggle('on', !!on);
+    el.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+
+function applyLayerEditingGate() {
+  const canEdit = isFacultyUser();
+  [
+    els.toggleStreets,
+    els.toggleBuildings,
+    els.toggleContours,
+    els.toggleWaterEcologies,
+    els.toggleWaterColour,
+  ].forEach((el) => {
+    if (!el) return;
+    el.disabled = !canEdit;
+    el.title = canEdit ? '' : 'Only faculty can change shared layer settings';
+  });
+}
+
+async function ensureWaterLayersForVisibility() {
+  const tasks = [];
+  if (state.layers.waterEcologies) tasks.push(ensureWaterEcologiesLayer().catch(() => {}));
+  if (state.layers.waterColour) tasks.push(ensureWaterColourLayer().catch(() => {}));
+  if (tasks.length) await Promise.all(tasks);
+}
+
+function applyLocationLayerVisibility(data) {
+  const vis = (data && data.layerVisibility && typeof data.layerVisibility === 'object')
+    ? data.layerVisibility
+    : null;
+  const defaults = {
+    streets: true,
+    buildings: true,
+    contours: false,
+    waterEcologies: false,
+    waterColour: false,
+  };
+  state.layers.streets = vis && typeof vis.streets === 'boolean' ? vis.streets : defaults.streets;
+  state.layers.buildings = vis && typeof vis.buildings === 'boolean' ? vis.buildings : defaults.buildings;
+  state.layers.contours = vis && typeof vis.contours === 'boolean' ? vis.contours : defaults.contours;
+  state.layers.waterEcologies = vis && typeof vis.waterEcologies === 'boolean'
+    ? vis.waterEcologies
+    : defaults.waterEcologies;
+  state.layers.waterColour = vis && typeof vis.waterColour === 'boolean'
+    ? vis.waterColour
+    : defaults.waterColour;
+  syncLayerToggleUI();
+  applyLayerEditingGate();
 }
 
 function isFacultyUser() {
@@ -2158,26 +2264,46 @@ function applyLocationLayerColors(data) {
   syncFacultyLayerColorUI();
 }
 
+function applyLocationInputSettings(data) {
+  applyLocationLayerColors(data);
+  applyLocationLayerVisibility(data);
+}
+
 function loadLocationInputSettings() {
-  if (!window.db) {
-    applyLocationLayerColors(null);
-    return Promise.resolve();
-  }
-  return window.db.collection(LOCATION_INPUT_SETTINGS_PATH.collection)
-    .doc(LOCATION_INPUT_SETTINGS_PATH.doc)
-    .get()
-    .then((doc) => {
-      if (doc.exists) applyLocationLayerColors(doc.data());
-      else applyLocationLayerColors(null);
-    })
-    .catch((err) => {
+  locationSettingsPromise = (async () => {
+    try {
+      if (!window.db) {
+        applyLocationInputSettings(null);
+        return null;
+      }
+      const doc = await window.db.collection(LOCATION_INPUT_SETTINGS_PATH.collection)
+        .doc(LOCATION_INPUT_SETTINGS_PATH.doc)
+        .get();
+      if (doc.exists) {
+        console.log('[location-input] Loaded locationInputSettings/current', doc.data());
+        applyLocationInputSettings(doc.data());
+        return doc.data();
+      }
+      console.log('[location-input] No locationInputSettings/current yet; using defaults.');
+      applyLocationInputSettings(null);
+      return null;
+    } catch (err) {
       console.warn('[location-input] Failed to load locationInputSettings:', err);
-      applyLocationLayerColors(null);
-    });
+      applyLocationInputSettings(null);
+      return null;
+    } finally {
+      locationSettingsReady = true;
+    }
+  })();
+  return locationSettingsPromise;
 }
 
 function saveLocationInputSettings() {
   if (!window.db || !isFacultyUser()) return Promise.resolve();
+  // Never write until the initial load has finished — otherwise defaults overwrite saved colours.
+  if (!locationSettingsReady) {
+    return (locationSettingsPromise || Promise.resolve()).then(() => saveLocationInputSettings());
+  }
   const ecoFill = cloneWaterFill(
     state.layerColors.waterEcologiesFill,
     DEFAULT_LOCATION_LAYER_COLORS.waterEcologiesFill,
@@ -2205,6 +2331,13 @@ function saveLocationInputSettings() {
       waterEcologiesFill: ecoFill,
       waterColourFill: colourFill,
     },
+    layerVisibility: {
+      streets: !!state.layers.streets,
+      buildings: !!state.layers.buildings,
+      contours: !!state.layers.contours,
+      waterEcologies: !!state.layers.waterEcologies,
+      waterColour: !!state.layers.waterColour,
+    },
     updatedAt: new Date().toISOString(),
   };
   return window.db.collection(LOCATION_INPUT_SETTINGS_PATH.collection)
@@ -2215,7 +2348,7 @@ function saveLocationInputSettings() {
     })
     .catch((err) => {
       console.error('[location-input] Failed to save locationInputSettings:', err);
-      alert('Could not save layer colour, check your connection and try again.');
+      alert('Could not save layer settings, check your connection and try again.');
     });
 }
 
@@ -3504,7 +3637,11 @@ async function loadGeoLayers() {
     }
     siteLayerGroup = L.featureGroup([streetsLayer, buildingsLayer]);
 
+    // Settings may have landed before layers existed (restyle was a no-op); re-apply now.
+    restyleAllLocationLayers();
+    await ensureWaterLayersForVisibility();
     applyLayerVisibility();
+    syncLayerToggleUI();
     mapData.ready = true;
     els.mapLoadMsg.style.display = 'none';
     map.invalidateSize();
@@ -3542,42 +3679,45 @@ function bindEvents() {
   }
 
   els.toggleStreets.addEventListener('click', () => {
+    if (!isFacultyUser()) return;
     state.layers.streets = !state.layers.streets;
-    els.toggleStreets.classList.toggle('on', state.layers.streets);
-    els.toggleStreets.setAttribute('aria-pressed', state.layers.streets);
+    syncLayerToggleUI();
     applyLayerVisibility();
+    saveLocationInputSettings();
   });
 
   els.toggleBuildings.addEventListener('click', () => {
+    if (!isFacultyUser()) return;
     state.layers.buildings = !state.layers.buildings;
-    els.toggleBuildings.classList.toggle('on', state.layers.buildings);
-    els.toggleBuildings.setAttribute('aria-pressed', state.layers.buildings);
+    syncLayerToggleUI();
     applyLayerVisibility();
+    saveLocationInputSettings();
   });
 
   els.toggleContours.addEventListener('click', () => {
+    if (!isFacultyUser()) return;
     state.layers.contours = !state.layers.contours;
-    els.toggleContours.classList.toggle('on', state.layers.contours);
-    els.toggleContours.setAttribute('aria-pressed', state.layers.contours);
+    syncLayerToggleUI();
     applyLayerVisibility();
+    saveLocationInputSettings();
   });
 
   async function toggleWaterLayer(key, toggleEl, ensureFn) {
+    if (!isFacultyUser()) return;
     state.layers[key] = !state.layers[key];
-    toggleEl.classList.toggle('on', state.layers[key]);
-    toggleEl.setAttribute('aria-pressed', state.layers[key]);
+    syncLayerToggleUI();
     if (state.layers[key]) {
       try {
         await ensureFn();
       } catch (_) {
         state.layers[key] = false;
-        toggleEl.classList.remove('on');
-        toggleEl.setAttribute('aria-pressed', 'false');
+        syncLayerToggleUI();
         alert('Could not load this water layer. Check your connection and try again.');
         return;
       }
     }
     applyLayerVisibility();
+    saveLocationInputSettings();
   }
 
   if (els.toggleWaterEcologies) {
@@ -3696,8 +3836,11 @@ function init() {
   renderNotationList();
   bindEvents();
   syncFacultyLayerColorUI();
-  loadLocationInputSettings();
-  loadGeoLayers();
+  applyLayerEditingGate();
+  // Load settings into state first, then build layers so first paint uses saved colours.
+  loadLocationInputSettings().then(() => {
+    loadGeoLayers();
+  });
   setTimeout(() => {
     updateLexiconField();
     loadMyObservations();
@@ -3706,6 +3849,7 @@ function init() {
 
 window.onAuthSessionChange = function onAuthSessionChange() {
   syncFacultyLayerColorUI();
+  applyLayerEditingGate();
 };
 
 if (domReady()) {

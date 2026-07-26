@@ -309,7 +309,6 @@ function windowResized() {
   const wrap = document.getElementById('scoreCanvasWrap');
   if (!wrap) return;
   resizeCanvas(wrap.clientWidth, wrap.clientHeight);
-  clampInteractiveNavigation();
   redraw();
 }
 
@@ -321,7 +320,6 @@ function setScoreMode(mode) {
   }
   scoreMode = mode;
   syncModeButtons();
-  clampInteractiveNavigation();
   redraw();
 }
 
@@ -452,7 +450,6 @@ async function loadScoreLayers() {
     console.log('[buildings-center] pan set after load', { panRX: panRX, panRY: panRY });
     scoreReady = true;
     if (statusEl) statusEl.style.display = 'none';
-    clampInteractiveNavigation();
     redraw();
     console.log('[buildings-center] pan after first redraw', { panRX: panRX, panRY: panRY });
     // Catch late overwrites (Firestore, other init) within the next couple frames/ticks.
@@ -984,87 +981,6 @@ function computeSiteBoundsFt() {
     widthFt: Math.max(maxRx - minRx, 1),
     heightFt: Math.max(maxRy - minRy, 1),
   };
-}
-
-/**
- * Interactive View/Grid navigation envelope only (pan/zoom clamp on screen).
- * Does NOT feed atlas sizing, print tiling, or export — those keep using
- * computeSiteBoundsFt() unchanged.
- * Same feature set as Location Input's nav clamp: streets + buildings, + pad.
- */
-const VIEW_NAV_BOUNDS_PAD = 0.05;
-
-function computeViewNavBoundsFt() {
-  const features = [
-    ...(scoreLayers.streets || []),
-    ...(scoreLayers.buildings || []),
-  ];
-  if (!features.length || !scoreCentroid) return null;
-  const bounds = computeLngLatBounds(features);
-  if (!isFinite(bounds.minLng)) return null;
-  const padLng = (bounds.maxLng - bounds.minLng) * VIEW_NAV_BOUNDS_PAD;
-  const padLat = (bounds.maxLat - bounds.minLat) * VIEW_NAV_BOUNDS_PAD;
-  const corners = [
-    [bounds.minLng - padLng, bounds.minLat - padLat],
-    [bounds.maxLng + padLng, bounds.minLat - padLat],
-    [bounds.maxLng + padLng, bounds.maxLat + padLat],
-    [bounds.minLng - padLng, bounds.maxLat + padLat],
-  ];
-  let minRx = Infinity, maxRx = -Infinity, minRy = Infinity, maxRy = -Infinity;
-  corners.forEach(([lng, lat]) => {
-    const { rx, ry } = toRotatedFeet(lng, lat);
-    if (rx < minRx) minRx = rx;
-    if (rx > maxRx) maxRx = rx;
-    if (ry < minRy) minRy = ry;
-    if (ry > maxRy) maxRy = ry;
-  });
-  if (!isFinite(minRx)) return null;
-  return {
-    minRx: minRx,
-    maxRx: maxRx,
-    minRy: minRy,
-    maxRy: maxRy,
-    widthFt: Math.max(maxRx - minRx, 1),
-    heightFt: Math.max(maxRy - minRy, 1),
-  };
-}
-
-/**
- * Keep View/Grid browsing inside the site corridor so users cannot zoom/pan
- * out into empty ocean/hatch. Sheet / Print Preview are left alone.
- */
-function clampInteractiveNavigation() {
-  if (!scoreReady) return;
-  if (scoreMode !== 'view' && scoreMode !== 'grid') return;
-  const nav = computeViewNavBoundsFt();
-  if (!nav) return;
-
-  const geo = getActiveGeometry();
-  if (!(geo && geo.pxPerFt > 0) || !(viewZoom > 0)) return;
-
-  // Most-zoomed-out allowed: viewport must not exceed the nav box.
-  const basePxPerFt = geo.pxPerFt / viewZoom;
-  if (!(basePxPerFt > 0)) return;
-  const minPxPerFt = Math.max(width / nav.widthFt, height / nav.heightFt);
-  const minZoom = minPxPerFt / basePxPerFt;
-  if (viewZoom < minZoom) viewZoom = minZoom;
-  viewZoom = Math.min(40, viewZoom);
-
-  const geo2 = getActiveGeometry();
-  if (!(geo2 && geo2.pxPerFt > 0)) return;
-  const halfW = (width / 2) / geo2.pxPerFt;
-  const halfH = (height / 2) / geo2.pxPerFt;
-
-  const minCX = nav.minRx + halfW;
-  const maxCX = nav.maxRx - halfW;
-  const minCY = nav.minRy + halfH;
-  const maxCY = nav.maxRy - halfH;
-
-  if (minCX <= maxCX) panRX = Math.min(maxCX, Math.max(minCX, panRX));
-  else panRX = (nav.minRx + nav.maxRx) / 2;
-
-  if (minCY <= maxCY) panRY = Math.min(maxCY, Math.max(minCY, panRY));
-  else panRY = (nav.minRy + nav.maxRy) / 2;
 }
 
 /** Buildings literal AABB in rotated-feet (atlas grid centering anchor). */
@@ -2754,7 +2670,6 @@ function mouseDragged() {
   if (Math.hypot(dxPx, dyPx) > CLICK_MOVE_THRESH_PX) pointerDidPan = true;
   panRX = dragStartPanRX - dxPx / geo.pxPerFt;
   panRY = dragStartPanRY + dyPx / geo.pxPerFt;
-  clampInteractiveNavigation();
   redraw();
 }
 
@@ -2782,7 +2697,6 @@ function mouseWheel(event) {
   if (scoreMode !== 'view' && scoreMode !== 'grid') return false;
   const factor = event.delta > 0 ? 0.9 : 1.1;
   viewZoom = Math.min(40, Math.max(0.1, viewZoom * factor));
-  clampInteractiveNavigation();
   redraw();
   return false;
 }

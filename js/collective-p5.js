@@ -22,7 +22,14 @@
 // and contours as reference; Sheet, Print Preview, and SVG export are marks
 // only (contours still draw when that layer is on).
 
-let scoreLayers = { streets: [], buildings: [], contours: [], vegetation: [], waterEcologies: [] };
+let scoreLayers = {
+  streets: [],
+  buildings: [],
+  contours: [],
+  vegetation: [],
+  vegetationDensity: [],
+  waterEcologies: [],
+};
 let scoreCentroid = null;
 let scoreReady = false;
 
@@ -382,9 +389,10 @@ function bindModeControls() {
 async function loadScoreLayers() {
   const statusEl = document.getElementById('scoreLoadMsg');
   try {
-    const [streetsRes, buildingsRes] = await Promise.all([
+    const [streetsRes, buildingsRes, densityRes] = await Promise.all([
       fetch('geojson/searanch-roads.geojson'),
       fetch('geojson/searanch-buildings.geojson'),
+      fetch('geojson/vegetation_density.geojson'),
     ]);
     if (!streetsRes.ok || !buildingsRes.ok) throw new Error('GeoJSON fetch failed');
     const streets = await streetsRes.json();
@@ -394,6 +402,28 @@ async function loadScoreLayers() {
     scoreLayers.streets = prepared.streets.features;
     scoreLayers.buildings = prepared.buildings.features;
     // Contours load only when the Contours toggle is on (see loadContoursLayer).
+
+    // Vegetation Density: eager-load (~1MB, simple rings). Bin ABS_COVER into
+    // 7 equal-count quantile classes at load; skip empty geometries.
+    if (densityRes.ok) {
+      try {
+        const density = await densityRes.json();
+        scoreLayers.vegetationDensity = prepareVegetationDensityFeatures(
+          (density && density.features) || []
+        );
+        console.log(
+          '[collective-score] Vegetation Density loaded:',
+          scoreLayers.vegetationDensity.length,
+          'binned features'
+        );
+      } catch (densityErr) {
+        console.error('Vegetation Density layer failed to parse:', densityErr);
+        scoreLayers.vegetationDensity = [];
+      }
+    } else {
+      console.warn('Vegetation Density geojson fetch failed:', densityRes.status);
+      scoreLayers.vegetationDensity = [];
+    }
 
     const bounds = computeLngLatBounds([
       ...scoreLayers.streets,
@@ -435,6 +465,70 @@ async function loadScoreLayers() {
     console.error(err);
     if (statusEl) statusEl.textContent = 'Unable to load site layers.';
   }
+}
+
+/** QGIS-matching equal-count labels for Vegetation Density ABS_COVER bins. */
+const VEGETATION_DENSITY_BIN_LABELS = [
+  'Bare / Sparse',
+  'Open Vegetation',
+  'Light Cover',
+  'Moderate Cover',
+  'Dense Cover',
+  'Woodland',
+  'Closed Canopy',
+];
+
+function featureHasUsablePolygonGeometry(f) {
+  if (!f || !f.geometry) return false;
+  const g = f.geometry;
+  const polys = g.type === 'MultiPolygon'
+    ? g.coordinates
+    : (g.type === 'Polygon' ? [g.coordinates] : null);
+  if (!polys || !polys.length) return false;
+  for (let i = 0; i < polys.length; i++) {
+    const outer = polys[i] && polys[i][0];
+    if (!outer || outer.length < 3) continue;
+    // Need at least 3 distinct positions (closed rings may repeat the first point).
+    let distinct = 0;
+    let prev = null;
+    for (let j = 0; j < outer.length; j++) {
+      const p = outer[j];
+      if (!p || p.length < 2) continue;
+      if (!prev || p[0] !== prev[0] || p[1] !== prev[1]) {
+        distinct += 1;
+        prev = p;
+        if (distinct >= 3) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Filter empty geometries, sort by ABS_COVER, assign DensityClass via
+ * index-based equal-count quantiles: bin = floor(rank * 7 / n).
+ */
+function prepareVegetationDensityFeatures(features) {
+  const usable = [];
+  (features || []).forEach((f) => {
+    if (!featureHasUsablePolygonGeometry(f)) return;
+    const raw = f.properties && f.properties.ABS_COVER;
+    const v = Number(raw);
+    if (!Number.isFinite(v)) return;
+    usable.push({ f: f, v: v });
+  });
+  usable.sort((a, b) => {
+    if (a.v !== b.v) return a.v - b.v;
+    return 0;
+  });
+  const n = usable.length;
+  if (!n) return [];
+  usable.forEach((item, rank) => {
+    const bin = Math.min(6, Math.floor((rank * 7) / n));
+    if (!item.f.properties) item.f.properties = {};
+    item.f.properties.DensityClass = VEGETATION_DENSITY_BIN_LABELS[bin];
+  });
+  return usable.map((item) => item.f);
 }
 
 let vegetationLoaded = false;
@@ -1547,6 +1641,9 @@ function forEachBaseLayerStamp(geo, callback, options) {
   const streets = opts.streets != null ? opts.streets : scoreLayers.streets;
   const buildings = opts.buildings != null ? opts.buildings : scoreLayers.buildings;
   const vegetation = opts.vegetation != null ? opts.vegetation : scoreLayers.vegetation;
+  const vegetationDensity = opts.vegetationDensity != null
+    ? opts.vegetationDensity
+    : scoreLayers.vegetationDensity;
   const waterEcologies = opts.waterEcologies != null ? opts.waterEcologies : scoreLayers.waterEcologies;
   const drawOutlines = !!opts.drawOutlines;
 
@@ -1564,12 +1661,19 @@ function forEachBaseLayerStamp(geo, callback, options) {
     endShape(CLOSE);
   }
 
-  // Paint order: water under vegetation, then streets, buildings.
+  // Paint order: water → density → vegetation types → streets → buildings.
   // forEachCategorizedMarkStamp dedupes lattice points within each layer
-  // (first feature wins) — required for Water Ecologies' heavy overlaps.
+  // (first feature wins) — required where polygons overlap.
   if (state.layers.waterEcologies) {
     forEachCategorizedMarkStamp(
       geo, waterEcologies, 'Layer', 'waterEcologies', callback,
+      drawOutlines ? outlineDrawer : null
+    );
+  }
+
+  if (state.layers.vegetationDensity) {
+    forEachCategorizedMarkStamp(
+      geo, vegetationDensity, 'DensityClass', 'vegetationDensity', callback,
       drawOutlines ? outlineDrawer : null
     );
   }
@@ -3162,11 +3266,19 @@ function appendBaseLayerMarksSvg(geo, defs, plotParts, layerOpts, clipState) {
   const streets = opts.streets != null ? opts.streets : scoreLayers.streets;
   const buildings = opts.buildings != null ? opts.buildings : scoreLayers.buildings;
   const vegetation = opts.vegetation != null ? opts.vegetation : scoreLayers.vegetation;
+  const vegetationDensity = opts.vegetationDensity != null
+    ? opts.vegetationDensity
+    : scoreLayers.vegetationDensity;
   const waterEcologies = opts.waterEcologies != null ? opts.waterEcologies : scoreLayers.waterEcologies;
 
   if (state.layers.waterEcologies) {
     appendOneBaseLayerSvg(geo, defs, plotParts, 'waterEcologies', 'water ecologies', 'waterEcologies', (cb) => {
       forEachCategorizedMarkStamp(geo, waterEcologies, 'Layer', 'waterEcologies', cb, null);
+    }, clipState);
+  }
+  if (state.layers.vegetationDensity) {
+    appendOneBaseLayerSvg(geo, defs, plotParts, 'vegetationDensity', 'vegetation density', 'vegetationDensity', (cb) => {
+      forEachCategorizedMarkStamp(geo, vegetationDensity, 'DensityClass', 'vegetationDensity', cb, null);
     }, clipState);
   }
   if (state.layers.vegetation) {
@@ -3321,6 +3433,7 @@ function buildSelectedSheetSvgString(options) {
   const streetsF = filterFeaturesToSheet(scoreLayers.streets, sheet, sheetBufferFt);
   const buildingsF = filterFeaturesToSheet(scoreLayers.buildings, sheet, sheetBufferFt);
   const vegetationF = filterFeaturesToSheet(scoreLayers.vegetation, sheet, sheetBufferFt);
+  const vegetationDensityF = filterFeaturesToSheet(scoreLayers.vegetationDensity, sheet, sheetBufferFt);
   const waterEcologiesF = filterFeaturesToSheet(scoreLayers.waterEcologies, sheet, sheetBufferFt);
   const contoursF = filterFeaturesToSheet(scoreLayers.contours, sheet, sheetBufferFt);
 
@@ -3346,6 +3459,7 @@ function buildSelectedSheetSvgString(options) {
       streets: streetsF,
       buildings: buildingsF,
       vegetation: vegetationF,
+      vegetationDensity: vegetationDensityF,
       waterEcologies: waterEcologiesF,
       drawOutlines: false,
     }, exportClipState);
@@ -3393,6 +3507,7 @@ function buildSelectedSheetSvgString(options) {
     streets: streetsF.length + '/' + scoreLayers.streets.length,
     buildings: buildingsF.length + '/' + scoreLayers.buildings.length,
     vegetation: vegetationF.length + '/' + scoreLayers.vegetation.length,
+    vegetationDensity: vegetationDensityF.length + '/' + scoreLayers.vegetationDensity.length,
     waterEcologies: waterEcologiesF.length + '/' + scoreLayers.waterEcologies.length,
     contours: contoursF.length + '/' + scoreLayers.contours.length,
     textElements: textCount,

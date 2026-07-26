@@ -1785,22 +1785,32 @@ function drawContours(geo) {
 }
 
 /**
- * World-space white mask outside the streets+buildings site AABB.
- * Hole is exactly computeSiteBoundsFt() — flush to the data extent, no %-padding.
+ * Site exterior mask — STATIC hole in rotated feet (same frame as toRotatedFeet).
+ * Tweak these four numbers directly to nudge each edge; no GeoJSON / layer bounds.
+ *   left   = minRx (decrease to open west / increase to crop west)
+ *   right  = maxRx
+ *   bottom = minRy
+ *   top    = maxRy
+ * Initial guess ≈ previous streets+buildings AABB (flush crop that rendered correctly).
  */
+const SITE_MASK_HOLE_LEFT = -6405;
+const SITE_MASK_HOLE_RIGHT = 5932;
+const SITE_MASK_HOLE_BOTTOM = -32243;
+const SITE_MASK_HOLE_TOP = 29650;
 const SITE_MASK_OUTER_MULT = 5;
 
 function getSiteMaskBandsFt() {
-  const site = computeSiteBoundsFt();
   const hole = {
-    minRx: site.minRx,
-    maxRx: site.maxRx,
-    minRy: site.minRy,
-    maxRy: site.maxRy,
+    minRx: SITE_MASK_HOLE_LEFT,
+    maxRx: SITE_MASK_HOLE_RIGHT,
+    minRy: SITE_MASK_HOLE_BOTTOM,
+    maxRy: SITE_MASK_HOLE_TOP,
   };
-  const span = Math.max(site.widthFt, site.heightFt) * SITE_MASK_OUTER_MULT;
-  const cx = (site.minRx + site.maxRx) / 2;
-  const cy = (site.minRy + site.maxRy) / 2;
+  const widthFt = Math.max(hole.maxRx - hole.minRx, 1);
+  const heightFt = Math.max(hole.maxRy - hole.minRy, 1);
+  const span = Math.max(widthFt, heightFt) * SITE_MASK_OUTER_MULT;
+  const cx = (hole.minRx + hole.maxRx) / 2;
+  const cy = (hole.minRy + hole.maxRy) / 2;
   const outer = {
     minRx: cx - span,
     maxRx: cx + span,

@@ -1793,10 +1793,10 @@ function drawContours(geo) {
  *   top    = maxRy
  * Initial guess ≈ previous streets+buildings AABB (flush crop that rendered correctly).
  */
-const SITE_MASK_HOLE_LEFT = -6405;
-const SITE_MASK_HOLE_RIGHT = 5932;
-const SITE_MASK_HOLE_BOTTOM = -32243;
-const SITE_MASK_HOLE_TOP = 29650;
+const SITE_MASK_HOLE_LEFT = -43416;
+const SITE_MASK_HOLE_RIGHT = 42943;
+const SITE_MASK_HOLE_BOTTOM = -47716.25;
+const SITE_MASK_HOLE_TOP = 45123.25;
 const SITE_MASK_OUTER_MULT = 5;
 
 function getSiteMaskBandsFt() {

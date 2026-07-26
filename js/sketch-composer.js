@@ -883,8 +883,16 @@ const FIELD_H = 800;
       const fillMode = m && CLOSED.has(m.type) ? m.fill : S.fill;
       const angleRow = document.getElementById('row-fill-angle');
       const densityRow = document.getElementById('row-fill-density');
-      if (angleRow) angleRow.style.display = fillMode === 'line' ? '' : 'none';
-      if (densityRow) densityRow.style.display = (fillMode === 'line' || fillMode === 'dot') ? '' : 'none';
+      const angleDisplay = fillMode === 'line' ? '' : 'none';
+      const densityDisplay = (fillMode === 'line' || fillMode === 'dot') ? '' : 'none';
+      const angleWas = angleRow ? angleRow.style.display : null;
+      const densityWas = densityRow ? densityRow.style.display : null;
+      if (angleRow) angleRow.style.display = angleDisplay;
+      if (densityRow) densityRow.style.display = densityDisplay;
+      // Reflow canvas when fill rows appear/hide so #sketch-stage doesn't clip them.
+      if ((angleRow && angleWas !== angleDisplay) || (densityRow && densityWas !== densityDisplay)) {
+        layoutStage();
+      }
       document.querySelectorAll('.wt').forEach(b => {
         b.classList.toggle('on', Number(b.dataset.w) === (m ? m.weight : S.weight));
       });

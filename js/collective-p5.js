@@ -394,7 +394,6 @@ async function loadScoreLayers() {
       fetch('geojson/searanch-roads.geojson'),
       fetch('geojson/searanch-buildings.geojson'),
       fetch('geojson/vegetation_density.geojson'),
-      loadWaterEcologiesBounds(),
     ]);
     if (!streetsRes.ok || !buildingsRes.ok) throw new Error('GeoJSON fetch failed');
     const streets = await streetsRes.json();
@@ -1786,100 +1785,22 @@ function drawContours(geo) {
 }
 
 /**
- * Water Ecologies AABB in lng/lat (from sidecar). Mask boundary only —
- * not used for atlas / computeSiteBoundsFt. Water Colour is excluded.
- */
-let waterEcologiesBoundsLngLat = null;
-
-async function loadWaterEcologiesBounds() {
-  try {
-    const res = await fetch('geojson/water-ecologies-bounds.json');
-    if (!res.ok) throw new Error('water-ecologies-bounds fetch failed');
-    const data = await res.json();
-    if (
-      typeof data.minLng === 'number' && typeof data.maxLng === 'number' &&
-      typeof data.minLat === 'number' && typeof data.maxLat === 'number'
-    ) {
-      waterEcologiesBoundsLngLat = {
-        minLng: data.minLng,
-        maxLng: data.maxLng,
-        minLat: data.minLat,
-        maxLat: data.maxLat,
-      };
-      console.log('[collective-score] Water Ecologies mask bounds loaded', waterEcologiesBoundsLngLat);
-    }
-  } catch (err) {
-    console.warn('[collective-score] Failed to load water-ecologies-bounds.json; mask uses site AABB only:', err);
-    waterEcologiesBoundsLngLat = null;
-  }
-}
-
-/** Water Ecologies AABB in rotated-feet (corner transform of lng/lat box). */
-function computeWaterEcologiesBoundsFt() {
-  if (!waterEcologiesBoundsLngLat || !scoreCentroid) return null;
-  const b = waterEcologiesBoundsLngLat;
-  const corners = [
-    [b.minLng, b.minLat],
-    [b.maxLng, b.minLat],
-    [b.maxLng, b.maxLat],
-    [b.minLng, b.maxLat],
-  ];
-  let minRx = Infinity, maxRx = -Infinity, minRy = Infinity, maxRy = -Infinity;
-  corners.forEach(([lng, lat]) => {
-    const { rx, ry } = toRotatedFeet(lng, lat);
-    if (rx < minRx) minRx = rx;
-    if (rx > maxRx) maxRx = rx;
-    if (ry < minRy) minRy = ry;
-    if (ry > maxRy) maxRy = ry;
-  });
-  if (!isFinite(minRx)) return null;
-  return {
-    minRx: minRx,
-    maxRx: maxRx,
-    minRy: minRy,
-    maxRy: maxRy,
-    widthFt: Math.max(maxRx - minRx, 1),
-    heightFt: Math.max(maxRy - minRy, 1),
-  };
-}
-
-/** Per-edge intersection: keep the tighter (more inward) limit on each side. */
-function intersectBoundsFt(a, b) {
-  const minRx = Math.max(a.minRx, b.minRx);
-  const maxRx = Math.min(a.maxRx, b.maxRx);
-  const minRy = Math.max(a.minRy, b.minRy);
-  const maxRy = Math.min(a.maxRy, b.maxRy);
-  if (!(maxRx > minRx) || !(maxRy > minRy)) return null;
-  return {
-    minRx: minRx,
-    maxRx: maxRx,
-    minRy: minRy,
-    maxRy: maxRy,
-    widthFt: Math.max(maxRx - minRx, 1),
-    heightFt: Math.max(maxRy - minRy, 1),
-  };
-}
-
-/**
- * World-space white mask. Hole = per-edge intersection of streets+buildings
- * (computeSiteBoundsFt) with Water Ecologies AABB. Water Colour does not
- * participate. Atlas / print still use computeSiteBoundsFt() unchanged.
+ * World-space white mask outside the streets+buildings site AABB.
+ * Hole is exactly computeSiteBoundsFt() — flush to the data extent, no %-padding.
  */
 const SITE_MASK_OUTER_MULT = 5;
 
 function getSiteMaskBandsFt() {
   const site = computeSiteBoundsFt();
-  const water = computeWaterEcologiesBoundsFt();
-  const holeSrc = (water && intersectBoundsFt(site, water)) || site;
   const hole = {
-    minRx: holeSrc.minRx,
-    maxRx: holeSrc.maxRx,
-    minRy: holeSrc.minRy,
-    maxRy: holeSrc.maxRy,
+    minRx: site.minRx,
+    maxRx: site.maxRx,
+    minRy: site.minRy,
+    maxRy: site.maxRy,
   };
-  const span = Math.max(holeSrc.widthFt, holeSrc.heightFt) * SITE_MASK_OUTER_MULT;
-  const cx = (hole.minRx + hole.maxRx) / 2;
-  const cy = (hole.minRy + hole.maxRy) / 2;
+  const span = Math.max(site.widthFt, site.heightFt) * SITE_MASK_OUTER_MULT;
+  const cx = (site.minRx + site.maxRx) / 2;
+  const cy = (site.minRy + site.maxRy) / 2;
   const outer = {
     minRx: cx - span,
     maxRx: cx + span,

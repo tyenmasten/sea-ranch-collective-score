@@ -1,7 +1,0 @@
-{
-  "minLng": -123.792647,
-  "minLat": 38.169134,
-  "maxLng": -122.913857,
-  "maxLat": 38.894624,
-  "note": "AABB of Water_ecologies.geojson only (Polygon01–07). Used for site-mask per-edge intersection with streets+buildings. Water Colour is not included. Regenerate if Water_ecologies.geojson changes."
-}

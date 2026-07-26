@@ -1784,6 +1784,104 @@ function drawContours(geo) {
   });
 }
 
+/**
+ * World-space white mask outside the streets+buildings site AABB.
+ * Covers messy water/empty ocean beyond the corridor; pans/zooms with the drawing.
+ * Hole is slightly expanded so edge streets/buildings are not clipped.
+ */
+const SITE_MASK_HOLE_PAD = 0.02;
+const SITE_MASK_OUTER_MULT = 5;
+
+function getSiteMaskBandsFt() {
+  const site = computeSiteBoundsFt();
+  const padW = site.widthFt * SITE_MASK_HOLE_PAD;
+  const padH = site.heightFt * SITE_MASK_HOLE_PAD;
+  const hole = {
+    minRx: site.minRx - padW,
+    maxRx: site.maxRx + padW,
+    minRy: site.minRy - padH,
+    maxRy: site.maxRy + padH,
+  };
+  const span = Math.max(site.widthFt, site.heightFt) * SITE_MASK_OUTER_MULT;
+  const cx = (site.minRx + site.maxRx) / 2;
+  const cy = (site.minRy + site.maxRy) / 2;
+  const outer = {
+    minRx: cx - span,
+    maxRx: cx + span,
+    minRy: cy - span,
+    maxRy: cy + span,
+  };
+  return { hole: hole, outer: outer };
+}
+
+function drawWorldRectFt(minRx, minRy, maxRx, maxRy, geo) {
+  if (!(maxRx > minRx) || !(maxRy > minRy)) return;
+  const sw = rotatedFeetToScreen(minRx, minRy, geo);
+  const se = rotatedFeetToScreen(maxRx, minRy, geo);
+  const ne = rotatedFeetToScreen(maxRx, maxRy, geo);
+  const nw = rotatedFeetToScreen(minRx, maxRy, geo);
+  beginShape();
+  vertex(sw.x, sw.y);
+  vertex(se.x, se.y);
+  vertex(ne.x, ne.y);
+  vertex(nw.x, nw.y);
+  endShape(CLOSE);
+}
+
+function drawSiteExteriorMask(geo) {
+  if (!scoreReady) return;
+  const bands = getSiteMaskBandsFt();
+  if (!bands) return;
+  const hole = bands.hole;
+  const outer = bands.outer;
+  noStroke();
+  fill(255);
+  // Four bands around the site hole (same rotated-feet frame as streets/buildings).
+  drawWorldRectFt(outer.minRx, hole.maxRy, outer.maxRx, outer.maxRy, geo);
+  drawWorldRectFt(outer.minRx, outer.minRy, outer.maxRx, hole.minRy, geo);
+  drawWorldRectFt(outer.minRx, hole.minRy, hole.minRx, hole.maxRy, geo);
+  drawWorldRectFt(hole.maxRx, hole.minRy, outer.maxRx, hole.maxRy, geo);
+}
+
+function appendSiteExteriorMaskSvg(geo, plotParts) {
+  const bands = getSiteMaskBandsFt();
+  if (!bands || !(geo && geo.pxPerInch > 0)) return;
+  const hole = bands.hole;
+  const outer = bands.outer;
+  const rects = [
+    [outer.minRx, hole.maxRy, outer.maxRx, outer.maxRy],
+    [outer.minRx, outer.minRy, outer.maxRx, hole.minRy],
+    [outer.minRx, hole.minRy, hole.minRx, hole.maxRy],
+    [hole.maxRx, hole.minRy, outer.maxRx, hole.maxRy],
+  ];
+  const parts = [];
+  rects.forEach((r) => {
+    const minRx = r[0];
+    const minRy = r[1];
+    const maxRx = r[2];
+    const maxRy = r[3];
+    if (!(maxRx > minRx) || !(maxRy > minRy)) return;
+    const corners = [
+      [minRx, minRy],
+      [maxRx, minRy],
+      [maxRx, maxRy],
+      [minRx, maxRy],
+    ].map(([rx, ry]) => {
+      const s = rotatedFeetToScreen(rx, ry, geo);
+      return {
+        x: (s.x - geo.pageX) / geo.pxPerInch,
+        y: (s.y - geo.pageY) / geo.pxPerInch,
+      };
+    });
+    const d = svgPathFromPts(corners, true);
+    if (d) parts.push(svgEl('path', { d: d, fill: '#ffffff', stroke: 'none' }));
+  });
+  if (!parts.length) return;
+  plotParts.push(svgLayerOpen('site-mask', 'site exterior mask'));
+  plotParts.push(parts.join(''));
+  plotParts.push(svgLayerClose());
+}
+
 // --- Observation lexicon marks (native p5, same feet → rotate → project pipeline) ---
 //
 // Site layers arrive as WGS84 lng/lat (after prepareSiteGeoJSON state-plane fit).
@@ -2585,6 +2683,9 @@ function draw() {
 
   drawContours(geo);
   drawBaseLayerMarks(geo);
+  // Cover exterior mess (water beyond corridor, empty ocean) after base layers;
+  // notations stay on top and anything inside the site AABB remains visible.
+  drawSiteExteriorMask(geo);
   drawNotations(geo);
 
   if (pageModes) {
@@ -3653,6 +3754,8 @@ function buildSelectedSheetSvgString(options) {
       waterColour: waterColourF,
       drawOutlines: false,
     }, exportClipState);
+    // Same world-space crop as on-screen View/Sheet.
+    appendSiteExteriorMaskSvg(geo, plotParts);
   }
 
   if (includeMarks) {

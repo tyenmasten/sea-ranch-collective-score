@@ -1341,10 +1341,18 @@ function waterFillKeyForLayer(layerValue) {
 }
 const FIT_BOUNDS_PADDING = [20, 20];
 const MAP_MIN_ZOOM = 12;
-const SITE_MAX_BOUNDS = L.latLngBounds(
-  [38.48, -123.58],
-  [38.82, -123.30]
+/**
+ * Fallback interactive pan/zoom clamp only (not used for data/export measurement).
+ * Prefer getSiteNavBounds() from loaded streets+buildings when available.
+ * Approx. coastal corridor — far tighter than the old regional box
+ * ([38.48,-123.58]–[38.82,-123.30]).
+ */
+const SITE_NAV_BOUNDS_FALLBACK = L.latLngBounds(
+  [38.640, -123.540],
+  [38.780, -123.355]
 );
+/** Extra room around streets+buildings for the interactive clamp. */
+const SITE_NAV_BOUNDS_PAD = 0.05;
 const SKETCH_FIELD_W = 600;
 const SKETCH_FIELD_H = 800;
 const SKETCH_PREVIEW_SIZE = 48;
@@ -1763,6 +1771,7 @@ function initMap() {
     zoomControl: false,
     attributionControl: false,
     minZoom: MAP_MIN_ZOOM,
+    maxBoundsViscosity: 1.0,
   });
   observationsLayer = L.layerGroup().addTo(map);
   map.on('click', onMapClick);
@@ -1781,6 +1790,14 @@ function onMapClick(e) {
   openConfirmOverlay(e.latlng.lng, e.latlng.lat, 'picker');
 }
 
+function getSiteNavBounds() {
+  if (siteLayerGroup) {
+    const b = siteLayerGroup.getBounds();
+    if (b.isValid()) return b.pad(SITE_NAV_BOUNDS_PAD);
+  }
+  return SITE_NAV_BOUNDS_FALLBACK;
+}
+
 function fitSiteBounds() {
   if (!map || !siteLayerGroup) return;
   const bounds = siteLayerGroup.getBounds();
@@ -1790,7 +1807,9 @@ function fitSiteBounds() {
 
 function applySiteMapConstraints() {
   if (!map) return;
-  map.setMaxBounds(SITE_MAX_BOUNDS);
+  // Hard clamp: users cannot zoom/pan out into empty regional ocean beyond the site.
+  map.setMaxBounds(getSiteNavBounds());
+  map.options.maxBoundsViscosity = 1.0;
 }
 
 function applyLayerVisibility() {

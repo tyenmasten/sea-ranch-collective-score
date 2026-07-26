@@ -420,63 +420,75 @@ nav {
 .grid-area {
   flex: 1 1 0;
   min-width: 0;
-  overflow-y: auto;
-  padding: 24px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 12px 16px 14px;
   background: var(--bg);
-  scrollbar-width: thin;
-  scrollbar-color: var(--border2) transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.grid-area::-webkit-scrollbar { width: 6px; }
-.grid-area::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
-
 .group-section {
-  margin-bottom: 28px;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
 }
 
 .group-label {
   font-family: 'Miniature', serif;
-  font-size: 16px;
+  font-size: clamp(10px, 1.4vw, 15px);
   color: var(--ink);
   letter-spacing: 0.08em;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: 10px;
+  flex: 0 0 auto;
 }
 
 .group-count {
   font-family: 'Miniature', serif;
-  font-size: 9px;
+  font-size: 0.65em;
   color: var(--dim);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .tile-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  align-items: center;
 }
 
 .tile {
-  width: 80px;
-  height: 100px;
+  --tw: 80px;
+  --th: 100px;
+  width: var(--tw);
+  height: var(--th);
   border: 1px solid var(--border);
   background: var(--surface2);
   cursor: pointer;
   transition: border-color 0.15s;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: minmax(0, auto) minmax(0, 1fr) minmax(0, auto) minmax(0, auto) minmax(0, auto);
+  align-items: stretch;
   overflow: hidden;
   flex-shrink: 0;
-  padding: 0;
+  padding: calc(var(--th) * 0.035) calc(var(--tw) * 0.055) calc(var(--th) * 0.04);
   font: inherit;
   color: inherit;
-  text-align: left;
+  text-align: center;
   appearance: none;
+  box-sizing: border-box;
 }
 
 .tile:hover { border-color: #666; }
@@ -485,50 +497,193 @@ nav {
   border: 2px solid var(--ink);
 }
 
-.tile-canvas {
-  width: 80px;
-  height: 80px;
-  display: block;
-  flex-shrink: 0;
-  background: var(--surface2);
-}
-
-.tile-canvas canvas,
-.tile-canvas img {
-  width: 80px;
-  height: 80px;
-  display: block;
-}
-
-.tile-footer {
-  height: 20px;
-  padding: 2px 6px 0;
-  border-top: 1px solid var(--border);
-  background: var(--surface);
-  flex-shrink: 0;
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: calc(var(--tw) * 0.04);
+  width: 100%;
+  min-height: 0;
+  max-height: 22%;
   overflow: hidden;
-}
-
-.tile-name {
-  font-family: 'Miniature', serif;
-  font-size: 8px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   line-height: 1.1;
 }
 
-.tile-sub {
+.card-initials {
   font-family: 'Media77', sans-serif;
-  font-size: 7px;
+  font-size: calc(var(--tw) * 0.1);
+  color: var(--ink);
+  letter-spacing: 0.02em;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.card-meta-tags {
+  font-family: 'Media77', sans-serif;
+  font-size: calc(var(--tw) * 0.072);
   color: var(--dim);
+  text-align: right;
+  line-height: 1.15;
+  white-space: pre-line;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.card-mark {
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: calc(var(--th) * 0.015) 0;
+  line-height: 0;
+  overflow: hidden;
+}
+
+.card-mark img {
+  display: block;
+  max-width: 88%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.card-title {
+  font-family: 'Miniature', serif;
+  font-size: calc(var(--th) * 0.09);
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  line-height: 1.15;
+  width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.1;
+  min-height: 0;
+}
+
+.card-typology,
+.card-element {
+  font-family: 'Media77', sans-serif;
+  font-size: calc(var(--th) * 0.055);
+  color: var(--dim);
+  line-height: 1.15;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 0;
+}
+
+.detail-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.detail-modal[hidden] {
+  display: none;
+}
+
+.detail-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(26, 26, 26, 0.45);
+}
+
+.detail-modal-panel {
+  position: relative;
+  z-index: 1;
+  width: min(520px, 100%);
+  max-height: min(90vh, 900px);
+  overflow-y: auto;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  padding: 28px 28px 24px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+
+.detail-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: 'Media77', sans-serif;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.detail-close:hover { border-color: var(--ink); }
+
+.detail-mark {
+  width: 100%;
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  margin: 8px 0 18px;
+  padding: 16px;
+}
+
+.detail-mark img {
+  display: block;
+  max-width: 100%;
+  max-height: 280px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.detail-title {
+  font-family: 'Miniature', serif;
+  font-size: 22px;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  margin-bottom: 4px;
+  padding-right: 28px;
+}
+
+.detail-author {
+  font-family: 'Media77', sans-serif;
+  font-size: 13px;
+  color: var(--dim);
+  margin-bottom: 16px;
+}
+
+.detail-modal .data-row {
+  margin-bottom: 10px;
+}
+
+.detail-uploads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.detail-uploads img {
+  max-width: 120px;
+  max-height: 90px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+
+.detail-uploads a {
+  color: var(--ink);
+  font-size: 11px;
 }
 
 @media (max-width: 767px) {
@@ -635,7 +790,19 @@ nav {
     order: 2;
     width: 100%;
     flex: none;
-    padding: 16px;
+    height: 70vh;
+    min-height: 320px;
+    padding: 12px 14px;
+  }
+
+  .detail-modal {
+    padding: 12px;
+    align-items: flex-start;
+  }
+
+  .detail-modal-panel {
+    max-height: 92vh;
+    padding: 22px 18px 18px;
   }
 }
 </style>
@@ -751,6 +918,44 @@ nav {
   </div>
 </div>
 
+<div class="detail-modal" id="detailModal" hidden>
+  <div class="detail-modal-backdrop" id="detailBackdrop" data-close="1"></div>
+  <div class="detail-modal-panel" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+    <button type="button" class="detail-close" id="detailClose" aria-label="Close detail">×</button>
+    <div class="detail-mark" id="detailMark"></div>
+    <h2 class="detail-title" id="detailTitle"></h2>
+    <div class="detail-author" id="detailAuthor"></div>
+    <div class="data-row">
+      <span class="data-key">Meta Data</span>
+      <span class="data-val" id="detailMeta"></span>
+    </div>
+    <div class="data-row">
+      <span class="data-key">Typology</span>
+      <span class="data-val" id="detailTypology"></span>
+    </div>
+    <div class="data-row">
+      <span class="data-key">Element</span>
+      <span class="data-val" id="detailElement"></span>
+    </div>
+    <div class="data-row data-row--full">
+      <span class="data-key">Description</span>
+      <span class="data-val desc" id="detailDescription"></span>
+    </div>
+    <div class="data-row data-row--full" id="detailUploadsRow" hidden>
+      <span class="data-key">Uploads</span>
+      <div class="detail-uploads" id="detailUploads"></div>
+    </div>
+    <div class="data-row">
+      <span class="data-key">Saved</span>
+      <span class="data-val" id="detailSavedAt"></span>
+    </div>
+    <div class="data-row" id="detailUpdatedRow" hidden>
+      <span class="data-key">Updated</span>
+      <span class="data-val" id="detailUpdatedAt"></span>
+    </div>
+  </div>
+</div>
+
 <script>
 const META_LABELS = {
   form: 'Form',
@@ -775,14 +980,15 @@ const ELEMENT_ORDER = ['landscape', 'people', 'architecture'];
 const TYPOLOGY_ORDER = ['single', 'multi', 'public'];
 
 const ORGANISE_OPTIONS = [
-  { key: 'author', label: 'Author', count: '15 groups' },
-  { key: 'meta', label: 'Form / Context / Culture', count: '3 groups' },
-  { key: 'element', label: 'Element', count: '3 groups' },
-  { key: 'typology', label: 'Typology', count: '3 groups' },
-  { key: 'chrono', label: 'Chronological', count: '—' },
+  { key: 'author', label: 'Author' },
+  { key: 'meta', label: 'Form / Context / Culture' },
+  { key: 'element', label: 'Element' },
+  { key: 'typology', label: 'Typology' },
+  { key: 'chrono', label: 'Chronological' },
 ];
 
-const TILE_CANVAS_SIZE = 80;
+const TILE_ASPECT = 0.82; /* width / height — periodic-table cell proportion */
+const DETAIL_MARK_SIZE = 320;
 const PREVIEW_MARK_SIZE = 88;
 
 const SKETCH_FIELD_W = 600;
@@ -810,29 +1016,58 @@ const TYPOLOGY_VALUE_TO_KEY = {
   'Public Facility': 'public', public: 'public',
 };
 
-function firstMappedKey(values, map) {
+function mappedSlugs(values, map) {
   const list = Array.isArray(values) ? values : (values != null && values !== '' ? [values] : []);
-  for (let i = 0; i < list.length; i++) {
-    const key = map[list[i]];
-    if (key) return key;
-  }
-  return null;
+  const out = [];
+  const seen = {};
+  list.forEach((v) => {
+    const key = map[v];
+    if (key && !seen[key]) {
+      seen[key] = true;
+      out.push(key);
+    }
+  });
+  return out;
+}
+
+function firstMappedKey(values, map) {
+  const slugs = mappedSlugs(values, map);
+  return slugs.length ? slugs[0] : null;
 }
 
 function mapFirestorestoreEntry(docId, data) {
   const meta = data.metadata || {};
+  const metas = mappedSlugs(meta.metaData, META_VALUE_TO_KEY);
+  const elementSlugs = mappedSlugs(meta.element, ELEMENT_VALUE_TO_KEY);
+  const typologySlugs = mappedSlugs(meta.typology, TYPOLOGY_VALUE_TO_KEY);
+  const uploads = [];
+  if (Array.isArray(data.uploads)) {
+    data.uploads.forEach((u) => {
+      if (typeof u === 'string' && u) uploads.push(u);
+      else if (u && (u.url || u.src)) uploads.push(u.url || u.src);
+    });
+  }
+  if (data.imageUrl) uploads.push(data.imageUrl);
+  if (data.photoUrl) uploads.push(data.photoUrl);
+
   return {
     id: data.id || docId,
     author: data.author || 'Unknown',
     lexicon: data.lexiconName || 'Untitled',
-    meta: firstMappedKey(meta.metaData, META_VALUE_TO_KEY),
-    element: firstMappedKey(meta.element, ELEMENT_VALUE_TO_KEY),
-    typology: firstMappedKey(meta.typology, TYPOLOGY_VALUE_TO_KEY),
+    meta: metas[0] || null,
+    metas: metas,
+    element: elementSlugs[0] || null,
+    elementSlugs: elementSlugs,
+    typology: typologySlugs[0] || null,
+    typologySlugs: typologySlugs,
     savedAt: data.savedAt || '',
+    updatedAt: data.updatedAt || '',
     description: data.description || '',
     sketch: data.sketch || null,
     metaData: Array.isArray(meta.metaData) ? meta.metaData.slice() : [],
-    elements: Array.isArray(meta.element) ? meta.element.slice() : [],
+    elements: Array.isArray(meta.element) ? meta.element.slice() : (meta.element ? [meta.element] : []),
+    typologies: Array.isArray(meta.typology) ? meta.typology.slice() : (meta.typology ? [meta.typology] : []),
+    uploads: uploads,
   };
 }
 
@@ -1125,14 +1360,18 @@ function pruneSketchImageCache(liveIds) {
 function applyLexiconEntries(entries) {
   LEXICONS = entries;
   pruneSketchImageCache(entries.map((e) => e.id));
+  updateStats();
+  refreshOrganiseCounts();
 
   if (state.selectedId) {
     const selected = LEXICONS.find((l) => l.id === state.selectedId);
     if (selected) {
       populateSelectedPanel(selected);
       showPanelSelected();
+      if (state.detailOpen) populateDetailModal(selected);
     } else {
       state.selectedId = null;
+      closeDetailModal();
       showPanelDefault();
     }
   }
@@ -1158,8 +1397,9 @@ function subscribeLexiconEntries() {
 }
 
 const state = {
-  organiseBy: 'author',
+  organiseBy: 'meta',
   selectedId: null,
+  detailOpen: false,
   visibility: {
     overviewUnlocked: true,
   },
@@ -1184,6 +1424,21 @@ const ELEMENT_IDS = {
   exportScope: 'exportScope',
   exportScale: 'exportScale',
   btnOverviewVisibility: 'btnOverviewVisibility',
+  detailModal: 'detailModal',
+  detailBackdrop: 'detailBackdrop',
+  detailClose: 'detailClose',
+  detailMark: 'detailMark',
+  detailTitle: 'detailTitle',
+  detailAuthor: 'detailAuthor',
+  detailMeta: 'detailMeta',
+  detailTypology: 'detailTypology',
+  detailElement: 'detailElement',
+  detailDescription: 'detailDescription',
+  detailUploadsRow: 'detailUploadsRow',
+  detailUploads: 'detailUploads',
+  detailSavedAt: 'detailSavedAt',
+  detailUpdatedRow: 'detailUpdatedRow',
+  detailUpdatedAt: 'detailUpdatedAt',
 };
 
 function cacheElements() {
@@ -1204,11 +1459,29 @@ function sortLexicons(items) {
   return items.slice().sort((a, b) => a.lexicon.localeCompare(b.lexicon));
 }
 
-function getGroups() {
+function entryHasSlugs(lex, slugKey, singleKey) {
+  const slugs = lex[slugKey];
+  if (Array.isArray(slugs) && slugs.length) return true;
+  return !!lex[singleKey];
+}
+
+function entryMatchesSlug(lex, slugKey, singleKey, key) {
+  const slugs = lex[slugKey];
+  if (Array.isArray(slugs) && slugs.length) return slugs.indexOf(key) !== -1;
+  return lex[singleKey] === key;
+}
+
+function appendUnspecified(groups, order, items) {
+  if (!items.length) return;
+  groups['Unspecified'] = items;
+  order.push('Unspecified');
+}
+
+function getGroupsForMode(mode) {
   const groups = {};
   const order = [];
 
-  if (state.organiseBy === 'author') {
+  if (mode === 'author') {
     const authors = [...new Set(LEXICONS.map((l) => l.author))].sort((a, b) => a.localeCompare(b));
     authors.forEach((author) => {
       groups[author] = sortLexicons(LEXICONS.filter((l) => l.author === author));
@@ -1217,39 +1490,54 @@ function getGroups() {
     return { groups, order };
   }
 
-  if (state.organiseBy === 'meta') {
+  if (mode === 'meta') {
     META_ORDER.forEach((key) => {
       const label = META_LABELS[key];
-      const items = sortLexicons(LEXICONS.filter((l) => l.meta === key));
+      const items = sortLexicons(LEXICONS.filter((l) => entryMatchesSlug(l, 'metas', 'meta', key)));
       if (items.length) {
         groups[label] = items;
         order.push(label);
       }
     });
+    appendUnspecified(
+      groups,
+      order,
+      sortLexicons(LEXICONS.filter((l) => !entryHasSlugs(l, 'metas', 'meta')))
+    );
     return { groups, order };
   }
 
-  if (state.organiseBy === 'element') {
+  if (mode === 'element') {
     ELEMENT_ORDER.forEach((key) => {
       const label = ELEMENT_LABELS[key];
-      const items = sortLexicons(LEXICONS.filter((l) => l.element === key));
+      const items = sortLexicons(LEXICONS.filter((l) => entryMatchesSlug(l, 'elementSlugs', 'element', key)));
       if (items.length) {
         groups[label] = items;
         order.push(label);
       }
     });
+    appendUnspecified(
+      groups,
+      order,
+      sortLexicons(LEXICONS.filter((l) => !entryHasSlugs(l, 'elementSlugs', 'element')))
+    );
     return { groups, order };
   }
 
-  if (state.organiseBy === 'typology') {
+  if (mode === 'typology') {
     TYPOLOGY_ORDER.forEach((key) => {
       const label = TYPOLOGY_LABELS[key];
-      const items = sortLexicons(LEXICONS.filter((l) => l.typology === key));
+      const items = sortLexicons(LEXICONS.filter((l) => entryMatchesSlug(l, 'typologySlugs', 'typology', key)));
       if (items.length) {
         groups[label] = items;
         order.push(label);
       }
     });
+    appendUnspecified(
+      groups,
+      order,
+      sortLexicons(LEXICONS.filter((l) => !entryHasSlugs(l, 'typologySlugs', 'typology')))
+    );
     return { groups, order };
   }
 
@@ -1259,18 +1547,204 @@ function getGroups() {
   return { groups, order };
 }
 
+function getGroups() {
+  return getGroupsForMode(state.organiseBy);
+}
+
 function groupCountLabel(count) {
   return count + ' lexicon' + (count !== 1 ? 's' : '');
+}
+
+function authorInitials(name) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function metaTagsForCard(lex) {
+  if (lex.metaData && lex.metaData.length) return lex.metaData.slice();
+  if (lex.metas && lex.metas.length) return lex.metas.map((k) => META_LABELS[k] || k);
+  if (lex.meta) return [META_LABELS[lex.meta] || lex.meta];
+  return [];
+}
+
+function typologyLabel(lex) {
+  if (lex.typologies && lex.typologies.length) return lex.typologies.join(', ');
+  if (lex.typologySlugs && lex.typologySlugs.length) {
+    return lex.typologySlugs.map((k) => TYPOLOGY_LABELS[k] || k).join(', ');
+  }
+  return TYPOLOGY_LABELS[lex.typology] || '—';
+}
+
+function elementLabel(lex) {
+  if (lex.elements && lex.elements.length) return lex.elements.join(', ');
+  if (lex.elementSlugs && lex.elementSlugs.length) {
+    return lex.elementSlugs.map((k) => ELEMENT_LABELS[k] || k).join(', ');
+  }
+  return ELEMENT_LABELS[lex.element] || '—';
+}
+
+function metaLabelFull(lex) {
+  if (lex.metaData && lex.metaData.length) return lex.metaData.join(', ');
+  if (lex.metas && lex.metas.length) return lex.metas.map((k) => META_LABELS[k] || k).join(', ');
+  return META_LABELS[lex.meta] || '—';
+}
+
+function formatDateValue(value) {
+  if (!value) return '—';
+  const d = value.toDate ? value.toDate() : new Date(value);
+  if (isNaN(d.getTime())) return String(value);
+  return d.toLocaleString();
+}
+
+function bestGridLayout(n, availW, availH, gap) {
+  if (n <= 0 || availW <= 0 || availH <= 0) {
+    return { cols: 1, rows: 1, tw: 0, th: 0 };
+  }
+
+  let best = { cols: 1, rows: n, tw: 0, th: 0, area: -1 };
+
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols);
+    const cellW = (availW - gap * (cols - 1)) / cols;
+    const cellH = (availH - gap * (rows - 1)) / rows;
+    if (cellW <= 0 || cellH <= 0) continue;
+
+    let tw;
+    let th;
+    if (cellW / cellH > TILE_ASPECT) {
+      th = cellH;
+      tw = th * TILE_ASPECT;
+    } else {
+      tw = cellW;
+      th = tw / TILE_ASPECT;
+    }
+
+    const area = tw * th;
+    if (area > best.area) {
+      best = { cols: cols, rows: rows, tw: tw, th: th, area: area };
+    }
+  }
+
+  return best;
+}
+
+let fitLayoutRaf = null;
+
+function scheduleFitLayouts() {
+  if (fitLayoutRaf) cancelAnimationFrame(fitLayoutRaf);
+  fitLayoutRaf = requestAnimationFrame(() => {
+    fitLayoutRaf = requestAnimationFrame(() => {
+      fitLayoutRaf = null;
+      if (!els.gridArea) return;
+      els.gridArea.querySelectorAll('.tile-grid').forEach((grid) => {
+        const n = Number(grid.dataset.count) || grid.children.length;
+        fitTileGrid(grid, n);
+      });
+    });
+  });
+}
+
+function fitTileGrid(gridEl, n) {
+  const rect = gridEl.getBoundingClientRect();
+  const availW = Math.max(0, rect.width);
+  const availH = Math.max(0, rect.height);
+  const gap = Math.max(1, Math.min(8, Math.floor(Math.min(availW, availH) / 90)));
+  const layout = bestGridLayout(n, availW, availH, gap);
+
+  gridEl.style.gap = gap + 'px';
+  gridEl.style.gridTemplateColumns = 'repeat(' + layout.cols + ', ' + layout.tw + 'px)';
+  gridEl.style.gridAutoRows = layout.th + 'px';
+
+  const markPx = Math.max(2, Math.round(Math.min(layout.tw, layout.th) * 0.52));
+
+  Array.prototype.forEach.call(gridEl.children, (tile) => {
+    tile.style.setProperty('--tw', layout.tw + 'px');
+    tile.style.setProperty('--th', layout.th + 'px');
+    tile.style.width = layout.tw + 'px';
+    tile.style.height = layout.th + 'px';
+
+    const lexId = tile.dataset.id;
+    const lex = LEXICONS.find((l) => l.id === lexId);
+    const img = tile.querySelector('.card-mark img');
+    if (lex && img) {
+      img.width = markPx;
+      img.height = markPx;
+      img.src = getSketchImageUrl(lex, markPx);
+    }
+  });
+}
+
+function createElementCard(lex) {
+  const tile = document.createElement('button');
+  tile.type = 'button';
+  tile.className = 'tile' + (lex.id === state.selectedId ? ' selected' : '');
+  tile.dataset.id = lex.id;
+  tile.setAttribute('aria-label', lex.lexicon + ' — ' + lex.author);
+
+  const top = document.createElement('div');
+  top.className = 'card-top';
+
+  const initials = document.createElement('span');
+  initials.className = 'card-initials';
+  initials.textContent = authorInitials(lex.author);
+
+  const tags = document.createElement('div');
+  tags.className = 'card-meta-tags';
+  const metaLines = metaTagsForCard(lex);
+  tags.textContent = metaLines.length ? metaLines.join('\n') : '—';
+
+  top.appendChild(initials);
+  top.appendChild(tags);
+
+  const mark = document.createElement('div');
+  mark.className = 'card-mark';
+  mark.appendChild(createMarkImage(lex, 48));
+
+  const title = document.createElement('div');
+  title.className = 'card-title';
+  title.textContent = lex.lexicon;
+
+  const typology = document.createElement('div');
+  typology.className = 'card-typology';
+  typology.textContent = typologyLabel(lex);
+
+  const element = document.createElement('div');
+  element.className = 'card-element';
+  element.textContent = elementLabel(lex);
+
+  tile.appendChild(top);
+  tile.appendChild(mark);
+  tile.appendChild(title);
+  tile.appendChild(typology);
+  tile.appendChild(element);
+  tile.addEventListener('click', () => selectLexicon(lex.id));
+  return tile;
 }
 
 function renderGrid() {
   const { groups, order } = getGroups();
   els.gridArea.innerHTML = '';
 
+  if (!order.length) {
+    const empty = document.createElement('div');
+    empty.className = 'group-label';
+    empty.textContent = 'No lexicon entries yet';
+    els.gridArea.appendChild(empty);
+    return;
+  }
+
   order.forEach((key) => {
     const items = groups[key];
     const section = document.createElement('section');
     section.className = 'group-section';
+    section.style.flex = Math.max(1, items.length) + ' 1 0';
 
     const label = document.createElement('div');
     label.className = 'group-label';
@@ -1285,35 +1759,17 @@ function renderGrid() {
 
     const grid = document.createElement('div');
     grid.className = 'tile-grid';
+    grid.dataset.count = String(items.length);
 
     items.forEach((lex) => {
-      const tile = document.createElement('button');
-      tile.type = 'button';
-      tile.className = 'tile' + (lex.id === state.selectedId ? ' selected' : '');
-      tile.setAttribute('aria-label', lex.lexicon + ' — ' + lex.author);
-
-      const canvasWrap = document.createElement('div');
-      canvasWrap.className = 'tile-canvas';
-      canvasWrap.appendChild(createMarkImage(lex, TILE_CANVAS_SIZE));
-
-      const footer = document.createElement('div');
-      footer.className = 'tile-footer';
-      footer.innerHTML =
-        '<div class="tile-name">' +
-        escapeHtml(lex.lexicon) +
-        '</div><div class="tile-sub">' +
-        escapeHtml(lex.author) +
-        '</div>';
-
-      tile.appendChild(canvasWrap);
-      tile.appendChild(footer);
-      tile.addEventListener('click', () => selectLexicon(lex.id));
-      grid.appendChild(tile);
+      grid.appendChild(createElementCard(lex));
     });
 
     section.appendChild(grid);
     els.gridArea.appendChild(section);
   });
+
+  scheduleFitLayouts();
 }
 
 function populateSelectedPanel(lex) {
@@ -1321,10 +1777,66 @@ function populateSelectedPanel(lex) {
   els.selectedMarkPreview.appendChild(createMarkImage(lex, PREVIEW_MARK_SIZE));
   els.selAuthor.textContent = lex.author;
   els.selLexicon.textContent = lex.lexicon;
-  els.selMeta.textContent = META_LABELS[lex.meta] || (lex.metaData && lex.metaData.length ? lex.metaData.join(', ') : '—');
-  els.selElement.textContent = ELEMENT_LABELS[lex.element] || (lex.elements && lex.elements.length ? lex.elements.join(', ') : '—');
-  els.selTypology.textContent = TYPOLOGY_LABELS[lex.typology] || '—';
+  els.selMeta.textContent = metaLabelFull(lex);
+  els.selElement.textContent = elementLabel(lex);
+  els.selTypology.textContent = typologyLabel(lex);
   els.selDescription.textContent = lex.description || '—';
+}
+
+function populateDetailModal(lex) {
+  els.detailMark.innerHTML = '';
+  els.detailMark.appendChild(createMarkImage(lex, DETAIL_MARK_SIZE));
+  els.detailTitle.textContent = lex.lexicon;
+  els.detailAuthor.textContent = lex.author;
+  els.detailMeta.textContent = metaLabelFull(lex);
+  els.detailTypology.textContent = typologyLabel(lex);
+  els.detailElement.textContent = elementLabel(lex);
+  els.detailDescription.textContent = lex.description || '—';
+  els.detailSavedAt.textContent = formatDateValue(lex.savedAt);
+
+  if (lex.updatedAt) {
+    els.detailUpdatedRow.hidden = false;
+    els.detailUpdatedAt.textContent = formatDateValue(lex.updatedAt);
+  } else {
+    els.detailUpdatedRow.hidden = true;
+    els.detailUpdatedAt.textContent = '';
+  }
+
+  els.detailUploads.innerHTML = '';
+  if (lex.uploads && lex.uploads.length) {
+    els.detailUploadsRow.hidden = false;
+    lex.uploads.forEach((url) => {
+      const isImage = /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(url) || url.indexOf('firebasestorage') !== -1;
+      if (isImage) {
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = 'Upload';
+        els.detailUploads.appendChild(img);
+      } else {
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = url;
+        els.detailUploads.appendChild(a);
+      }
+    });
+  } else {
+    els.detailUploadsRow.hidden = true;
+  }
+}
+
+function openDetailModal(lex) {
+  populateDetailModal(lex);
+  state.detailOpen = true;
+  els.detailModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+function closeDetailModal() {
+  state.detailOpen = false;
+  if (els.detailModal) els.detailModal.hidden = true;
+  document.body.style.overflow = '';
 }
 
 function showPanelDefault() {
@@ -1343,11 +1855,13 @@ function selectLexicon(id) {
   if (!lex) return;
   populateSelectedPanel(lex);
   showPanelSelected();
+  openDetailModal(lex);
   renderGrid();
 }
 
 function deselectLexicon() {
   state.selectedId = null;
+  closeDetailModal();
   showPanelDefault();
   renderGrid();
 }
@@ -1360,6 +1874,23 @@ function setOrganise(key) {
   renderGrid();
 }
 
+function organiseCountText(mode) {
+  if (mode === 'chrono') {
+    return LEXICONS.length ? '1 group' : '0 groups';
+  }
+  const { order } = getGroupsForMode(mode);
+  const n = order.length;
+  return n + ' group' + (n !== 1 ? 's' : '');
+}
+
+function refreshOrganiseCounts() {
+  if (!els.organiseButtons) return;
+  els.organiseButtons.querySelectorAll('.organise-btn').forEach((btn) => {
+    const countEl = btn.querySelector('.count');
+    if (countEl) countEl.textContent = organiseCountText(btn.dataset.organise);
+  });
+}
+
 function buildOrganiseButtons() {
   els.organiseButtons.innerHTML = '';
   ORGANISE_OPTIONS.forEach((opt) => {
@@ -1368,10 +1899,17 @@ function buildOrganiseButtons() {
     btn.className = 'organise-btn' + (opt.key === state.organiseBy ? ' active' : '');
     btn.dataset.organise = opt.key;
     btn.innerHTML =
-      '<span>' + escapeHtml(opt.label) + '</span><span class="count">' + escapeHtml(opt.count) + '</span>';
+      '<span>' + escapeHtml(opt.label) + '</span><span class="count">' + escapeHtml(organiseCountText(opt.key)) + '</span>';
     btn.addEventListener('click', () => setOrganise(opt.key));
     els.organiseButtons.appendChild(btn);
   });
+}
+
+function updateStats() {
+  const studentCount = new Set(LEXICONS.map((l) => l.author)).size;
+  const nums = document.querySelectorAll('.stats-bar .stat-num');
+  if (nums[0]) nums[0].textContent = String(studentCount);
+  if (nums[1]) nums[1].textContent = String(LEXICONS.length);
 }
 
 function updateVisibilityButton() {
@@ -1403,12 +1941,29 @@ function bindEvents() {
     updateVisibilityButton();
     console.log('Overview visibility:', state.visibility.overviewUnlocked ? 'unlocked' : 'locked');
   });
+
+  els.detailClose.addEventListener('click', closeDetailModal);
+  els.detailBackdrop.addEventListener('click', closeDetailModal);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && state.detailOpen) {
+      closeDetailModal();
+    }
+  });
+
+  window.addEventListener('resize', scheduleFitLayouts);
+
+  if (typeof ResizeObserver !== 'undefined' && els.gridArea) {
+    const ro = new ResizeObserver(() => scheduleFitLayouts());
+    ro.observe(els.gridArea);
+  }
 }
 
 function init() {
   cacheElements();
   buildOrganiseButtons();
   updateVisibilityButton();
+  updateStats();
   bindEvents();
   renderGrid();
   subscribeLexiconEntries();

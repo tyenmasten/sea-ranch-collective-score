@@ -321,6 +321,69 @@ select.lexicon-empty {
   display: none !important;
 }
 
+.fill-expand-toggle {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--dim);
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.fill-expand-toggle.open {
+  transform: rotate(180deg);
+}
+
+.fill-expand-toggle[hidden] {
+  display: none !important;
+}
+
+.fill-category-list {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0 4px 4px;
+}
+
+.fill-category-list.open {
+  display: flex;
+}
+
+.fill-category-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.fill-category-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fill-category-name {
+  font-family: 'Media77', sans-serif;
+  font-size: 10px;
+  color: var(--dim);
+  line-height: 1.3;
+  white-space: normal;
+  overflow: visible;
+  word-break: break-word;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .layer-name {
   font-family: 'Miniature', serif;
   font-size: 9px;
@@ -1023,24 +1086,28 @@ select.lexicon-empty {
         <div class="layer-row">
           <span class="layer-name">Streets</span>
           <div class="layer-controls">
-            <input type="color" class="layer-color" id="colorStreetsPublic" value="#888888" hidden aria-label="Public streets colour" title="Public">
-            <input type="color" class="layer-color" id="colorStreetsPrivate" value="#aaaaaa" hidden aria-label="Private streets colour" title="Private">
-            <input type="color" class="layer-color" id="colorStreetsUnpaved" value="#bbbbbb" hidden aria-label="Unpaved streets colour" title="Unpaved">
-            <input type="color" class="layer-color" id="colorStreetsDefault" value="#cccccc" hidden aria-label="Other streets colour" title="Other">
+            <input type="color" class="layer-color" id="colorStreetsPublic" value="#707070" hidden aria-label="Public streets colour" title="Public">
+            <input type="color" class="layer-color" id="colorStreetsPrivate" value="#9a8f82" hidden aria-label="Private streets colour" title="Private">
+            <input type="color" class="layer-color" id="colorStreetsUnpaved" value="#b5a878" hidden aria-label="Unpaved streets colour" title="Unpaved">
+            <input type="color" class="layer-color" id="colorStreetsDefault" value="#c4c4c4" hidden aria-label="Other streets colour" title="Other">
             <button type="button" class="layer-toggle on" id="toggleStreets" aria-pressed="true" aria-label="Toggle streets"></button>
           </div>
         </div>
-        <div class="layer-row">
-          <span class="layer-name">Buildings</span>
-          <div class="layer-controls">
-            <input type="color" class="layer-color" id="colorBuildings" value="#aaaaaa" hidden aria-label="Buildings outline colour">
-            <button type="button" class="layer-toggle on" id="toggleBuildings" aria-pressed="true" aria-label="Toggle buildings"></button>
+        <div class="fill-layer-block">
+          <div class="layer-row">
+            <span class="layer-name">Buildings</span>
+            <div class="layer-controls">
+              <input type="color" class="layer-color" id="colorBuildings" value="#8b7355" hidden aria-label="Buildings outline colour" title="Outline">
+              <button type="button" class="fill-expand-toggle" id="expandBuildingsFill" hidden aria-label="Expand building fill colours" aria-expanded="false">▾</button>
+              <button type="button" class="layer-toggle on" id="toggleBuildings" aria-pressed="true" aria-label="Toggle buildings"></button>
+            </div>
           </div>
+          <div class="fill-category-list" id="buildingsFillList"></div>
         </div>
         <div class="layer-row">
           <span class="layer-name">Contours</span>
           <div class="layer-controls">
-            <input type="color" class="layer-color" id="colorContours" value="#cccccc" hidden aria-label="Contours colour">
+            <input type="color" class="layer-color" id="colorContours" value="#d4d0c8" hidden aria-label="Contours colour">
             <button type="button" class="layer-toggle" id="toggleContours" aria-pressed="false" aria-label="Toggle contours"></button>
           </div>
         </div>
@@ -1147,19 +1214,58 @@ select.lexicon-empty {
 <script>
 const STREET_LABEL_MIN_ZOOM = 17;
 const LOCATION_INPUT_SETTINGS_PATH = { collection: 'locationInputSettings', doc: 'current' };
-/** Location Input–only defaults (independent of Collective Score categoryFills). */
+/**
+ * Location Input–only defaults (independent of Collective Score categoryFills).
+ * Every hex below is unique across layers and categories.
+ */
 const DEFAULT_LOCATION_LAYER_COLORS = {
   waterEcologies: '#5b8fa8',
   waterColour: '#3d6f99',
-  buildings: '#aaaaaa',
-  contours: '#cccccc',
+  buildings: '#8b7355',
+  contours: '#d4d0c8',
   streets: {
-    public: '#888888',
-    private: '#aaaaaa',
-    unpaved: '#bbbbbb',
-    default: '#cccccc',
+    public: '#707070',
+    private: '#9a8f82',
+    unpaved: '#b5a878',
+    default: '#c4c4c4',
+  },
+  /** PropType fill colours (previous hardcoded values, preserved as defaults). */
+  buildingsFill: {
+    singleFamilyResidence: '#d4c9b8',
+    commercial: '#b8c4d4',
+    industrial: '#c4b8d4',
+    parkBuilding: '#b8d4bc',
+    outBuilding: '#e8e4dc',
+    agriculture: '#d4dab8',
+    default: '#e0ddd8',
   },
 };
+
+const BUILDING_FILL_CATEGORIES = [
+  { key: 'singleFamilyResidence', label: 'Single Family Residence', propType: 'Single Family Residence' },
+  { key: 'commercial', label: 'Commercial', propType: 'Commercial' },
+  { key: 'industrial', label: 'Industrial', propType: 'Industrial' },
+  { key: 'parkBuilding', label: 'Park Building', propType: 'Park Building' },
+  { key: 'outBuilding', label: 'Out Building', propType: 'Out Building' },
+  { key: 'agriculture', label: 'Agriculture', propType: 'Agriculture' },
+  { key: 'default', label: 'Default', propType: null },
+];
+
+function cloneBuildingsFill(source) {
+  const src = source || {};
+  const d = DEFAULT_LOCATION_LAYER_COLORS.buildingsFill;
+  const out = {};
+  BUILDING_FILL_CATEGORIES.forEach(({ key }) => {
+    const v = src[key];
+    out[key] = (typeof v === 'string' && v) ? v : d[key];
+  });
+  return out;
+}
+
+function buildingFillKeyForPropType(propType) {
+  const match = BUILDING_FILL_CATEGORIES.find((c) => c.propType === propType);
+  return match ? match.key : 'default';
+}
 const FIT_BOUNDS_PADDING = [20, 20];
 const MAP_MIN_ZOOM = 12;
 const SITE_MAX_BOUNDS = L.latLngBounds(
@@ -1198,6 +1304,7 @@ const state = {
       unpaved: DEFAULT_LOCATION_LAYER_COLORS.streets.unpaved,
       default: DEFAULT_LOCATION_LAYER_COLORS.streets.default,
     },
+    buildingsFill: cloneBuildingsFill(DEFAULT_LOCATION_LAYER_COLORS.buildingsFill),
   },
   observations: [],
   selectedObservation: null,
@@ -1249,6 +1356,8 @@ const ELEMENT_IDS = {
   colorStreetsPrivate: 'colorStreetsPrivate',
   colorStreetsUnpaved: 'colorStreetsUnpaved',
   colorStreetsDefault: 'colorStreetsDefault',
+  expandBuildingsFill: 'expandBuildingsFill',
+  buildingsFillList: 'buildingsFillList',
   confirmOverlay: 'confirmOverlay',
   confirmAuthor: 'confirmAuthor',
   confirmLexicon: 'confirmLexicon',
@@ -1445,23 +1554,17 @@ function buildingStyle(feature) {
   const propType = feature.properties && feature.properties.PropType;
   const borderColor = (state.layerColors && state.layerColors.buildings)
     || DEFAULT_LOCATION_LAYER_COLORS.buildings;
-  const border = { color: borderColor, weight: 0.5 };
-  switch (propType) {
-    case 'Single Family Residence':
-      return { ...border, fillColor: '#d4c9b8', fillOpacity: 0.6 };
-    case 'Commercial':
-      return { ...border, fillColor: '#b8c4d4', fillOpacity: 0.6 };
-    case 'Industrial':
-      return { ...border, fillColor: '#c4b8d4', fillOpacity: 0.6 };
-    case 'Park Building':
-      return { ...border, fillColor: '#b8d4bc', fillOpacity: 0.6 };
-    case 'Out Building':
-      return { ...border, fillColor: '#e8e4dc', fillOpacity: 0.4 };
-    case 'Agriculture':
-      return { ...border, fillColor: '#d4dab8', fillOpacity: 0.5 };
-    default:
-      return { ...border, fillColor: '#e0ddd8', fillOpacity: 0.3 };
-  }
+  const fillKey = buildingFillKeyForPropType(propType);
+  const fills = (state.layerColors && state.layerColors.buildingsFill)
+    || DEFAULT_LOCATION_LAYER_COLORS.buildingsFill;
+  const fillColor = fills[fillKey] || DEFAULT_LOCATION_LAYER_COLORS.buildingsFill[fillKey]
+    || DEFAULT_LOCATION_LAYER_COLORS.buildingsFill.default;
+  return {
+    color: borderColor,
+    weight: 0.5,
+    fillColor: fillColor,
+    fillOpacity: 1,
+  };
 }
 
 function streetColors() {
@@ -1655,9 +1758,10 @@ function waterPolygonStyle(hex) {
   return {
     color: color,
     weight: 1,
-    opacity: 0.85,
+    // Fill is fully opaque; stroke matches so the edge isn't a washed rim.
+    opacity: 1,
     fillColor: color,
-    fillOpacity: 0.28,
+    fillOpacity: 1,
   };
 }
 
@@ -1679,6 +1783,80 @@ function syncFacultyLayerColorUI() {
     input.value = getValue();
     if (faculty) input.removeAttribute('hidden');
     else input.setAttribute('hidden', '');
+  });
+
+  const expandBtn = els.expandBuildingsFill;
+  const fillList = els.buildingsFillList;
+  if (expandBtn) {
+    if (faculty) expandBtn.removeAttribute('hidden');
+    else {
+      expandBtn.setAttribute('hidden', '');
+      expandBtn.classList.remove('open');
+      expandBtn.setAttribute('aria-expanded', 'false');
+      if (fillList) fillList.classList.remove('open');
+    }
+  }
+  syncBuildingsFillListUI();
+}
+
+function buildBuildingsFillList() {
+  const container = els.buildingsFillList;
+  if (!container || container.dataset.built === '1') return;
+  container.dataset.built = '1';
+
+  BUILDING_FILL_CATEGORIES.forEach(({ key, label }) => {
+    const row = document.createElement('div');
+    row.className = 'fill-category-row';
+
+    const heading = document.createElement('div');
+    heading.className = 'fill-category-heading';
+
+    const name = document.createElement('span');
+    name.className = 'fill-category-name';
+    name.textContent = label;
+    name.title = label;
+
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.className = 'layer-color';
+    colorInput.dataset.buildingsFillKey = key;
+    colorInput.setAttribute('aria-label', label + ' fill colour');
+    colorInput.value = state.layerColors.buildingsFill[key]
+      || DEFAULT_LOCATION_LAYER_COLORS.buildingsFill[key];
+
+    colorInput.addEventListener('input', () => {
+      if (!isFacultyUser()) {
+        syncBuildingsFillListUI();
+        return;
+      }
+      state.layerColors.buildingsFill[key] = colorInput.value;
+      restyleBuildingsLayer();
+    });
+    colorInput.addEventListener('change', () => {
+      if (!isFacultyUser()) {
+        syncBuildingsFillListUI();
+        return;
+      }
+      state.layerColors.buildingsFill[key] = colorInput.value;
+      restyleBuildingsLayer();
+      saveLocationInputSettings();
+    });
+
+    heading.appendChild(name);
+    heading.appendChild(colorInput);
+    row.appendChild(heading);
+    container.appendChild(row);
+  });
+}
+
+function syncBuildingsFillListUI() {
+  buildBuildingsFillList();
+  const container = els.buildingsFillList;
+  if (!container) return;
+  const fills = state.layerColors.buildingsFill || DEFAULT_LOCATION_LAYER_COLORS.buildingsFill;
+  container.querySelectorAll('input[data-buildings-fill-key]').forEach((input) => {
+    const key = input.dataset.buildingsFillKey;
+    input.value = fills[key] || DEFAULT_LOCATION_LAYER_COLORS.buildingsFill[key];
   });
 }
 
@@ -1735,6 +1913,8 @@ function applyLocationLayerColors(data) {
     unpaved: pickColor(streetIn.unpaved, streetDef.unpaved),
     default: pickColor(streetIn.default, streetDef.default),
   };
+  // Missing buildingsFill keys fall back per-category so old docs still load cleanly.
+  state.layerColors.buildingsFill = cloneBuildingsFill(colors.buildingsFill);
 
   restyleAllLocationLayers();
   syncFacultyLayerColorUI();
@@ -1772,6 +1952,7 @@ function saveLocationInputSettings() {
         unpaved: state.layerColors.streets.unpaved,
         default: state.layerColors.streets.default,
       },
+      buildingsFill: cloneBuildingsFill(state.layerColors.buildingsFill),
     },
     updatedAt: new Date().toISOString(),
   };
@@ -3210,6 +3391,16 @@ function bindEvents() {
     state.layerColors.streets.default = v;
     restyleStreetsLayer();
   });
+
+  if (els.expandBuildingsFill && els.buildingsFillList) {
+    els.expandBuildingsFill.addEventListener('click', () => {
+      if (!isFacultyUser()) return;
+      const isOpen = els.buildingsFillList.classList.contains('open');
+      els.buildingsFillList.classList.toggle('open', !isOpen);
+      els.expandBuildingsFill.classList.toggle('open', !isOpen);
+      els.expandBuildingsFill.setAttribute('aria-expanded', !isOpen ? 'true' : 'false');
+    });
+  }
 
   els.zoomIn.addEventListener('click', () => {
     if (map) map.zoomIn();

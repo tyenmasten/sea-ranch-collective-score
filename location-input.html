@@ -1413,6 +1413,8 @@ let waterColourLoading = null;
 let observationsLayer = null;
 let siteLayerGroup = null;
 let siteMaskLayer = null;
+/** Water Ecologies AABB only (from sidecar). Mask boundary input, not Water Colour. */
+let waterEcologiesBoundsLngLat = null;
 let pendingPlacement = null;
 /** True after the first locationInputSettings load attempt finishes (success or fallback). */
 let locationSettingsReady = false;
@@ -1809,22 +1811,66 @@ function applySiteMapConstraints() {
 }
 
 /**
- * White mask in lat/lng: outer regional ring with a hole exactly over the
- * streets+buildings AABB (siteLayerGroup.getBounds()). No %-padding — flush
- * to the data extent. Sits above base layers, below notation markers.
+ * Tiny sidecar with Water Ecologies AABB only (Water Colour excluded) so the
+ * mask can intersect streets+buildings without downloading the water GeoJSON.
+ * Water Ecologies / Water Colour rendering stays lazy on toggle.
+ */
+async function loadWaterEcologiesBounds() {
+  try {
+    const res = await fetch('geojson/water-ecologies-bounds.json');
+    if (!res.ok) throw new Error('water-ecologies-bounds fetch failed');
+    const data = await res.json();
+    if (
+      typeof data.minLng === 'number' && typeof data.maxLng === 'number' &&
+      typeof data.minLat === 'number' && typeof data.maxLat === 'number'
+    ) {
+      waterEcologiesBoundsLngLat = L.latLngBounds(
+        [data.minLat, data.minLng],
+        [data.maxLat, data.maxLng]
+      );
+      console.log('[location-input] Water Ecologies mask bounds loaded', data);
+      return waterEcologiesBoundsLngLat;
+    }
+  } catch (err) {
+    console.warn('[location-input] Failed to load water-ecologies-bounds.json:', err);
+    waterEcologiesBoundsLngLat = null;
+  }
+  return null;
+}
+
+/**
+ * White mask hole = per-edge intersection of streets+buildings AABB with
+ * Water Ecologies AABB (tighter edge wins on each side). Water Colour is not
+ * used. Falls back to streets+buildings alone if eco bounds are missing.
  */
 function buildSiteExteriorMaskLayer() {
-  if (!siteLayerGroup) return null;
-  const hole = siteLayerGroup.getBounds();
-  if (!hole.isValid()) return null;
-  const outer = SITE_MAX_BOUNDS;
+  const site = siteLayerGroup ? siteLayerGroup.getBounds() : null;
+  if (!site || !site.isValid()) return null;
+
+  let hole = site;
+  const water = waterEcologiesBoundsLngLat;
+  if (water && water.isValid()) {
+    const south = Math.max(site.getSouth(), water.getSouth());
+    const west = Math.max(site.getWest(), water.getWest());
+    const north = Math.min(site.getNorth(), water.getNorth());
+    const east = Math.min(site.getEast(), water.getEast());
+    if (north > south && east > west) {
+      hole = L.latLngBounds([south, west], [north, east]);
+    }
+  }
+
+  const padLat = Math.max((hole.getNorth() - hole.getSouth()) * 2, 0.5);
+  const padLng = Math.max((hole.getEast() - hole.getWest()) * 2, 0.5);
+  const outer = L.latLngBounds(
+    [hole.getSouth() - padLat, hole.getWest() - padLng],
+    [hole.getNorth() + padLat, hole.getEast() + padLng]
+  );
   const outerRing = [
     [outer.getSouth(), outer.getWest()],
     [outer.getSouth(), outer.getEast()],
     [outer.getNorth(), outer.getEast()],
     [outer.getNorth(), outer.getWest()],
   ];
-  // Opposite winding for the hole.
   const holeRing = [
     [hole.getSouth(), hole.getWest()],
     [hole.getNorth(), hole.getWest()],
@@ -3602,6 +3648,7 @@ async function loadGeoLayers() {
     const [streetsRes, buildingsRes] = await Promise.all([
       fetch('geojson/searanch-roads.geojson'),
       fetch('geojson/searanch-buildings.geojson'),
+      loadWaterEcologiesBounds(),
     ]);
     if (!streetsRes.ok || !buildingsRes.ok) throw new Error('GeoJSON fetch failed');
     const streets = await streetsRes.json();

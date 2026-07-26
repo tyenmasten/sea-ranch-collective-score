@@ -29,6 +29,7 @@ let scoreLayers = {
   vegetation: [],
   vegetationDensity: [],
   waterEcologies: [],
+  waterColour: [],
 };
 let scoreCentroid = null;
 let scoreReady = false;
@@ -621,6 +622,38 @@ window.loadWaterEcologiesLayer = async function loadWaterEcologiesLayer() {
     console.error('Water Ecologies layer failed to load:', err);
   } finally {
     waterEcologiesLoading = false;
+    if (statusEl) statusEl.style.display = 'none';
+    redraw();
+  }
+};
+
+let waterColourLoaded = false;
+let waterColourLoading = false;
+
+// Same class as Water Ecologies: dense regional MultiPolygons (~1.6MB). Lazy-load
+// on toggle; stamp path uses viewport cull + hit-test simplification already in
+// forEachCategorizedMarkStamp.
+window.loadWaterColourLayer = async function loadWaterColourLayer() {
+  if (waterColourLoaded || waterColourLoading) return;
+  waterColourLoading = true;
+  const statusEl = document.getElementById('scoreLoadMsg');
+  if (statusEl) {
+    statusEl.textContent = 'Loading water colour…';
+    statusEl.style.display = 'block';
+  }
+  try {
+    const res = await fetch('geojson/Water_colour.geojson');
+    if (res.ok) {
+      const gj = await res.json();
+      if (gj && gj.features) {
+        scoreLayers.waterColour = gj.features;
+        waterColourLoaded = true;
+      }
+    }
+  } catch (err) {
+    console.error('Water Colour layer failed to load:', err);
+  } finally {
+    waterColourLoading = false;
     if (statusEl) statusEl.style.display = 'none';
     redraw();
   }
@@ -1645,6 +1678,7 @@ function forEachBaseLayerStamp(geo, callback, options) {
     ? opts.vegetationDensity
     : scoreLayers.vegetationDensity;
   const waterEcologies = opts.waterEcologies != null ? opts.waterEcologies : scoreLayers.waterEcologies;
+  const waterColour = opts.waterColour != null ? opts.waterColour : scoreLayers.waterColour;
   const drawOutlines = !!opts.drawOutlines;
 
   function outlineDrawer(outerRing) {
@@ -1661,12 +1695,20 @@ function forEachBaseLayerStamp(geo, callback, options) {
     endShape(CLOSE);
   }
 
-  // Paint order: water → density → vegetation types → streets → buildings.
+  // Paint order: water ecology → water colour → density → vegetation → streets → buildings.
+  // Ecology (phase A) and colour (phase B) share geometry; opposite phases interleave.
   // forEachCategorizedMarkStamp dedupes lattice points within each layer
   // (first feature wins) — required where polygons overlap.
   if (state.layers.waterEcologies) {
     forEachCategorizedMarkStamp(
       geo, waterEcologies, 'Layer', 'waterEcologies', callback,
+      drawOutlines ? outlineDrawer : null
+    );
+  }
+
+  if (state.layers.waterColour) {
+    forEachCategorizedMarkStamp(
+      geo, waterColour, 'Layer', 'waterColour', callback,
       drawOutlines ? outlineDrawer : null
     );
   }
@@ -3270,10 +3312,16 @@ function appendBaseLayerMarksSvg(geo, defs, plotParts, layerOpts, clipState) {
     ? opts.vegetationDensity
     : scoreLayers.vegetationDensity;
   const waterEcologies = opts.waterEcologies != null ? opts.waterEcologies : scoreLayers.waterEcologies;
+  const waterColour = opts.waterColour != null ? opts.waterColour : scoreLayers.waterColour;
 
   if (state.layers.waterEcologies) {
     appendOneBaseLayerSvg(geo, defs, plotParts, 'waterEcologies', 'water ecologies', 'waterEcologies', (cb) => {
       forEachCategorizedMarkStamp(geo, waterEcologies, 'Layer', 'waterEcologies', cb, null);
+    }, clipState);
+  }
+  if (state.layers.waterColour) {
+    appendOneBaseLayerSvg(geo, defs, plotParts, 'waterColour', 'water colour', 'waterColour', (cb) => {
+      forEachCategorizedMarkStamp(geo, waterColour, 'Layer', 'waterColour', cb, null);
     }, clipState);
   }
   if (state.layers.vegetationDensity) {
@@ -3435,6 +3483,7 @@ function buildSelectedSheetSvgString(options) {
   const vegetationF = filterFeaturesToSheet(scoreLayers.vegetation, sheet, sheetBufferFt);
   const vegetationDensityF = filterFeaturesToSheet(scoreLayers.vegetationDensity, sheet, sheetBufferFt);
   const waterEcologiesF = filterFeaturesToSheet(scoreLayers.waterEcologies, sheet, sheetBufferFt);
+  const waterColourF = filterFeaturesToSheet(scoreLayers.waterColour, sheet, sheetBufferFt);
   const contoursF = filterFeaturesToSheet(scoreLayers.contours, sheet, sheetBufferFt);
 
   const defs = [];
@@ -3461,6 +3510,7 @@ function buildSelectedSheetSvgString(options) {
       vegetation: vegetationF,
       vegetationDensity: vegetationDensityF,
       waterEcologies: waterEcologiesF,
+      waterColour: waterColourF,
       drawOutlines: false,
     }, exportClipState);
   }
@@ -3509,6 +3559,7 @@ function buildSelectedSheetSvgString(options) {
     vegetation: vegetationF.length + '/' + scoreLayers.vegetation.length,
     vegetationDensity: vegetationDensityF.length + '/' + scoreLayers.vegetationDensity.length,
     waterEcologies: waterEcologiesF.length + '/' + scoreLayers.waterEcologies.length,
+    waterColour: waterColourF.length + '/' + scoreLayers.waterColour.length,
     contours: contoursF.length + '/' + scoreLayers.contours.length,
     textElements: textCount,
     clipPathAttrs: clipPathCount,

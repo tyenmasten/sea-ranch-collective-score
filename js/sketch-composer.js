@@ -575,7 +575,7 @@ const FIELD_H = 800;
       if (t && (t.id === 'author' || t.id === 'lexiconName' || t.id === 'description' ||
           (t.matches && t.matches('input, textarea, select')))) return;
       if (e.key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undo(); }
-      else if (e.key === 'Delete') { e.preventDefault(); deleteSelected(); }
+      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelected(); }
       else if (e.key === 'Escape') { e.preventDefault(); S.selected = null; S.multi = []; syncUI(); draw(); }
     });
 

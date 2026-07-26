@@ -1810,6 +1810,115 @@ function markFtPerFieldPx(sketch) {
   return (scaleFt > 0 ? scaleFt : 10) / MARK_SCALE_BAR_PX;
 }
 
+/**
+ * Print/export lattice pitch in rotated feet — always MARK_GRID_MM at the selected
+ * scaleDenom, even in View browse mode, so notation placement matches SVG export.
+ */
+function notationPrintPitchFt(geo) {
+  const denom = (geo && geo.scaleDenom) || currentScaleDenominator();
+  return MARK_GRID_IN * (denom / 12);
+}
+
+/** Nearest brick lattice point on either A or B row (whichever is closer). */
+function nearestBrickPointAnyPhase(x, y, pitch) {
+  const a = nearestBrickPhasePoint(x, y, pitch, 0);
+  const b = nearestBrickPhasePoint(x, y, pitch, 1);
+  const da = (a.gx - x) * (a.gx - x) + (a.gy - y) * (a.gy - y);
+  const db = (b.gx - x) * (b.gx - x) + (b.gy - y) * (b.gy - y);
+  return da <= db ? a : b;
+}
+
+/**
+ * Nearest free brick cell to (prefGx, prefGy), expanding ring search with no cap.
+ * Occupancy is notation-only (caller-owned Set); both lattice phases are eligible.
+ */
+function findFreeNotationLatticeCell(prefGx, prefGy, pitch, occupied) {
+  const key0 = latticeKey(prefGx, prefGy);
+  if (!occupied.has(key0)) return { gx: prefGx, gy: prefGy };
+
+  for (let ring = 1; ring < 1000000; ring++) {
+    const pad = ring * pitch * 0.5;
+    let best = null;
+    let bestD = Infinity;
+    forEachBrickInBounds(
+      prefGx - pad, prefGx + pad, prefGy - pad, prefGy + pad,
+      pitch, null,
+      (gx, gy) => {
+        const k = latticeKey(gx, gy);
+        if (occupied.has(k)) return;
+        const d = (gx - prefGx) * (gx - prefGx) + (gy - prefGy) * (gy - prefGy);
+        if (d < bestD) {
+          bestD = d;
+          best = { gx: gx, gy: gy };
+        }
+      }
+    );
+    if (best) return best;
+  }
+  return { gx: prefGx, gy: prefGy };
+}
+
+function notationPlacementSortKey(a, b) {
+  const ida = String(a && a.id != null ? a.id : '');
+  const idb = String(b && b.id != null ? b.id : '');
+  if (ida !== idb) return ida < idb ? -1 : 1;
+  const sa = String(a && a.savedAt != null ? a.savedAt : '');
+  const sb = String(b && b.savedAt != null ? b.savedAt : '');
+  if (sa !== sb) return sa < sb ? -1 : 1;
+  return 0;
+}
+
+/**
+ * Shared Collective Score placement for student notations (screen + SVG).
+ * Snaps anchors to the print brick lattice, quantizes size to whole cells,
+ * and nudges colliding notations to the nearest free cell (notation-only occupancy).
+ * Does not mutate notations or Firestore.
+ *
+ * @returns {Object.<string, {lng,lat,gx,gy,ftPerPx,cells,pitch,scaleFt}>} keyed by notation.id
+ */
+function resolveNotationLatticePlacement(notations, geo) {
+  const pitch = notationPrintPitchFt(geo);
+  const list = Array.isArray(notations) ? notations.slice() : [];
+  list.sort(notationPlacementSortKey);
+
+  const occupied = new Set();
+  const byId = Object.create(null);
+
+  list.forEach((notation) => {
+    if (!notation || notation.lat == null || notation.lng == null) return;
+    if (notation.id == null || notation.id === '') return;
+    const id = String(notation.id);
+
+    const { rx, ry } = toRotatedFeet(notation.lng, notation.lat);
+    const pref = nearestBrickPointAnyPhase(rx, ry, pitch);
+    const cell = findFreeNotationLatticeCell(pref.gx, pref.gy, pitch, occupied);
+    occupied.add(latticeKey(cell.gx, cell.gy));
+
+    const ll = fromRotatedFeet(cell.gx, cell.gy);
+    let scaleFt = notation.sketch && notation.sketch.scaleFt != null
+      ? Number(notation.sketch.scaleFt)
+      : 10;
+    if (!(scaleFt > 0)) scaleFt = 10;
+    const cells = Math.max(1, Math.round(scaleFt / pitch));
+    const ftPerPx = (cells * pitch) / MARK_SCALE_BAR_PX;
+
+    byId[id] = {
+      lng: ll.lng,
+      lat: ll.lat,
+      gx: cell.gx,
+      gy: cell.gy,
+      preferredGx: pref.gx,
+      preferredGy: pref.gy,
+      ftPerPx: ftPerPx,
+      cells: cells,
+      pitch: pitch,
+      scaleFt: scaleFt,
+    };
+  });
+
+  return byId;
+}
+
 function fieldPointToScreen(fx, fy, lng, lat, ftPerPx, geo) {
   // Anchor: full rotated site pipeline (same as streets/buildings).
   const anchor = project(lng, lat, geo);
@@ -2071,11 +2180,16 @@ function drawFallbackNotationDot(notation, geo) {
 
 function drawNotations(geo) {
   const notations = getNotationsToDraw();
+  const placement = resolveNotationLatticePlacement(notations, geo);
   notations.forEach((notation) => {
     if (notation.lat == null || notation.lng == null) return;
+    const place = notation.id != null ? placement[String(notation.id)] : null;
+    const lng = place ? place.lng : notation.lng;
+    const lat = place ? place.lat : notation.lat;
+    const anchored = place ? Object.assign({}, notation, { lng: lng, lat: lat }) : notation;
 
     if (notation.lexiconLinkStatus === 'missing') {
-      drawFallbackNotationDot(notation, geo);
+      drawFallbackNotationDot(anchored, geo);
       return;
     }
 
@@ -2083,14 +2197,14 @@ function drawNotations(geo) {
       ? notation.sketch.marks
       : null;
     if (!marks || !marks.length) {
-      drawFallbackNotationDot(notation, geo);
+      drawFallbackNotationDot(anchored, geo);
       return;
     }
-    const ftPerPx = markFtPerFieldPx(notation.sketch);
+    const ftPerPx = place ? place.ftPerPx : markFtPerFieldPx(notation.sketch);
     if (window.SketchFill && window.SketchFill.migrateMarkFills) {
       window.SketchFill.migrateMarkFills(marks);
     }
-    marks.forEach((m) => drawSketchMark(m, notation.lng, notation.lat, ftPerPx, geo));
+    marks.forEach((m) => drawSketchMark(m, lng, lat, ftPerPx, geo));
   });
 }
 
@@ -2442,12 +2556,12 @@ function isPointerInCanvas(x, y) {
   return x >= 0 && x <= width && y >= 0 && y <= height;
 }
 
-function notationHitRadiusPx(notation, geo) {
+function notationHitRadiusPx(notation, geo, ftPerPxOverride) {
   if (notation.lexiconLinkStatus === 'missing' ||
       !(notation.sketch && Array.isArray(notation.sketch.marks) && notation.sketch.marks.length)) {
     return Math.max(NOTATION_HIT_MIN_PX, FALLBACK_DOT_RADIUS_FT * geo.pxPerFt * 2.5);
   }
-  const ftPerPx = markFtPerFieldPx(notation.sketch);
+  const ftPerPx = ftPerPxOverride != null ? ftPerPxOverride : markFtPerFieldPx(notation.sketch);
   // Field center is the projected anchor; use a fraction of field half-width in screen px.
   const halfFieldPx = (MARK_FIELD_W / 2) * ftPerPx * geo.pxPerFt * 0.45;
   return Math.max(NOTATION_HIT_MIN_PX, Math.min(NOTATION_HIT_MAX_PX, halfFieldPx));
@@ -2458,13 +2572,17 @@ function hitTestNotationAt(mx, my) {
   if (!scoreReady) return null;
   const geo = getActiveGeometry();
   const list = getNotationsToDraw();
+  const placement = resolveNotationLatticePlacement(list, geo);
   let best = null;
   let bestDist = Infinity;
   for (let i = 0; i < list.length; i++) {
     const notation = list[i];
     if (notation.lat == null || notation.lng == null) continue;
-    const p = project(notation.lng, notation.lat, geo);
-    const r = notationHitRadiusPx(notation, geo);
+    const place = notation.id != null ? placement[String(notation.id)] : null;
+    const lng = place ? place.lng : notation.lng;
+    const lat = place ? place.lat : notation.lat;
+    const p = project(lng, lat, geo);
+    const r = notationHitRadiusPx(notation, geo, place ? place.ftPerPx : null);
     const d = Math.hypot(mx - p.x, my - p.y);
     if (d <= r && d < bestDist) {
       bestDist = d;
@@ -3296,17 +3414,30 @@ function appendBaseLayerMarksSvg(geo, defs, plotParts, layerOpts, clipState) {
 }
 
 function appendNotationMarksSvg(geo, defs, plotParts, sheet, bufferFt, clipState) {
-  const notations = getNotationsToDraw().filter((n) =>
-    notationIntersectsSheet(n, sheet, bufferFt)
-  );
+  // Resolve against the full visible set (same as screen) so nudge order/occupancy
+  // matches drawNotations; then cull to this sheet using snapped anchors.
+  const allNotations = getNotationsToDraw();
+  const placement = resolveNotationLatticePlacement(allNotations, geo);
+  const notations = allNotations.filter((n) => {
+    if (n.lat == null || n.lng == null) return false;
+    const place = n.id != null ? placement[String(n.id)] : null;
+    const forSheet = place
+      ? Object.assign({}, n, { lng: place.lng, lat: place.lat })
+      : n;
+    return notationIntersectsSheet(forSheet, sheet, bufferFt);
+  });
   const inchesPerFt = 12 / geo.scaleDenom;
   const clips = clipState || { seq: 0 };
   const parts = [];
   notations.forEach((notation) => {
     if (notation.lat == null || notation.lng == null) return;
+    const place = notation.id != null ? placement[String(notation.id)] : null;
+    const lng = place ? place.lng : notation.lng;
+    const lat = place ? place.lat : notation.lat;
+    const ftPerPx = place ? place.ftPerPx : markFtPerFieldPx(notation.sketch);
 
     if (notation.lexiconLinkStatus === 'missing') {
-      const p = projectLngLatToPageInches(notation.lng, notation.lat, geo);
+      const p = projectLngLatToPageInches(lng, lat, geo);
       const r = Math.max(FALLBACK_DOT_RADIUS_FT * inchesPerFt, 0.02);
       emitClippedCircleSvg(p.x, p.y, r, '#1a1a1a', EXPORT_STROKE_IN * 1.5, false, getContentRectInches())
         .forEach((el) => parts.push(el));
@@ -3322,19 +3453,18 @@ function appendNotationMarksSvg(geo, defs, plotParts, sheet, bufferFt, clipState
       ? notation.sketch.marks
       : null;
     if (!marks || !marks.length) {
-      const p = projectLngLatToPageInches(notation.lng, notation.lat, geo);
+      const p = projectLngLatToPageInches(lng, lat, geo);
       const r = Math.max(FALLBACK_DOT_RADIUS_FT * inchesPerFt, 0.02);
       emitClippedCircleSvg(p.x, p.y, r, '#1a1a1a', EXPORT_STROKE_IN, false, getContentRectInches())
         .forEach((el) => parts.push(el));
       return;
     }
 
-    const ftPerPx = markFtPerFieldPx(notation.sketch);
     if (window.SketchFill && window.SketchFill.migrateMarkFills) {
       window.SketchFill.migrateMarkFills(marks);
     }
     marks.forEach((m) => {
-      const frags = emitSketchMarkSvg(m, notation.lng, notation.lat, ftPerPx, geo, defs, clips, {});
+      const frags = emitSketchMarkSvg(m, lng, lat, ftPerPx, geo, defs, clips, {});
       for (let i = 0; i < frags.length; i++) parts.push(frags[i]);
     });
   });

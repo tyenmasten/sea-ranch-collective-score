@@ -473,7 +473,7 @@ nav {
 
 .tile {
   --tw: 80px;
-  --th: 100px;
+  --th: 80px;
   width: var(--tw);
   height: var(--th);
   border: 1px solid var(--border);
@@ -481,11 +481,18 @@ nav {
   cursor: pointer;
   transition: border-color 0.15s;
   display: grid;
-  grid-template-rows: minmax(0, auto) minmax(0, 1fr) minmax(0, auto) minmax(0, auto) minmax(0, auto);
+  /* Fixed zone fractions — identical on every card regardless of text length */
+  grid-template-rows:
+    calc(var(--th) * 0.15)
+    minmax(0, 1fr)
+    calc(var(--th) * 0.10)
+    calc(var(--th) * 0.07)
+    calc(var(--th) * 0.07);
   align-items: stretch;
   overflow: hidden;
   flex-shrink: 0;
-  padding: calc(var(--th) * 0.035) calc(var(--tw) * 0.055) calc(var(--th) * 0.03);
+  padding: calc(var(--th) * 0.03) calc(var(--tw) * 0.05) calc(var(--th) * 0.025);
+  gap: 0;
   font: inherit;
   color: inherit;
   text-align: center;
@@ -507,11 +514,12 @@ nav {
 .card-top {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: stretch;
   gap: calc(var(--tw) * 0.04);
   width: 100%;
+  height: 100%;
   min-height: 0;
-  max-height: 20%;
+  max-height: none;
   overflow: hidden;
   line-height: 0;
 }
@@ -524,28 +532,33 @@ nav {
   line-height: 0;
   overflow: hidden;
   min-width: 0;
+  min-height: 0;
 }
 
 .card-initials {
-  flex: 0 1 auto;
-  width: 28%;
-  height: calc(var(--th) * 0.1);
+  flex: 0 0 30%;
+  width: 30%;
+  height: 100%;
+  display: flex;
+  align-items: center;
 }
 
 .card-meta-tags {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 1px;
-  max-width: 55%;
-  height: auto;
-  max-height: 100%;
+  flex: 0 0 58%;
+  width: 58%;
+  height: 100%;
+  max-width: none;
+  display: grid;
+  grid-template-rows: 1fr 1fr 1fr;
+  align-items: stretch;
+  justify-items: stretch;
+  gap: 0;
 }
 
 .card-meta-tags .card-glyph-line {
   width: 100%;
-  height: calc(var(--th) * 0.055);
+  height: 100%;
+  min-height: 0;
 }
 
 .card-glyph-line {
@@ -572,32 +585,31 @@ nav {
 .card-mark {
   min-height: 0;
   width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: calc(var(--th) * 0.01) 0;
+  margin: 0;
   line-height: 0;
   overflow: hidden;
 }
 
 .card-mark svg {
   display: block;
-  width: 88%;
+  width: 100%;
   height: 100%;
+  max-width: 100%;
   max-height: 100%;
 }
 
-.card-title {
-  width: 100%;
-  height: calc(var(--th) * 0.09);
-  min-height: 0;
-}
-
+.card-title,
 .card-typology,
 .card-element {
   width: 100%;
-  height: calc(var(--th) * 0.055);
+  height: 100%;
   min-height: 0;
+  display: flex;
+  align-items: center;
 }
 
 .detail-export-row {
@@ -1025,7 +1037,7 @@ const ORGANISE_OPTIONS = [
   { key: 'chrono', label: 'Chronological' },
 ];
 
-const TILE_ASPECT = 0.82; /* width / height — periodic-table cell proportion */
+/** Square tiles — fit-to-frame picks one side length. */
 
 /** Live lexicon rows mapped from Firestore (shape kept compatible with getGroups). */
 let LEXICONS = [];
@@ -1120,11 +1132,10 @@ function createMarkSvg(lex, options) {
   }
   const marks = lexMarks(lex);
   const svg = P.createSketchSvgElement(marks, {
-    viewSize: opts.viewSize != null ? opts.viewSize : 100,
+    frameMode: 'field',
     omitHatch: opts.omitHatch,
     forceHatch: opts.forceHatch === true,
     autoSimplifyHatch: opts.autoSimplifyHatch,
-    padFrac: 0.08,
   });
   svg.setAttribute('role', 'img');
   svg.setAttribute('aria-label', (lex.lexicon || 'Lexicon') + ' mark');
@@ -1424,7 +1435,7 @@ function bestGridLayout(n, availW, availH, gap) {
     return { cols: 1, rows: 1, tw: 0, th: 0 };
   }
 
-  let best = { cols: 1, rows: n, tw: 0, th: 0, area: -1 };
+  let best = { cols: 1, rows: n, tw: 0, th: 0, side: -1 };
 
   for (let cols = 1; cols <= n; cols++) {
     const rows = Math.ceil(n / cols);
@@ -1432,19 +1443,10 @@ function bestGridLayout(n, availW, availH, gap) {
     const cellH = (availH - gap * (rows - 1)) / rows;
     if (cellW <= 0 || cellH <= 0) continue;
 
-    let tw;
-    let th;
-    if (cellW / cellH > TILE_ASPECT) {
-      th = cellH;
-      tw = th * TILE_ASPECT;
-    } else {
-      tw = cellW;
-      th = tw / TILE_ASPECT;
-    }
-
-    const area = tw * th;
-    if (area > best.area) {
-      best = { cols: cols, rows: rows, tw: tw, th: th, area: area };
+    // Square cells: one side length that fits both axes.
+    const side = Math.min(cellW, cellH);
+    if (side > best.side) {
+      best = { cols: cols, rows: rows, tw: side, th: side, side: side };
     }
   }
 
@@ -1527,15 +1529,15 @@ function createElementCard(lex) {
   const tags = document.createElement('div');
   tags.className = 'card-meta-tags';
   const metaLines = metaTagsForCard(lex);
-  const tagList = metaLines.length ? metaLines : ['—'];
-  tagList.forEach((line) => {
-    tags.appendChild(createGlyphLine(line, {
+  // Always three fixed slots so zone height matches every card.
+  for (let i = 0; i < 3; i++) {
+    tags.appendChild(createGlyphLine(metaLines[i] || '', {
       height: 10,
       align: 'right',
       color: '#888888',
       maxWidth: 70,
     }));
-  });
+  }
 
   top.appendChild(initials);
   top.appendChild(tags);

@@ -2097,20 +2097,41 @@ function fieldPointToScreen(fx, fy, lng, lat, ftPerPx, geo) {
   };
 }
 
+/**
+ * Rotation pivot — shared with Overview via PlotterSvg (matches sketch-composer center(m):
+ * local AABB mid-point). Fallback kept only if plotter-svg.js failed to load.
+ */
 function markLocalCenter(m) {
-  const g = m.geom || {};
+  if (window.PlotterSvg && typeof window.PlotterSvg.markLocalCenter === 'function') {
+    return window.PlotterSvg.markLocalCenter(m);
+  }
+  const g = (m && m.geom) || {};
+  if (!m) return { x: MARK_FIELD_W / 2, y: MARK_FIELD_H / 2 };
+  // Fallback: same AABB-center logic as PlotterSvg / Builder.
+  let b;
   if (m.type === 'line') {
-    return { x: (g.x1 + g.x2) / 2, y: (g.y1 + g.y2) / 2 };
+    const x0 = Math.min(g.x1, g.x2), x1 = Math.max(g.x1, g.x2);
+    const y0 = Math.min(g.y1, g.y2), y1 = Math.max(g.y1, g.y2);
+    b = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  } else if (m.type === 'circle' || m.type === 'dot') {
+    b = { x: g.cx - g.r, y: g.cy - g.r, w: g.r * 2, h: g.r * 2 };
+  } else if (m.type === 'semicircle') {
+    const r = g.r;
+    if (g.orient === 1) b = { x: g.cx - r, y: g.cy - r, w: r, h: r * 2 };
+    else if (g.orient === 2) b = { x: g.cx - r, y: g.cy, w: r * 2, h: r };
+    else if (g.orient === 3) b = { x: g.cx, y: g.cy - r, w: r, h: r * 2 };
+    else b = { x: g.cx - r, y: g.cy - r, w: r * 2, h: r };
+  } else if (Array.isArray(g.pts) && g.pts.length) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    g.pts.forEach((p) => {
+      x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y);
+      x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
+    });
+    b = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  } else {
+    return { x: MARK_FIELD_W / 2, y: MARK_FIELD_H / 2 };
   }
-  if (m.type === 'circle' || m.type === 'dot' || m.type === 'semicircle') {
-    return { x: g.cx, y: g.cy };
-  }
-  if (Array.isArray(g.pts) && g.pts.length) {
-    let sx = 0, sy = 0;
-    g.pts.forEach((p) => { sx += p.x; sy += p.y; });
-    return { x: sx / g.pts.length, y: sy / g.pts.length };
-  }
-  return { x: MARK_FIELD_W / 2, y: MARK_FIELD_H / 2 };
+  return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
 }
 
 /** Shared pivot for pivotMode:'group' marks (average of segment centres ≈ BMC). */

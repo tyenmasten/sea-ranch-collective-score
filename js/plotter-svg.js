@@ -234,20 +234,16 @@
     return parts;
   }
 
+  /**
+   * Rotation pivot — matches sketch-composer.js center(m):
+   * axis-aligned local bounding-box mid-point (not full-circle center / vertex mean).
+   */
   function markLocalCenter(m) {
-    const g = m.geom || {};
-    if (m.type === 'line') {
-      return { x: (g.x1 + g.x2) / 2, y: (g.y1 + g.y2) / 2 };
+    const b = sketchLocalBounds(m);
+    if (!b || !isFinite(b.x) || !isFinite(b.y)) {
+      return { x: FIELD_W / 2, y: FIELD_H / 2 };
     }
-    if (m.type === 'circle' || m.type === 'dot' || m.type === 'semicircle') {
-      return { x: g.cx, y: g.cy };
-    }
-    if (Array.isArray(g.pts) && g.pts.length) {
-      let sx = 0, sy = 0;
-      g.pts.forEach((p) => { sx += p.x; sy += p.y; });
-      return { x: sx / g.pts.length, y: sy / g.pts.length };
-    }
-    return { x: FIELD_W / 2, y: FIELD_H / 2 };
+    return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
   }
 
   function rotateFieldPt(p, c, rot) {
@@ -269,15 +265,18 @@
 
   function sketchBoxFromPts(pts) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    pts.forEach((p) => {
+    (pts || []).forEach((p) => {
       x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y);
       x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
     });
-    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    if (!isFinite(x0)) return { x: 0, y: 0, w: 1, h: 1 };
+    return { x: x0, y: y0, w: Math.max(1e-9, x1 - x0), h: Math.max(1e-9, y1 - y0) };
   }
 
+  /** Same localBounds convention as sketch-composer.js (orient-aware semicircle AABB). */
   function sketchLocalBounds(m) {
-    const g = m.geom || {};
+    const g = (m && m.geom) || {};
+    if (!m) return { x: 0, y: 0, w: FIELD_W, h: FIELD_H };
     if (m.type === 'line') return sketchBoxFromPts([{ x: g.x1, y: g.y1 }, { x: g.x2, y: g.y2 }]);
     if (m.type === 'circle' || m.type === 'dot') {
       return { x: g.cx - g.r, y: g.cy - g.r, w: g.r * 2, h: g.r * 2 };
@@ -336,6 +335,110 @@
         y: oy + (fy - bounds.y) * scale,
       };
     };
+  }
+
+  function resolveMarkBounds(marks, opts) {
+    if (opts && opts.frameMode === 'field') {
+      return { x: 0, y: 0, w: FIELD_W, h: FIELD_H };
+    }
+    if (opts && opts.bounds) return opts.bounds;
+    return unionMarkBounds(marks);
+  }
+
+  /**
+   * Build SVG fragment string for a composed sketch fitted into targetRect.
+   * options: {
+   *   targetRect, omitHatch, strokeScale, minStroke, padFrac,
+   *   frameMode: 'field' | 'content' (default 'content'),
+   *   bounds: optional explicit source bounds
+   * }
+   * 'field' maps the Builder canvas (FIELD_W×FIELD_H) into the target (preserves
+   * relative size/placement). 'content' auto-fits the marks' union bounds.
+   */
+  function emitSketchMarksInRect(marks, options) {
+    const opts = options || {};
+    const list = Array.isArray(marks) ? marks : [];
+    if (!list.length) return [];
+    if (global.SketchFill && global.SketchFill.migrateMarkFills) {
+      global.SketchFill.migrateMarkFills(list);
+    }
+    const bounds = resolveMarkBounds(list, opts);
+    const target = opts.targetRect || { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+    const padFrac = opts.padFrac != null
+      ? opts.padFrac
+      : (opts.frameMode === 'field' ? 0 : 0.08);
+    const toTarget = makeFieldToRectMapper(bounds, target, padFrac);
+    const tw = target.maxX - target.minX;
+    const th = target.maxY - target.minY;
+    const strokeScale = opts.strokeScale != null
+      ? opts.strokeScale
+      : (Math.min(tw, th) / Math.max(bounds.w, bounds.h, 1));
+    const emitOpts = {
+      omitHatch: !!opts.omitHatch,
+      strokeScale: strokeScale,
+      minStroke: opts.minStroke != null ? opts.minStroke : Math.max(Math.min(tw, th) * 0.0015, 0.004),
+    };
+    const out = [];
+    list.forEach((m) => {
+      emitSketchMarkLocal(m, toTarget, emitOpts).forEach((el) => out.push(el));
+    });
+    return out;
+  }
+
+  /**
+   * Create a standalone <svg> DOM element for on-screen tile/preview use.
+   * Default frameMode 'field' uses the Builder canvas viewBox (600×800) so CSS
+   * letterboxes into the card mark slot without per-mark auto-fit.
+   */
+  function createSketchSvgElement(marks, options) {
+    const opts = options || {};
+    const frameMode = opts.frameMode || 'field';
+    const omitHatch = opts.omitHatch !== false;
+    const forceHatch = opts.forceHatch === true;
+    const list = Array.isArray(marks) ? marks : [];
+
+    let useOmit = forceHatch ? false : omitHatch;
+    if (!forceHatch && opts.autoSimplifyHatch !== false) {
+      let hatchy = 0;
+      list.forEach((m) => {
+        if (m && m.fill && m.fill !== 'none' && m.fill !== 'solid') hatchy += 1;
+      });
+      if (hatchy === 0) useOmit = false;
+    }
+
+    const vbW = frameMode === 'field' ? FIELD_W : (opts.viewSize != null ? opts.viewSize : 100);
+    const vbH = frameMode === 'field' ? FIELD_H : vbW;
+
+    const parts = emitSketchMarksInRect(list, {
+      targetRect: { minX: 0, minY: 0, maxX: vbW, maxY: vbH },
+      frameMode: frameMode,
+      omitHatch: useOmit,
+      padFrac: opts.padFrac != null ? opts.padFrac : (frameMode === 'field' ? 0 : 0.08),
+      minStroke: opts.minStroke != null ? opts.minStroke : Math.min(vbW, vbH) * 0.008,
+    });
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    svg.setAttribute('viewBox', '0 0 ' + vbW + ' ' + vbH);
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    svg.setAttribute('aria-hidden', 'true');
+    if (!parts.length) {
+      const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      c.setAttribute('cx', String(vbW / 2));
+      c.setAttribute('cy', String(vbH / 2));
+      c.setAttribute('r', String(Math.min(vbW, vbH) * 0.04));
+      c.setAttribute('fill', '#2a6049');
+      c.setAttribute('stroke', 'none');
+      svg.appendChild(c);
+      return svg;
+    }
+    const wrap = document.createElement('div');
+    wrap.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg">' + parts.join('') + '</svg>';
+    const tmp = wrap.firstChild;
+    while (tmp.firstChild) svg.appendChild(tmp.firstChild);
+    return svg;
   }
 
   function emitLine(out, a, b, color, weight) {
@@ -474,94 +577,6 @@
     return out;
   }
 
-  /**
-   * Build SVG fragment string for a composed sketch fitted into targetRect.
-   * options: {
-   *   targetRect: {minX,minY,maxX,maxY},
-   *   omitHatch: boolean (on-screen simplification),
-   *   strokeScale: number (field weight → target units),
-   *   minStroke: number,
-   *   padFrac: number
-   * }
-   */
-  function emitSketchMarksInRect(marks, options) {
-    const opts = options || {};
-    const list = Array.isArray(marks) ? marks : [];
-    if (!list.length) return [];
-    if (global.SketchFill && global.SketchFill.migrateMarkFills) {
-      global.SketchFill.migrateMarkFills(list);
-    }
-    const bounds = unionMarkBounds(list);
-    const target = opts.targetRect || { minX: 0, minY: 0, maxX: 1, maxY: 1 };
-    const toTarget = makeFieldToRectMapper(bounds, target, opts.padFrac);
-    const tw = target.maxX - target.minX;
-    const strokeScale = opts.strokeScale != null
-      ? opts.strokeScale
-      : (Math.min(tw, target.maxY - target.minY) / Math.max(bounds.w, bounds.h, 1));
-    const emitOpts = {
-      omitHatch: !!opts.omitHatch,
-      strokeScale: strokeScale,
-      minStroke: opts.minStroke != null ? opts.minStroke : Math.max(tw * 0.0015, 0.004),
-    };
-    const out = [];
-    list.forEach((m) => {
-      emitSketchMarkLocal(m, toTarget, emitOpts).forEach((el) => out.push(el));
-    });
-    return out;
-  }
-
-  /**
-   * Create a standalone <svg> DOM element for on-screen tile/preview use.
-   * Uses a stable unit viewBox so CSS sizing can scale without rebuilding paths.
-   */
-  function createSketchSvgElement(marks, options) {
-    const opts = options || {};
-    const vb = opts.viewSize != null ? opts.viewSize : 100;
-    const omitHatch = opts.omitHatch !== false; // default simplify on-screen when dense
-    const forceHatch = opts.forceHatch === true;
-    const list = Array.isArray(marks) ? marks : [];
-
-    let useOmit = forceHatch ? false : omitHatch;
-    // Auto: omit hatch when many fill segments likely (closed filled shapes).
-    if (!forceHatch && opts.autoSimplifyHatch !== false) {
-      let hatchy = 0;
-      list.forEach((m) => {
-        if (m && m.fill && m.fill !== 'none' && m.fill !== 'solid') hatchy += 1;
-      });
-      if (hatchy === 0) useOmit = false;
-    }
-
-    const parts = emitSketchMarksInRect(list, {
-      targetRect: { minX: 0, minY: 0, maxX: vb, maxY: vb },
-      omitHatch: useOmit,
-      padFrac: opts.padFrac != null ? opts.padFrac : 0.08,
-      minStroke: opts.minStroke != null ? opts.minStroke : vb * 0.008,
-    });
-
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    svg.setAttribute('viewBox', '0 0 ' + vb + ' ' + vb);
-    svg.setAttribute('width', '100%');
-    svg.setAttribute('height', '100%');
-    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-    svg.setAttribute('aria-hidden', 'true');
-    if (!parts.length) {
-      const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      c.setAttribute('cx', String(vb / 2));
-      c.setAttribute('cy', String(vb / 2));
-      c.setAttribute('r', String(vb * 0.06));
-      c.setAttribute('fill', '#2a6049');
-      c.setAttribute('stroke', 'none');
-      svg.appendChild(c);
-      return svg;
-    }
-    const wrap = document.createElement('div');
-    wrap.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg">' + parts.join('') + '</svg>';
-    const tmp = wrap.firstChild;
-    while (tmp.firstChild) svg.appendChild(tmp.firstChild);
-    return svg;
-  }
-
   function slugify(text) {
     return String(text || 'untitled')
       .trim()
@@ -639,8 +654,9 @@
     };
     parts.push.apply(parts, emitSketchMarksInRect(marks, {
       targetRect: markRect,
+      frameMode: 'field',
       omitHatch: false,
-      padFrac: 0.08,
+      padFrac: 0,
       minStroke: 0.01,
     }));
 
@@ -745,6 +761,7 @@
     cropMarkCenters: cropMarkCenters,
     cropMarksSvgParts: cropMarksSvgParts,
     markLocalCenter: markLocalCenter,
+    sketchLocalBounds: sketchLocalBounds,
     rotateFieldPt: rotateFieldPt,
     unionMarkBounds: unionMarkBounds,
     emitSketchMarkLocal: emitSketchMarkLocal,

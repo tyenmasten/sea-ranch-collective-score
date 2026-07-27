@@ -57,11 +57,15 @@ const BASE_MARK_STROKE_WEIGHT = (MARK_STROKE_IN * BASE_MARK_FIELD_SPAN) / MARK_S
 const HATCH_PITCH = 7 * (MARK_GRID_MM / 3);
 
 // Corner crop / registration marks (centers sit on content-rect corners).
+// Shared with Overview via js/plotter-svg.js when available.
 const CROP_MARK_RADIUS_MM = 1.5;   // 3mm diameter circle
 const CROP_MARK_CROSS_MM = 2.5;    // half-arm length from center (5mm total)
-const CROP_MARK_RADIUS_IN = CROP_MARK_RADIUS_MM / MM_PER_IN;
-const CROP_MARK_CROSS_IN = CROP_MARK_CROSS_MM / MM_PER_IN;
-const CROP_MARK_STROKE_IN = 0.2 / MM_PER_IN;
+const CROP_MARK_RADIUS_IN = (window.PlotterSvg && window.PlotterSvg.CROP_MARK_RADIUS_IN)
+  || (CROP_MARK_RADIUS_MM / MM_PER_IN);
+const CROP_MARK_CROSS_IN = (window.PlotterSvg && window.PlotterSvg.CROP_MARK_CROSS_IN)
+  || (CROP_MARK_CROSS_MM / MM_PER_IN);
+const CROP_MARK_STROKE_IN = (window.PlotterSvg && window.PlotterSvg.CROP_MARK_STROKE_IN)
+  || (0.2 / MM_PER_IN);
 
 const FILL_SCALE_OPTIONS = [1, 0.75, 0.5, 0.25];
 const FILL_ROTATION_OPTIONS = [0, 45, 90, 135];
@@ -3174,56 +3178,9 @@ function appendGeoPolygonOutlines(features, geo, outOutlines) {
   });
 }
 
-/** Built-in monoline caption glyphs (unit em height 1). A–Z, 0–9, colon, middle dot, space. */
-const CAPTION_GLYPHS = {
-  ' ': { w: 0.45, strokes: [] },
-  ':': { w: 0.35, strokes: [[[0.15, 0.25]], [[0.15, 0.7]]] },
-  '·': { w: 0.4, strokes: [[[0.18, 0.5]]] },
-  '•': { w: 0.4, strokes: [[[0.18, 0.5]]] },
-  '-': { w: 0.5, strokes: [[[0.08, 0.5], [0.42, 0.5]]] },
-  '0': { w: 0.7, strokes: [[[0.15, 0.15], [0.5, 0.15], [0.55, 0.3], [0.55, 0.7], [0.5, 0.85], [0.15, 0.85], [0.1, 0.7], [0.1, 0.3], [0.15, 0.15]]] },
-  '1': { w: 0.5, strokes: [[[0.15, 0.3], [0.3, 0.15], [0.3, 0.85]]] },
-  '2': { w: 0.7, strokes: [[[0.1, 0.3], [0.15, 0.15], [0.5, 0.15], [0.55, 0.3], [0.1, 0.85], [0.55, 0.85]]] },
-  '3': { w: 0.7, strokes: [[[0.1, 0.2], [0.45, 0.15], [0.55, 0.3], [0.35, 0.5], [0.55, 0.7], [0.45, 0.85], [0.1, 0.8]]] },
-  '4': { w: 0.7, strokes: [[[0.45, 0.85], [0.45, 0.15], [0.1, 0.6], [0.55, 0.6]]] },
-  '5': { w: 0.7, strokes: [[[0.55, 0.15], [0.15, 0.15], [0.1, 0.45], [0.45, 0.45], [0.55, 0.6], [0.5, 0.85], [0.15, 0.85], [0.1, 0.7]]] },
-  '6': { w: 0.7, strokes: [[[0.5, 0.2], [0.2, 0.15], [0.1, 0.4], [0.1, 0.7], [0.2, 0.85], [0.5, 0.85], [0.55, 0.65], [0.5, 0.5], [0.15, 0.5]]] },
-  '7': { w: 0.7, strokes: [[[0.1, 0.15], [0.55, 0.15], [0.25, 0.85]]] },
-  '8': { w: 0.7, strokes: [[[0.2, 0.5], [0.15, 0.3], [0.25, 0.15], [0.45, 0.15], [0.55, 0.3], [0.5, 0.5], [0.2, 0.5], [0.1, 0.7], [0.2, 0.85], [0.5, 0.85], [0.55, 0.7], [0.5, 0.5]]] },
-  '9': { w: 0.7, strokes: [[[0.15, 0.8], [0.45, 0.85], [0.55, 0.6], [0.55, 0.3], [0.45, 0.15], [0.15, 0.15], [0.1, 0.35], [0.15, 0.5], [0.5, 0.5]]] },
-  'A': { w: 0.75, strokes: [[[0.1, 0.85], [0.35, 0.15], [0.6, 0.85]], [[0.2, 0.55], [0.5, 0.55]]] },
-  'B': { w: 0.7, strokes: [[[0.1, 0.15], [0.1, 0.85], [0.4, 0.85], [0.55, 0.7], [0.4, 0.5], [0.1, 0.5]], [[0.1, 0.5], [0.4, 0.5], [0.55, 0.35], [0.4, 0.15], [0.1, 0.15]]] },
-  'C': { w: 0.7, strokes: [[[0.55, 0.25], [0.4, 0.15], [0.2, 0.15], [0.1, 0.3], [0.1, 0.7], [0.2, 0.85], [0.4, 0.85], [0.55, 0.75]]] },
-  'D': { w: 0.75, strokes: [[[0.1, 0.15], [0.1, 0.85], [0.4, 0.85], [0.6, 0.65], [0.6, 0.35], [0.4, 0.15], [0.1, 0.15]]] },
-  'E': { w: 0.65, strokes: [[[0.55, 0.15], [0.1, 0.15], [0.1, 0.85], [0.55, 0.85]], [[0.1, 0.5], [0.45, 0.5]]] },
-  'F': { w: 0.65, strokes: [[[0.55, 0.15], [0.1, 0.15], [0.1, 0.85]], [[0.1, 0.5], [0.45, 0.5]]] },
-  'G': { w: 0.75, strokes: [[[0.55, 0.25], [0.4, 0.15], [0.2, 0.15], [0.1, 0.3], [0.1, 0.7], [0.2, 0.85], [0.45, 0.85], [0.6, 0.7], [0.6, 0.5], [0.35, 0.5]]] },
-  'H': { w: 0.75, strokes: [[[0.1, 0.15], [0.1, 0.85]], [[0.6, 0.15], [0.6, 0.85]], [[0.1, 0.5], [0.6, 0.5]]] },
-  'I': { w: 0.4, strokes: [[[0.2, 0.15], [0.2, 0.85]]] },
-  'J': { w: 0.6, strokes: [[[0.45, 0.15], [0.45, 0.7], [0.35, 0.85], [0.15, 0.85], [0.1, 0.7]]] },
-  'K': { w: 0.7, strokes: [[[0.1, 0.15], [0.1, 0.85]], [[0.55, 0.15], [0.1, 0.5], [0.55, 0.85]]] },
-  'L': { w: 0.6, strokes: [[[0.1, 0.15], [0.1, 0.85], [0.5, 0.85]]] },
-  'M': { w: 0.85, strokes: [[[0.1, 0.85], [0.1, 0.15], [0.4, 0.55], [0.7, 0.15], [0.7, 0.85]]] },
-  'N': { w: 0.75, strokes: [[[0.1, 0.85], [0.1, 0.15], [0.6, 0.85], [0.6, 0.15]]] },
-  'O': { w: 0.75, strokes: [[[0.2, 0.15], [0.5, 0.15], [0.6, 0.35], [0.6, 0.65], [0.5, 0.85], [0.2, 0.85], [0.1, 0.65], [0.1, 0.35], [0.2, 0.15]]] },
-  'P': { w: 0.65, strokes: [[[0.1, 0.85], [0.1, 0.15], [0.4, 0.15], [0.55, 0.3], [0.4, 0.5], [0.1, 0.5]]] },
-  'Q': { w: 0.75, strokes: [[[0.2, 0.15], [0.5, 0.15], [0.6, 0.35], [0.6, 0.65], [0.5, 0.85], [0.2, 0.85], [0.1, 0.65], [0.1, 0.35], [0.2, 0.15]], [[0.4, 0.6], [0.65, 0.9]]] },
-  'R': { w: 0.7, strokes: [[[0.1, 0.85], [0.1, 0.15], [0.4, 0.15], [0.55, 0.3], [0.4, 0.5], [0.1, 0.5]], [[0.3, 0.5], [0.55, 0.85]]] },
-  'S': { w: 0.65, strokes: [[[0.55, 0.25], [0.4, 0.15], [0.2, 0.15], [0.1, 0.3], [0.2, 0.45], [0.45, 0.55], [0.55, 0.7], [0.4, 0.85], [0.15, 0.85], [0.1, 0.7]]] },
-  'T': { w: 0.7, strokes: [[[0.1, 0.15], [0.6, 0.15]], [[0.35, 0.15], [0.35, 0.85]]] },
-  'U': { w: 0.75, strokes: [[[0.1, 0.15], [0.1, 0.65], [0.2, 0.85], [0.5, 0.85], [0.6, 0.65], [0.6, 0.15]]] },
-  'V': { w: 0.75, strokes: [[[0.1, 0.15], [0.35, 0.85], [0.6, 0.15]]] },
-  'W': { w: 0.9, strokes: [[[0.1, 0.15], [0.25, 0.85], [0.45, 0.4], [0.65, 0.85], [0.8, 0.15]]] },
-  'X': { w: 0.7, strokes: [[[0.1, 0.15], [0.6, 0.85]], [[0.6, 0.15], [0.1, 0.85]]] },
-  'Y': { w: 0.7, strokes: [[[0.1, 0.15], [0.35, 0.5], [0.6, 0.15]], [[0.35, 0.5], [0.35, 0.85]]] },
-  'Z': { w: 0.7, strokes: [[[0.1, 0.15], [0.6, 0.15], [0.1, 0.85], [0.6, 0.85]]] },
-};
-
+/** Monoline caption glyphs — shared via js/plotter-svg.js (PlotterSvg). */
 function getCaptionGlyph(ch) {
-  if (CAPTION_GLYPHS[ch]) return CAPTION_GLYPHS[ch];
-  const up = ch.toUpperCase();
-  if (CAPTION_GLYPHS[up]) return CAPTION_GLYPHS[up];
-  return CAPTION_GLYPHS[' '] || { w: 0.4, strokes: [] };
+  return window.PlotterSvg.getCaptionGlyph(ch);
 }
 
 function polylineToPathD(pts) {
@@ -3237,53 +3194,11 @@ function polylineToPathD(pts) {
 
 /** Emit caption string as stroked paths; (startX,startY) is left / vertical center. */
 function captionStringPathsAt(str, startX, startY, heightIn, color) {
-  let x = startX;
-  const out = [];
-  const strokeW = Math.max(heightIn * 0.08, 0.006);
-  for (let i = 0; i < str.length; i++) {
-    const glyph = getCaptionGlyph(str.charAt(i));
-    const w = (glyph.w || 0.5) * heightIn;
-    (glyph.strokes || []).forEach((stroke) => {
-      if (!stroke.length) return;
-      const pts = stroke.map((p) => ({
-        x: x + p[0] * heightIn,
-        y: startY + (p[1] - 0.5) * heightIn,
-      }));
-      if (pts.length === 1) {
-        const r = Math.max(heightIn * 0.04, 0.004);
-        // Stroked outline (not fill-only) so plotters can trace the mid-dot.
-        out.push(svgEl('circle', {
-          cx: svgNum(pts[0].x), cy: svgNum(pts[0].y), r: svgNum(r),
-          fill: 'none',
-          stroke: color || '#1a1a1a',
-          'stroke-width': svgNum(strokeW),
-        }));
-        return;
-      }
-      const d = polylineToPathD(pts);
-      if (d) {
-        out.push(svgEl('path', {
-          d: d,
-          fill: 'none',
-          stroke: color || '#1a1a1a',
-          'stroke-width': svgNum(strokeW),
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round',
-        }));
-      }
-    });
-    x += w * 1.08;
-  }
-  return out;
+  return window.PlotterSvg.captionStringPathsAt(str, startX, startY, heightIn, color);
 }
 
 function captionStringWidthIn(str, heightIn) {
-  let w = 0;
-  for (let i = 0; i < str.length; i++) {
-    const glyph = getCaptionGlyph(str.charAt(i));
-    w += (glyph.w || 0.5) * heightIn * 1.08;
-  }
-  return w;
+  return window.PlotterSvg.captionStringWidthIn(str, heightIn);
 }
 
 function sheetCaptionText(sheet, scaleDenom) {

@@ -8,6 +8,7 @@
 <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/sketch-fill.js"></script>
+<script src="js/plotter-svg.js"></script>
 <style>
 /* Mobile responsive — to be handled by Cursor in a separate pass */
 
@@ -409,7 +410,8 @@ nav {
 }
 
 .mark-preview-inner canvas,
-.mark-preview-inner img {
+.mark-preview-inner img,
+.mark-preview-inner svg {
   display: block;
   max-width: 104px;
   max-height: 74px;
@@ -483,12 +485,17 @@ nav {
   align-items: stretch;
   overflow: hidden;
   flex-shrink: 0;
-  padding: calc(var(--th) * 0.035) calc(var(--tw) * 0.055) calc(var(--th) * 0.04);
+  padding: calc(var(--th) * 0.035) calc(var(--tw) * 0.055) calc(var(--th) * 0.03);
   font: inherit;
   color: inherit;
   text-align: center;
-  appearance: none;
   box-sizing: border-box;
+  position: relative;
+}
+
+.tile:focus {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
 }
 
 .tile:hover { border-color: #666; }
@@ -504,30 +511,62 @@ nav {
   gap: calc(var(--tw) * 0.04);
   width: 100%;
   min-height: 0;
-  max-height: 22%;
+  max-height: 20%;
   overflow: hidden;
-  line-height: 1.1;
+  line-height: 0;
+}
+
+.card-initials,
+.card-meta-tags,
+.card-title,
+.card-typology,
+.card-element {
+  line-height: 0;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .card-initials {
-  font-family: 'Media77', sans-serif;
-  font-size: calc(var(--tw) * 0.1);
-  color: var(--ink);
-  letter-spacing: 0.02em;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
+  flex: 0 1 auto;
+  width: 28%;
+  height: calc(var(--th) * 0.1);
 }
 
 .card-meta-tags {
-  font-family: 'Media77', sans-serif;
-  font-size: calc(var(--tw) * 0.072);
-  color: var(--dim);
-  text-align: right;
-  line-height: 1.15;
-  white-space: pre-line;
-  overflow: hidden;
-  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  max-width: 55%;
+  height: auto;
+  max-height: 100%;
+}
+
+.card-meta-tags .card-glyph-line {
+  width: 100%;
+  height: calc(var(--th) * 0.055);
+}
+
+.card-glyph-line {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.card-initials > .card-glyph-line,
+.card-title > .card-glyph-line,
+.card-typology > .card-glyph-line,
+.card-element > .card-glyph-line {
+  height: 100%;
+}
+
+.card-glyph-line svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
 }
 
 .card-mark {
@@ -536,44 +575,61 @@ nav {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: calc(var(--th) * 0.015) 0;
+  margin: calc(var(--th) * 0.01) 0;
   line-height: 0;
   overflow: hidden;
 }
 
-.card-mark img {
+.card-mark svg {
   display: block;
-  max-width: 88%;
+  width: 88%;
+  height: 100%;
   max-height: 100%;
-  width: auto;
-  height: auto;
-  object-fit: contain;
 }
 
 .card-title {
-  font-family: 'Miniature', serif;
-  font-size: calc(var(--th) * 0.09);
-  letter-spacing: 0.04em;
-  color: var(--ink);
-  line-height: 1.15;
   width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  height: calc(var(--th) * 0.09);
   min-height: 0;
 }
 
 .card-typology,
 .card-element {
-  font-family: 'Media77', sans-serif;
-  font-size: calc(var(--th) * 0.055);
-  color: var(--dim);
-  line-height: 1.15;
   width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  height: calc(var(--th) * 0.055);
   min-height: 0;
+}
+
+.card-export {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  z-index: 2;
+  border: 1px solid var(--border);
+  background: rgba(240, 240, 240, 0.92);
+  color: var(--ink);
+  font-family: 'Media77', sans-serif;
+  font-size: 7px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 4px;
+  cursor: pointer;
+  line-height: 1.1;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+
+.tile:hover .card-export,
+.tile:focus-within .card-export,
+.tile.selected .card-export {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.card-export:hover {
+  border-color: var(--ink);
+  background: var(--surface2);
 }
 
 .detail-modal {
@@ -638,7 +694,8 @@ nav {
   padding: 16px;
 }
 
-.detail-mark img {
+.detail-mark img,
+.detail-mark svg {
   display: block;
   max-width: 100%;
   max-height: 280px;
@@ -988,17 +1045,12 @@ const ORGANISE_OPTIONS = [
 ];
 
 const TILE_ASPECT = 0.82; /* width / height — periodic-table cell proportion */
-const DETAIL_MARK_SIZE = 320;
-const PREVIEW_MARK_SIZE = 88;
-
-const SKETCH_FIELD_W = 600;
-const SKETCH_FIELD_H = 800;
 
 /** Live lexicon rows mapped from Firestore (shape kept compatible with getGroups). */
 let LEXICONS = [];
 
-/** Cache rasterized tile/preview images: key = id + ':' + size → { savedAt, url }. */
-const sketchImageCache = {};
+/** On-screen hatch simplification: omit hatch when tile shorter than this (px). */
+const ONSCREEN_HATCH_MIN_PX = 56;
 
 const META_VALUE_TO_KEY = {
   Form: 'form', form: 'form',
@@ -1071,295 +1123,77 @@ function mapFirestorestoreEntry(docId, data) {
   };
 }
 
-/* --- Sketch replay (same approach as location-input rasterizeSketchMarks) --- */
+/* --- Vector sketch marks + monoline caption (js/plotter-svg.js) --- */
 
-function sketchBoxFromPts(pts) {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  pts.forEach((p) => {
-    x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y);
-    x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
+function lexMarks(lex) {
+  return lex && lex.sketch && Array.isArray(lex.sketch.marks) ? lex.sketch.marks : [];
+}
+
+function createMarkSvg(lex, options) {
+  const opts = options || {};
+  const P = window.PlotterSvg;
+  if (!P) {
+    const empty = document.createElement('div');
+    empty.textContent = '—';
+    return empty;
+  }
+  const marks = lexMarks(lex);
+  const svg = P.createSketchSvgElement(marks, {
+    viewSize: opts.viewSize != null ? opts.viewSize : 100,
+    omitHatch: opts.omitHatch,
+    forceHatch: opts.forceHatch === true,
+    autoSimplifyHatch: opts.autoSimplifyHatch,
+    padFrac: 0.08,
   });
-  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', (lex.lexicon || 'Lexicon') + ' mark');
+  return svg;
 }
 
-function sketchLocalBounds(m) {
-  const g = m.geom || {};
-  if (m.type === 'line') return sketchBoxFromPts([{ x: g.x1, y: g.y1 }, { x: g.x2, y: g.y2 }]);
-  if (m.type === 'circle' || m.type === 'dot') {
-    return { x: g.cx - g.r, y: g.cy - g.r, w: g.r * 2, h: g.r * 2 };
+function createGlyphLine(text, opts) {
+  const wrap = document.createElement('div');
+  wrap.className = 'card-glyph-line' + (opts && opts.className ? ' ' + opts.className : '');
+  const P = window.PlotterSvg;
+  if (!P) {
+    wrap.textContent = text;
+    return wrap;
   }
-  if (m.type === 'semicircle') {
-    const r = g.r;
-    if (g.orient === 1) return { x: g.cx - r, y: g.cy - r, w: r, h: r * 2 };
-    if (g.orient === 2) return { x: g.cx - r, y: g.cy, w: r * 2, h: r };
-    if (g.orient === 3) return { x: g.cx, y: g.cy - r, w: r, h: r * 2 };
-    return { x: g.cx - r, y: g.cy - r, w: r * 2, h: r };
-  }
-  return sketchBoxFromPts(g.pts || [{ x: 0, y: 0 }]);
-}
-
-function sketchCenter(m) {
-  const b = sketchLocalBounds(m);
-  return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
-}
-
-function sketchRotatePt(p, c, rot) {
-  const cos = Math.cos(rot);
-  const sin = Math.sin(rot);
-  const dx = p.x - c.x;
-  const dy = p.y - c.y;
-  return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos };
-}
-
-function sketchRotatedBounds(b, c, rot) {
-  const pts = [
-    { x: b.x, y: b.y }, { x: b.x + b.w, y: b.y },
-    { x: b.x + b.w, y: b.y + b.h }, { x: b.x, y: b.y + b.h },
-  ].map((p) => sketchRotatePt(p, c, rot));
-  return sketchBoxFromPts(pts);
-}
-
-function sketchBounds(m) {
-  const b = sketchLocalBounds(m);
-  const rot = m.rot || 0;
-  if (!rot) return b;
-  return sketchRotatedBounds(b, sketchCenter(m), rot);
-}
-
-function sketchUnionBounds(marks) {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  marks.forEach((m) => {
-    const b = sketchBounds(m);
-    const pad = (m.weight || 0) / 2 + 2;
-    x0 = Math.min(x0, b.x - pad);
-    y0 = Math.min(y0, b.y - pad);
-    x1 = Math.max(x1, b.x + b.w + pad);
-    y1 = Math.max(y1, b.y + b.h + pad);
+  const el = P.createCaptionSvgElement(text, {
+    height: opts && opts.height != null ? opts.height : 12,
+    color: (opts && opts.color) || '#1a1a1a',
+    align: (opts && opts.align) || 'left',
+    maxWidth: (opts && opts.maxWidth) != null ? opts.maxWidth : 100,
   });
-  if (!isFinite(x0)) return { x: 0, y: 0, w: SKETCH_FIELD_W, h: SKETCH_FIELD_H };
-  return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
+  wrap.appendChild(el);
+  return wrap;
 }
 
-function rasterizeSketchMarks(marks, size) {
-  if (!marks || !marks.length) return null;
-
-  if (window.SketchFill && window.SketchFill.migrateMarkFills) {
-    window.SketchFill.migrateMarkFills(marks);
+function exportLexiconCardSvg(lex, event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
   }
-
-  const field = document.createElement('canvas');
-  field.width = SKETCH_FIELD_W;
-  field.height = SKETCH_FIELD_H;
-  const ctx = field.getContext('2d');
-
-  function setDash(style, w) {
-    if (style === 'dashed') ctx.setLineDash([Math.max(w * 3, 8), Math.max(w * 2, 5)]);
-    else if (style === 'dotted') ctx.setLineDash([Math.max(w * 0.2, 1), Math.max(w * 2, 4)]);
-    else ctx.setLineDash([]);
+  const P = window.PlotterSvg;
+  if (!P) {
+    alert('Plotter SVG utility is not loaded.');
+    return;
   }
-
-  function tracePts(pts, close) {
-    if (!pts || !pts.length) return;
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-    if (close) ctx.closePath();
-  }
-
-  function drawFillGeometry(geom, color, weight) {
-    if (!geom) return;
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = Math.max(1.25, (weight || 5) * 0.25);
-    ctx.lineCap = 'round';
-    ctx.setLineDash([]);
-    (geom.lines || []).forEach((seg) => {
-      ctx.beginPath();
-      ctx.moveTo(seg.x1, seg.y1);
-      ctx.lineTo(seg.x2, seg.y2);
-      ctx.stroke();
-    });
-    (geom.dots || []).forEach((d) => {
-      ctx.beginPath();
-      ctx.arc(d.cx, d.cy, d.r, 0, Math.PI * 2);
-      ctx.fill();
-    });
-    ctx.restore();
-  }
-
-  function fillForMark(m) {
-    if (!window.SketchFill || !window.SketchFill.fillGeometryForMark) return null;
-    if (!m || m.fill === 'none') return null;
-    if (m.type !== 'circle' && m.type !== 'triangle' && m.type !== 'rectangle' && m.type !== 'diamond') {
-      return null;
-    }
-    return window.SketchFill.fillGeometryForMark(m);
-  }
-
-  function drawClosed(m) {
-    const g = m.geom;
-    const pts = g.pts;
-    const geom = fillForMark(m);
-    if (geom && (geom.lines.length || geom.dots.length)) {
-      drawFillGeometry(geom, m.color || '#1a1a1a', m.weight);
-    }
-    if (m.stroke) {
-      ctx.beginPath(); tracePts(pts, true); ctx.stroke();
-    }
-  }
-
-  function semiArc(g) {
-    const o = g.orient || 0;
-    if (o === 1) return { start: Math.PI / 2, end: -Math.PI / 2, ccw: true };
-    if (o === 2) return { start: 0, end: Math.PI, ccw: false };
-    if (o === 3) return { start: -Math.PI / 2, end: Math.PI / 2, ccw: false };
-    return { start: Math.PI, end: 0, ccw: true };
-  }
-
-  function drawMarkLocal(m) {
-    ctx.strokeStyle = m.color || '#1a1a1a';
-    ctx.fillStyle = m.color || '#1a1a1a';
-    ctx.lineWidth = m.weight || 1;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.setLineDash([]);
-    const g = m.geom;
-    if (!g) return;
-
-    if (m.type === 'dot') {
-      ctx.beginPath();
-      ctx.arc(g.cx, g.cy, g.r, 0, Math.PI * 2);
-      ctx.fill();
-      return;
-    }
-    if (m.type === 'line') {
-      if (m.stroke === false) return;
-      ctx.beginPath();
-      ctx.moveTo(g.x1, g.y1);
-      ctx.lineTo(g.x2, g.y2);
-      setDash(m.lineStyle, m.weight || 1);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      return;
-    }
-    if (m.type === 'semicircle') {
-      if (m.stroke === false) return;
-      const a = semiArc(g);
-      ctx.beginPath();
-      ctx.arc(g.cx, g.cy, g.r, a.start, a.end, a.ccw);
-      setDash(m.lineStyle, m.weight || 1);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      return;
-    }
-    if (m.type === 'circle') {
-      const geom = fillForMark(m);
-      if (geom && (geom.lines.length || geom.dots.length)) {
-        drawFillGeometry(geom, m.color || '#1a1a1a', m.weight);
-      }
-      if (m.stroke !== false) {
-        ctx.beginPath(); ctx.arc(g.cx, g.cy, g.r, 0, Math.PI * 2); ctx.stroke();
-      }
-      return;
-    }
-    drawClosed(m);
-  }
-
-  function drawMark(m) {
-    const rot = m.rot || 0;
-    if (!rot) {
-      drawMarkLocal(m);
-      return;
-    }
-    const c = sketchCenter(m);
-    ctx.save();
-    ctx.translate(c.x, c.y);
-    ctx.rotate(rot);
-    ctx.translate(-c.x, -c.y);
-    drawMarkLocal(m);
-    ctx.restore();
-  }
-
-  ctx.clearRect(0, 0, SKETCH_FIELD_W, SKETCH_FIELD_H);
-  marks.forEach(drawMark);
-
-  const bounds = sketchUnionBounds(marks);
-  const side = Math.max(bounds.w, bounds.h, 1);
-  const out = document.createElement('canvas');
-  out.width = size;
-  out.height = size;
-  const octx = out.getContext('2d');
-  octx.fillStyle = '#e8e8e8';
-  octx.fillRect(0, 0, size, size);
-  const pad = size * 0.08;
-  const scale = (size - pad * 2) / side;
-  const dx = pad + (size - pad * 2 - bounds.w * scale) / 2;
-  const dy = pad + (size - pad * 2 - bounds.h * scale) / 2;
-  octx.drawImage(
-    field,
-    bounds.x, bounds.y, bounds.w, bounds.h,
-    dx, dy, bounds.w * scale, bounds.h * scale
-  );
-  return out.toDataURL('image/png');
-}
-
-function fallbackMarkDataUrl(size) {
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#e8e8e8';
-  ctx.fillRect(0, 0, size, size);
-  ctx.fillStyle = '#2a6049';
-  ctx.beginPath();
-  ctx.arc(size / 2, size / 2, Math.max(4, size * 0.08), 0, Math.PI * 2);
-  ctx.fill();
-  return canvas.toDataURL('image/png');
-}
-
-function getSketchImageUrl(lex, size) {
-  const marks = lex.sketch && Array.isArray(lex.sketch.marks) ? lex.sketch.marks : null;
-  const cacheKey = lex.id + ':' + size;
-  const stamp = String(lex.savedAt || '');
-  const hit = sketchImageCache[cacheKey];
-  if (hit && hit.stamp === stamp) return hit.url;
-
-  let url = null;
-  if (marks && marks.length) {
-    try {
-      url = rasterizeSketchMarks(marks, size);
-    } catch (err) {
-      console.warn('[lexicon-overview] Failed to rasterize sketch for', lex.id, err);
-      url = null;
-    }
-  }
-  if (!url) url = fallbackMarkDataUrl(size);
-  sketchImageCache[cacheKey] = { stamp: stamp, url: url };
-  return url;
-}
-
-function createMarkImage(lex, sizePx) {
-  const img = document.createElement('img');
-  img.width = sizePx;
-  img.height = sizePx;
-  img.alt = (lex.lexicon || 'Lexicon') + ' mark';
-  img.src = getSketchImageUrl(lex, sizePx);
-  img.draggable = false;
-  return img;
-}
-
-function pruneSketchImageCache(liveIds) {
-  const keep = {};
-  liveIds.forEach((id) => { keep[id] = true; });
-  Object.keys(sketchImageCache).forEach((key) => {
-    const id = key.slice(0, key.lastIndexOf(':'));
-    if (!keep[id]) delete sketchImageCache[key];
+  const metaTags = metaTagsForCard(lex);
+  const result = P.buildLexiconCardSvgString({
+    author: lex.author || 'Unknown',
+    lexicon: lex.lexicon || 'Untitled',
+    initials: authorInitials(lex.author),
+    metaTags: metaTags.length ? metaTags : ['—'],
+    typology: typologyLabel(lex),
+    element: elementLabel(lex),
+    marks: lexMarks(lex),
   });
+  P.downloadSvgString(result.svg, result.filename);
 }
+
 
 function applyLexiconEntries(entries) {
   LEXICONS = entries;
-  pruneSketchImageCache(entries.map((e) => e.id));
   updateStats();
   refreshOrganiseCounts();
 
@@ -1662,69 +1496,123 @@ function fitTileGrid(gridEl, n) {
   gridEl.style.gridTemplateColumns = 'repeat(' + layout.cols + ', ' + layout.tw + 'px)';
   gridEl.style.gridAutoRows = layout.th + 'px';
 
-  const markPx = Math.max(2, Math.round(Math.min(layout.tw, layout.th) * 0.52));
-
   Array.prototype.forEach.call(gridEl.children, (tile) => {
     tile.style.setProperty('--tw', layout.tw + 'px');
     tile.style.setProperty('--th', layout.th + 'px');
     tile.style.width = layout.tw + 'px';
     tile.style.height = layout.th + 'px';
 
+    // Rebuild hatch-simplified mark if tile size crosses the threshold.
+    const markWrap = tile.querySelector('.card-mark');
     const lexId = tile.dataset.id;
     const lex = LEXICONS.find((l) => l.id === lexId);
-    const img = tile.querySelector('.card-mark img');
-    if (lex && img) {
-      img.width = markPx;
-      img.height = markPx;
-      img.src = getSketchImageUrl(lex, markPx);
+    if (markWrap && lex) {
+      const wantOmit = layout.th < ONSCREEN_HATCH_MIN_PX;
+      const curOmit = markWrap.dataset.omitHatch === '1';
+      if (wantOmit !== curOmit || !markWrap.querySelector('svg')) {
+        markWrap.dataset.omitHatch = wantOmit ? '1' : '0';
+        markWrap.innerHTML = '';
+        markWrap.appendChild(createMarkSvg(lex, {
+          forceHatch: !wantOmit,
+          omitHatch: wantOmit,
+          autoSimplifyHatch: false,
+        }));
+      }
     }
   });
 }
 
 function createElementCard(lex) {
-  const tile = document.createElement('button');
-  tile.type = 'button';
+  const tile = document.createElement('div');
   tile.className = 'tile' + (lex.id === state.selectedId ? ' selected' : '');
   tile.dataset.id = lex.id;
+  tile.setAttribute('role', 'button');
+  tile.tabIndex = 0;
   tile.setAttribute('aria-label', lex.lexicon + ' — ' + lex.author);
 
   const top = document.createElement('div');
   top.className = 'card-top';
 
-  const initials = document.createElement('span');
+  const initials = document.createElement('div');
   initials.className = 'card-initials';
-  initials.textContent = authorInitials(lex.author);
+  initials.appendChild(createGlyphLine(authorInitials(lex.author), {
+    height: 12,
+    align: 'left',
+    color: '#1a1a1a',
+    maxWidth: 40,
+  }));
 
   const tags = document.createElement('div');
   tags.className = 'card-meta-tags';
   const metaLines = metaTagsForCard(lex);
-  tags.textContent = metaLines.length ? metaLines.join('\n') : '—';
+  const tagList = metaLines.length ? metaLines : ['—'];
+  tagList.forEach((line) => {
+    tags.appendChild(createGlyphLine(line, {
+      height: 10,
+      align: 'right',
+      color: '#888888',
+      maxWidth: 70,
+    }));
+  });
 
   top.appendChild(initials);
   top.appendChild(tags);
 
   const mark = document.createElement('div');
   mark.className = 'card-mark';
-  mark.appendChild(createMarkImage(lex, 48));
+  mark.dataset.omitHatch = '0';
+  mark.appendChild(createMarkSvg(lex, { forceHatch: true, autoSimplifyHatch: false }));
 
   const title = document.createElement('div');
   title.className = 'card-title';
-  title.textContent = lex.lexicon;
+  title.appendChild(createGlyphLine(lex.lexicon || 'Untitled', {
+    height: 14,
+    align: 'center',
+    color: '#1a1a1a',
+    maxWidth: 100,
+  }));
 
   const typology = document.createElement('div');
   typology.className = 'card-typology';
-  typology.textContent = typologyLabel(lex);
+  typology.appendChild(createGlyphLine(typologyLabel(lex), {
+    height: 9,
+    align: 'center',
+    color: '#888888',
+    maxWidth: 100,
+  }));
 
   const element = document.createElement('div');
   element.className = 'card-element';
-  element.textContent = elementLabel(lex);
+  element.appendChild(createGlyphLine(elementLabel(lex), {
+    height: 9,
+    align: 'center',
+    color: '#888888',
+    maxWidth: 100,
+  }));
+
+  const exportBtn = document.createElement('button');
+  exportBtn.type = 'button';
+  exportBtn.className = 'card-export';
+  exportBtn.textContent = 'Export SVG';
+  exportBtn.title = 'Export this card as a 6×6 in SVG';
+  exportBtn.addEventListener('click', (e) => exportLexiconCardSvg(lex, e));
 
   tile.appendChild(top);
   tile.appendChild(mark);
   tile.appendChild(title);
   tile.appendChild(typology);
   tile.appendChild(element);
-  tile.addEventListener('click', () => selectLexicon(lex.id));
+  tile.appendChild(exportBtn);
+  tile.addEventListener('click', (e) => {
+    if (e.target.closest('.card-export')) return;
+    selectLexicon(lex.id);
+  });
+  tile.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      selectLexicon(lex.id);
+    }
+  });
   return tile;
 }
 
@@ -1774,7 +1662,7 @@ function renderGrid() {
 
 function populateSelectedPanel(lex) {
   els.selectedMarkPreview.innerHTML = '';
-  els.selectedMarkPreview.appendChild(createMarkImage(lex, PREVIEW_MARK_SIZE));
+  els.selectedMarkPreview.appendChild(createMarkSvg(lex, { forceHatch: true, autoSimplifyHatch: false }));
   els.selAuthor.textContent = lex.author;
   els.selLexicon.textContent = lex.lexicon;
   els.selMeta.textContent = metaLabelFull(lex);
@@ -1785,7 +1673,7 @@ function populateSelectedPanel(lex) {
 
 function populateDetailModal(lex) {
   els.detailMark.innerHTML = '';
-  els.detailMark.appendChild(createMarkImage(lex, DETAIL_MARK_SIZE));
+  els.detailMark.appendChild(createMarkSvg(lex, { forceHatch: true, autoSimplifyHatch: false }));
   els.detailTitle.textContent = lex.lexicon;
   els.detailAuthor.textContent = lex.author;
   els.detailMeta.textContent = metaLabelFull(lex);

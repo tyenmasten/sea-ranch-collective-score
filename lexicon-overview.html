@@ -600,36 +600,14 @@ nav {
   min-height: 0;
 }
 
-.card-export {
-  position: absolute;
-  right: 2px;
-  bottom: 2px;
-  z-index: 2;
-  border: 1px solid var(--border);
-  background: rgba(240, 240, 240, 0.92);
-  color: var(--ink);
-  font-family: 'Media77', sans-serif;
-  font-size: 7px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  padding: 2px 4px;
-  cursor: pointer;
-  line-height: 1.1;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.12s;
+.detail-export-row {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
 }
 
-.tile:hover .card-export,
-.tile:focus-within .card-export,
-.tile.selected .card-export {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.card-export:hover {
-  border-color: var(--ink);
-  background: var(--surface2);
+.detail-export-row .btn.primary {
+  width: 100%;
 }
 
 .detail-modal {
@@ -1010,6 +988,9 @@ nav {
       <span class="data-key">Updated</span>
       <span class="data-val" id="detailUpdatedAt"></span>
     </div>
+    <div class="detail-export-row">
+      <button type="button" class="btn primary" id="detailExportSvg">Export SVG</button>
+    </div>
   </div>
 </div>
 
@@ -1273,6 +1254,7 @@ const ELEMENT_IDS = {
   detailSavedAt: 'detailSavedAt',
   detailUpdatedRow: 'detailUpdatedRow',
   detailUpdatedAt: 'detailUpdatedAt',
+  detailExportSvg: 'detailExportSvg',
 };
 
 function cacheElements() {
@@ -1590,23 +1572,12 @@ function createElementCard(lex) {
     maxWidth: 100,
   }));
 
-  const exportBtn = document.createElement('button');
-  exportBtn.type = 'button';
-  exportBtn.className = 'card-export';
-  exportBtn.textContent = 'Export SVG';
-  exportBtn.title = 'Export this card as a 6×6 in SVG';
-  exportBtn.addEventListener('click', (e) => exportLexiconCardSvg(lex, e));
-
   tile.appendChild(top);
   tile.appendChild(mark);
   tile.appendChild(title);
   tile.appendChild(typology);
   tile.appendChild(element);
-  tile.appendChild(exportBtn);
-  tile.addEventListener('click', (e) => {
-    if (e.target.closest('.card-export')) return;
-    selectLexicon(lex.id);
-  });
+  tile.addEventListener('click', () => selectLexicon(lex.id));
   tile.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -1832,6 +1803,10 @@ function bindEvents() {
 
   els.detailClose.addEventListener('click', closeDetailModal);
   els.detailBackdrop.addEventListener('click', closeDetailModal);
+  els.detailExportSvg.addEventListener('click', () => {
+    const lex = LEXICONS.find((l) => l.id === state.selectedId);
+    if (lex) exportLexiconCardSvg(lex);
+  });
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && state.detailOpen) {
